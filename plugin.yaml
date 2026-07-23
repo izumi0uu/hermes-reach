@@ -1,0 +1,9 @@
+name: reach
+version: 0.1.0a0
+description: Reliable, normalized, read-only access to platform-specific sources
+provides_tools:
+  - reach_search
+  - reach_read
+  - reach_browse
+  - reach_transcribe
+  - reach_status

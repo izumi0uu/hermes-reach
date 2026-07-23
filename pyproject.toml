@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=77.0,<82"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hermes-reach"
+version = "0.1.0a0"
+description = "Hermes plugin for reliable, normalized platform reach"
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Booker" }]
+dependencies = ["hermes-agent>=0.19.0,<0.20.0"]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+]
+
+[project.entry-points."hermes_agent.plugins"]
+reach = "hermes_reach"
+
+[dependency-groups]
+dev = [
+  "build==1.2.2.post1",
+  "mypy==1.15.0",
+  "pytest==8.3.5",
+  "ruff==0.11.2",
+]
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["-q"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+extend-exclude = [".agents", ".codex", ".omx", ".trellis"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src"]
