@@ -11,6 +11,7 @@ ToolFamily = Literal["search", "read", "browse", "transcribe", "status"]
 AccessClass = Literal["credential_free", "api_key", "account_session", "unsupported"]
 ImplementationState = Literal["planned"]
 OptionKind = Literal["integer", "boolean", "string"]
+DataScope = Literal["public", "account_visible"]
 
 CATALOG_VERSION: Final = "v1"
 PROTOCOL_VERSION: Final = "v1"
@@ -27,6 +28,19 @@ class OptionSpec:
 
 
 @dataclass(frozen=True, slots=True)
+class OperationRuntimeSpec:
+    """Conservative execution limits and scope for a catalog operation."""
+
+    data_scope: DataScope = "public"
+    maximum_items: int = 20
+    maximum_characters: int = 16_000
+    attempt_timeout_seconds: int = 15
+    total_timeout_seconds: int = 30
+    resource_ref_eligible: bool = False
+    continuation_eligible: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class OperationSpec:
     """One versioned operation owned by a source and tool family."""
 
@@ -36,6 +50,7 @@ class OperationSpec:
     alpha_wave: int
     access_class: AccessClass
     options: tuple[OptionSpec, ...]
+    runtime: OperationRuntimeSpec = OperationRuntimeSpec()
     implementation_state: ImplementationState = "planned"
     unavailable_reason: str = "No adapter is implemented for this operation yet."
 
@@ -63,6 +78,9 @@ def _operation(
     wave: int,
     access_class: AccessClass,
     options: tuple[OptionSpec, ...] = (),
+    data_scope: DataScope = "public",
+    resource_ref_eligible: bool = False,
+    continuation_eligible: bool = False,
 ) -> OperationSpec:
     return OperationSpec(
         source=source,
@@ -71,6 +89,11 @@ def _operation(
         alpha_wave=wave,
         access_class=access_class,
         options=options,
+        runtime=OperationRuntimeSpec(
+            data_scope=data_scope,
+            resource_ref_eligible=resource_ref_eligible,
+            continuation_eligible=continuation_eligible,
+        ),
     )
 
 
@@ -132,7 +155,13 @@ SOURCE_CATALOG: Final[tuple[SourceSpec, ...]] = (
             _operation("twitter", "read.post", "read", 2, "account_session"),
             _operation("twitter", "read.article", "read", 2, "account_session"),
             _operation(
-                "twitter", "browse.home", "browse", 2, "account_session", (LIMIT,)
+                "twitter",
+                "browse.home",
+                "browse",
+                2,
+                "account_session",
+                (LIMIT,),
+                "account_visible",
             ),
             _operation(
                 "twitter", "browse.user_posts", "browse", 2, "account_session", (LIMIT,)
@@ -195,10 +224,22 @@ SOURCE_CATALOG: Final[tuple[SourceSpec, ...]] = (
             _operation("facebook", "search", "search", 3, "account_session", (LIMIT,)),
             _operation("facebook", "read.profile", "read", 3, "account_session"),
             _operation(
-                "facebook", "browse.feed", "browse", 3, "account_session", (LIMIT,)
+                "facebook",
+                "browse.feed",
+                "browse",
+                3,
+                "account_session",
+                (LIMIT,),
+                "account_visible",
             ),
             _operation(
-                "facebook", "browse.groups", "browse", 3, "account_session", (LIMIT,)
+                "facebook",
+                "browse.groups",
+                "browse",
+                3,
+                "account_session",
+                (LIMIT,),
+                "account_visible",
             ),
         ),
     ),

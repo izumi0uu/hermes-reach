@@ -308,6 +308,16 @@ def _options(operation: OperationSpec, value: object) -> Mapping[str, object]:
     return dict(options)
 
 
+def operation_options_are_valid(operation: OperationSpec, value: object) -> bool:
+    """Check whether options still match their canonical catalog operation."""
+
+    try:
+        _options(operation, value)
+    except ReachValidationError:
+        return False
+    return True
+
+
 def _validate_option(spec: OptionSpec, value: object) -> None:
     if spec.kind == "integer":
         if isinstance(value, bool) or not isinstance(value, int):

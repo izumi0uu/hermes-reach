@@ -15,6 +15,7 @@ from .contracts import (
     success_response,
     validate_status,
 )
+from .runtime.release import check_release_pins
 from .status import doctor_data, sources_data, status_data, unavailable_command_data
 
 
@@ -83,7 +84,7 @@ def command_payload(args: argparse.Namespace) -> dict[str, object]:
             command == "updates"
             and getattr(args, "reach_updates_command", None) == "check"
         ):
-            return _unavailable_response("updates_check", trace_id)
+            return success_response(trace_id, check_release_pins().as_data())
         raise ReachValidationError(
             "invalid_argument",
             "A Reach subcommand is required.",

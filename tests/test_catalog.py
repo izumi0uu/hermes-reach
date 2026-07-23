@@ -100,6 +100,29 @@ def test_foundation_catalog_has_no_available_operation() -> None:
     assert all(operation.unavailable_reason for operation in operations)
 
 
+def test_catalog_runtime_defaults_and_account_visible_overrides_are_explicit() -> None:
+    operations = all_operations()
+    account_visible = {
+        ("twitter", "browse.home"),
+        ("facebook", "browse.feed"),
+        ("facebook", "browse.groups"),
+    }
+
+    for operation in operations:
+        expected_scope = (
+            "account_visible"
+            if (operation.source, operation.name) in account_visible
+            else "public"
+        )
+        assert operation.runtime.data_scope == expected_scope
+        assert operation.runtime.maximum_items == 20
+        assert operation.runtime.maximum_characters == 16_000
+        assert operation.runtime.attempt_timeout_seconds == 15
+        assert operation.runtime.total_timeout_seconds == 30
+        assert operation.runtime.resource_ref_eligible is False
+        assert operation.runtime.continuation_eligible is False
+
+
 def test_catalog_lookup_never_crosses_source_boundaries() -> None:
     github = get_source("github")
 

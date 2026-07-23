@@ -19,9 +19,11 @@ from .contracts import (
     validate_status,
     validate_transcribe,
 )
+from .runtime.dispatcher import RuntimeDispatcher
 from .status import status_data
 
 Validator = Callable[[object], OperationCall | tuple[OperationCall, ...]]
+_RUNTIME = RuntimeDispatcher()
 
 
 def reach_search(args: dict[str, object], **kwargs: object) -> str:
@@ -78,6 +80,12 @@ def _planned_handler(args: object, validator: Validator) -> str:
             calls = validated
         else:
             calls = (validated,)
+        if not all(_RUNTIME.is_unavailable(call) for call in calls):
+            raise ReachValidationError(
+                "capability_unavailable",
+                "The requested adapter cannot run in the foundation release.",
+                "Complete the dedicated source-adapter task before execution.",
+            )
         return json_result(planned_response(calls, trace_id))
     except ReachValidationError as error:
         return json_result(error_response(error, trace_id))
