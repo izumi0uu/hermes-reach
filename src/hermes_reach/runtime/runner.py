@@ -43,6 +43,9 @@ class RunnerResult:
     truncated: bool
     attempts: tuple[AttemptProvenance, ...]
     failure_class: FailureClass | None = None
+    partial_failure_class: FailureClass | None = None
+    selected_backend_id: str | None = None
+    selected_backend_version: str | None = None
 
 
 class BoundedRunner:
@@ -64,13 +67,13 @@ class BoundedRunner:
         attempts: list[AttemptProvenance] = []
         result = await self._attempt(call, primary, start, attempts)
         if result.is_success:
-            return self._bounded(result, call, attempts)
+            return self._bounded(result, call, primary, attempts)
         if result.failure_class in _NON_RETRYABLE_FAILURES:
             return RunnerResult((), False, tuple(attempts), result.failure_class)
 
         result = await self._attempt(call, primary, start, attempts)
         if result.is_success:
-            return self._bounded(result, call, attempts)
+            return self._bounded(result, call, primary, attempts)
         if result.failure_class in _NON_RETRYABLE_FAILURES:
             return RunnerResult((), False, tuple(attempts), result.failure_class)
 
@@ -79,7 +82,7 @@ class BoundedRunner:
                 continue
             result = await self._attempt(call, fallback, start, attempts)
             if result.is_success:
-                return self._bounded(result, call, attempts)
+                return self._bounded(result, call, fallback, attempts)
             if result.failure_class in _NON_RETRYABLE_FAILURES:
                 return RunnerResult((), False, tuple(attempts), result.failure_class)
         return RunnerResult((), False, tuple(attempts), "transient")
@@ -114,7 +117,11 @@ class BoundedRunner:
             attempts.append(self._attempt_record(binding, attempt_start, "transient"))
             return AdapterResult(failure_class="transient")
         outcome = (
-            "success" if result.is_success else result.failure_class or "permanent"
+            "partial"
+            if result.partial_failure_class is not None
+            else "success"
+            if result.is_success
+            else result.failure_class or "permanent"
         )
         attempts.append(self._attempt_record(binding, attempt_start, outcome))
         return result
@@ -157,6 +164,7 @@ class BoundedRunner:
         self,
         result: AdapterResult,
         call: AuthorizedCall,
+        binding: AdapterBinding,
         attempts: list[AttemptProvenance],
     ) -> RunnerResult:
         limit = call.operation.runtime.maximum_items
@@ -167,12 +175,82 @@ class BoundedRunner:
         truncated = len(result.items) > len(selected)
         for item in selected:
             remaining = character_limit - used_characters
-            if remaining <= 0:
+            if remaining < len(item.kind):
                 truncated = True
                 break
-            text = item.text[:remaining]
-            if len(text) != len(item.text):
+            bounded, item_truncated = self._bounded_item(item, remaining)
+            normalized.append(bounded)
+            used_characters += self._item_characters(bounded)
+            truncated = truncated or item_truncated
+        return RunnerResult(
+            tuple(normalized),
+            truncated,
+            tuple(attempts),
+            partial_failure_class=result.partial_failure_class,
+            selected_backend_id=binding.backend_id,
+            selected_backend_version=binding.backend_version,
+        )
+
+    def _bounded_item(self, item: RawItem, remaining: int) -> tuple[RawItem, bool]:
+        truncated = False
+        kind = item.kind
+        remaining = max(0, remaining - len(kind))
+
+        def identity(value: str | None, maximum: int) -> str | None:
+            nonlocal remaining, truncated
+            if value is None:
+                return None
+            if len(value) > maximum or len(value) > remaining:
                 truncated = True
-            normalized.append(RawItem(text=text, native_id=item.native_id))
-            used_characters += len(text)
-        return RunnerResult(tuple(normalized), truncated, tuple(attempts))
+                return None
+            remaining -= len(value)
+            return value
+
+        def display(value: str | None, maximum: int) -> str | None:
+            nonlocal remaining, truncated
+            if value is None or remaining <= 0:
+                if value:
+                    truncated = True
+                return None
+            bounded = value[: min(maximum, remaining)]
+            if bounded != value:
+                truncated = True
+            remaining -= len(bounded)
+            return bounded
+
+        native_id = identity(item.native_id, 512)
+        url = identity(item.url, 4096)
+        title = display(item.title, 512)
+        author = display(item.author, 256)
+        published_at = display(item.published_at, 128)
+        text = item.text[:remaining]
+        if text != item.text:
+            truncated = True
+        return (
+            RawItem(
+                text=text,
+                native_id=native_id,
+                kind=kind,
+                title=title,
+                url=url,
+                author=author,
+                published_at=published_at,
+            ),
+            truncated,
+        )
+
+    @staticmethod
+    def _item_characters(item: RawItem) -> int:
+        return sum(
+            len(value)
+            for value in (
+                item.kind,
+                item.text,
+                item.native_id,
+                item.title,
+                item.url,
+                item.author,
+                item.published_at,
+            )
+            if value is not None
+        )

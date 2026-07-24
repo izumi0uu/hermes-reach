@@ -9,6 +9,7 @@ from ..catalog import DataScope, OperationSpec, get_operation, get_source
 from ..contracts import (
     OperationCall,
     ReachValidationError,
+    operation_call_is_valid,
     operation_options_are_valid,
 )
 
@@ -64,6 +65,8 @@ class ReadOnlyPolicy:
             raise self._denied(
                 "The operation options are not authorized by the catalog."
             )
+        if not operation_call_is_valid(call):
+            raise self._denied("The operation input is not authorized by the catalog.")
         if not scope_includes(effective_scope, operation.runtime.data_scope):
             raise self._denied("The operation requires an operator-granted scope.")
         return AuthorizedCall(call, effective_scope, self._revision)

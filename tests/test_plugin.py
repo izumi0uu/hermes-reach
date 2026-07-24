@@ -31,4 +31,11 @@ def test_registers_exactly_the_five_public_tools_and_one_cli_namespace() -> None
     ]
     assert {tool["toolset"] for tool in context.tools} == {"reach"}
     assert all(not tool.get("override", False) for tool in context.tools)
+    assert [tool["is_async"] for tool in context.tools] == [
+        True,
+        True,
+        True,
+        True,
+        False,
+    ]
     assert [command["name"] for command in context.commands] == ["reach"]

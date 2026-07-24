@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import Any, Final
 
 from .cli import reach_command, register_cli
@@ -21,27 +21,28 @@ from .tools import (
     reach_transcribe,
 )
 
-ToolHandler = Callable[[dict[str, object]], str]
+ToolHandler = Callable[[dict[str, object]], str | Awaitable[str]]
 
-_TOOLS: Final[tuple[tuple[str, dict[str, object], ToolHandler], ...]] = (
-    ("reach_search", REACH_SEARCH, reach_search),
-    ("reach_read", REACH_READ, reach_read),
-    ("reach_browse", REACH_BROWSE, reach_browse),
-    ("reach_transcribe", REACH_TRANSCRIBE, reach_transcribe),
-    ("reach_status", REACH_STATUS, reach_status),
+_TOOLS: Final[tuple[tuple[str, dict[str, object], ToolHandler, bool], ...]] = (
+    ("reach_search", REACH_SEARCH, reach_search, True),
+    ("reach_read", REACH_READ, reach_read, True),
+    ("reach_browse", REACH_BROWSE, reach_browse, True),
+    ("reach_transcribe", REACH_TRANSCRIBE, reach_transcribe, True),
+    ("reach_status", REACH_STATUS, reach_status, False),
 )
 
 
 def register(ctx: Any) -> None:
     """Register the fixed public tool and operator CLI surface."""
 
-    for name, schema, handler in _TOOLS:
+    for name, schema, handler, is_async in _TOOLS:
         description = schema["description"]
         ctx.register_tool(
             name=name,
             toolset="reach",
             schema=schema,
             handler=handler,
+            is_async=is_async,
             description=description if isinstance(description, str) else "",
         )
     ctx.register_cli_command(

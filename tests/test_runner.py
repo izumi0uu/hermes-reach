@@ -62,9 +62,19 @@ def test_runner_bounds_items_and_characters_without_retaining_excess() -> None:
     result = asyncio.run(BoundedRunner().run(_authorized(), (_binding(execute),)))
 
     assert len(result.items) == 1
-    assert len(result.items[0].text) == 16_000
+    item = result.items[0]
+    assert (
+        sum(
+            len(value)
+            for value in (item.kind, item.text, item.native_id)
+            if value is not None
+        )
+        == 16_000
+    )
     assert result.truncated is True
     assert [attempt.outcome for attempt in result.attempts] == ["success"]
+    assert result.selected_backend_id == "primary"
+    assert result.selected_backend_version == "1.0"
 
 
 def test_runner_retries_once_after_a_transient_failure() -> None:
@@ -180,3 +190,28 @@ def test_runner_treats_malformed_adapter_outcomes_as_transient() -> None:
         "transient",
         "transient",
     ]
+
+
+def test_runner_preserves_closed_item_fields_and_partial_state() -> None:
+    async def execute(_: AuthorizedCall) -> AdapterResult:
+        return AdapterResult(
+            (
+                RawItem(
+                    "body",
+                    "native",
+                    kind="entry",
+                    title="title",
+                    url="https://example.com/item",
+                    author="author",
+                    published_at="2026-07-24T00:00:00+00:00",
+                ),
+            ),
+            partial_failure_class="transient",
+        )
+
+    result = asyncio.run(BoundedRunner().run(_authorized(), (_binding(execute),)))
+
+    assert result.partial_failure_class == "transient"
+    assert result.selected_backend_id == "primary"
+    assert result.items[0].kind == "entry"
+    assert [attempt.outcome for attempt in result.attempts] == ["partial"]

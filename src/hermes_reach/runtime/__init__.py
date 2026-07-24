@@ -1,6 +1,7 @@
 """Shared policy, execution, token, and release primitives for Reach adapters."""
 
 from .adapters import AdapterBinding, AdapterRegistry, AdapterResult, RawItem
+from .availability import AvailabilityRecord
 from .dispatcher import RuntimeDispatcher
 from .policy import AuthorizedCall, ReadOnlyPolicy, RuntimePolicyError
 from .release import ReleaseReport, check_release_pins
@@ -11,6 +12,7 @@ __all__ = [
     "AdapterBinding",
     "AdapterRegistry",
     "AdapterResult",
+    "AvailabilityRecord",
     "AttemptProvenance",
     "AuthorizedCall",
     "BoundedRunner",

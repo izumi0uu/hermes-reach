@@ -1,9 +1,11 @@
-"""Hermes tool handlers that validate requests and never execute a backend."""
+"""Hermes tool handlers for validated, bounded read-only execution."""
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
 
+from .bootstrap import DEFAULT_RUNTIME
 from .contracts import (
     OperationCall,
     ReachValidationError,
@@ -11,7 +13,6 @@ from .contracts import (
     internal_error_response,
     json_result,
     new_trace_id,
-    planned_response,
     success_response,
     validate_browse,
     validate_read,
@@ -20,38 +21,45 @@ from .contracts import (
     validate_transcribe,
 )
 from .runtime.dispatcher import RuntimeDispatcher
+from .runtime.responses import (
+    GroupOutcome,
+    execution_response,
+    internal_failure_group,
+    runner_group,
+    unavailable_group,
+)
 from .status import status_data
 
 Validator = Callable[[object], OperationCall | tuple[OperationCall, ...]]
-_RUNTIME = RuntimeDispatcher()
+_RUNTIME: RuntimeDispatcher = DEFAULT_RUNTIME
 
 
-def reach_search(args: dict[str, object], **kwargs: object) -> str:
-    """Validate bounded explicit-source search and return planned groups."""
-
-    del kwargs
-    return _planned_handler(args, validate_search)
-
-
-def reach_read(args: dict[str, object], **kwargs: object) -> str:
-    """Validate a content-read request and return a planned group."""
+async def reach_search(args: dict[str, object], **kwargs: object) -> str:
+    """Validate and execute bounded explicit-source search."""
 
     del kwargs
-    return _planned_handler(args, validate_read)
+    return await _execution_handler(args, validate_search)
 
 
-def reach_browse(args: dict[str, object], **kwargs: object) -> str:
-    """Validate source-native browsing and return a planned group."""
-
-    del kwargs
-    return _planned_handler(args, validate_browse)
-
-
-def reach_transcribe(args: dict[str, object], **kwargs: object) -> str:
-    """Validate transcription input without touching the media target."""
+async def reach_read(args: dict[str, object], **kwargs: object) -> str:
+    """Validate and execute a content-read request."""
 
     del kwargs
-    return _planned_handler(args, validate_transcribe)
+    return await _execution_handler(args, validate_read)
+
+
+async def reach_browse(args: dict[str, object], **kwargs: object) -> str:
+    """Validate and execute source-native browsing."""
+
+    del kwargs
+    return await _execution_handler(args, validate_browse)
+
+
+async def reach_transcribe(args: dict[str, object], **kwargs: object) -> str:
+    """Validate and execute a registered transcription adapter."""
+
+    del kwargs
+    return await _execution_handler(args, validate_transcribe)
 
 
 def reach_status(args: dict[str, object], **kwargs: object) -> str:
@@ -63,7 +71,12 @@ def reach_status(args: dict[str, object], **kwargs: object) -> str:
         request = validate_status(args)
         return json_result(
             success_response(
-                trace_id, status_data(request.sources, request.include_planned)
+                trace_id,
+                status_data(
+                    request.sources,
+                    request.include_planned,
+                    _RUNTIME.operation_availability,
+                ),
             )
         )
     except ReachValidationError as error:
@@ -72,7 +85,7 @@ def reach_status(args: dict[str, object], **kwargs: object) -> str:
         return json_result(internal_error_response(trace_id))
 
 
-def _planned_handler(args: object, validator: Validator) -> str:
+async def _execution_handler(args: object, validator: Validator) -> str:
     trace_id = new_trace_id()
     try:
         validated = validator(args)
@@ -80,14 +93,29 @@ def _planned_handler(args: object, validator: Validator) -> str:
             calls = validated
         else:
             calls = (validated,)
-        if not all(_RUNTIME.is_unavailable(call) for call in calls):
-            raise ReachValidationError(
-                "capability_unavailable",
-                "The requested adapter cannot run in the foundation release.",
-                "Complete the dedicated source-adapter task before execution.",
-            )
-        return json_result(planned_response(calls, trace_id))
+        groups = await asyncio.gather(*(_dispatch_group(call) for call in calls))
+        return json_result(execution_response(groups, trace_id))
     except ReachValidationError as error:
         return json_result(error_response(error, trace_id))
     except Exception:
         return json_result(internal_error_response(trace_id))
+
+
+async def _dispatch_group(
+    call: OperationCall,
+) -> tuple[dict[str, object], GroupOutcome]:
+    availability = _RUNTIME.operation_availability(
+        call.source.name, call.operation.name
+    )
+    if availability.state != "available":
+        return unavailable_group(call, availability)
+    try:
+        result = await _RUNTIME.dispatch(call)
+        if result is None:
+            refreshed = _RUNTIME.operation_availability(
+                call.source.name, call.operation.name
+            )
+            return unavailable_group(call, refreshed)
+        return runner_group(call, result)
+    except Exception:
+        return internal_failure_group(call)

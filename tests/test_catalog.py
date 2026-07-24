@@ -92,12 +92,49 @@ def test_catalog_covers_every_parent_matrix_source_and_operation() -> None:
     } == EXPECTED_OPERATIONS
 
 
-def test_foundation_catalog_has_no_available_operation() -> None:
+def test_catalog_marks_only_alpha1_web_source_boundaries_implemented() -> None:
     operations = all_operations()
 
     assert operations
-    assert {operation.implementation_state for operation in operations} == {"planned"}
+    implemented = {
+        (operation.source, operation.name)
+        for operation in operations
+        if operation.implementation_state == "implemented"
+    }
+    assert implemented == {
+        ("web", "read.url"),
+        ("rss", "read.feed"),
+        ("rss", "browse.entries"),
+        ("v2ex", "browse.hot"),
+        ("v2ex", "browse.node_topics"),
+        ("v2ex", "read.topic"),
+        ("v2ex", "read.user"),
+        ("exa", "search.web"),
+        ("exa", "search.code"),
+    }
     assert all(operation.unavailable_reason for operation in operations)
+
+
+def test_alpha1_operation_inputs_are_catalog_owned() -> None:
+    rss = get_source("rss")
+    v2ex = get_source("v2ex")
+    web = get_source("web")
+    assert rss is not None
+    assert v2ex is not None
+    assert web is not None
+
+    assert [target.kind for target in get_operation(web, "read.url").targets] == ["url"]
+    assert [target.kind for target in get_operation(rss, "browse.entries").targets] == [
+        "url"
+    ]
+    node_topics = get_operation(v2ex, "browse.node_topics")
+    assert node_topics is not None
+    node = next(option for option in node_topics.options if option.name == "node")
+    assert node.required is True
+    assert node.string_format == "identifier"
+    assert [
+        target.string_format for target in get_operation(v2ex, "read.topic").targets
+    ] == ["positive_integer"]
 
 
 def test_catalog_runtime_defaults_and_account_visible_overrides_are_explicit() -> None:

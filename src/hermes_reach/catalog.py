@@ -9,8 +9,10 @@ from typing import Final, Literal
 
 ToolFamily = Literal["search", "read", "browse", "transcribe", "status"]
 AccessClass = Literal["credential_free", "api_key", "account_session", "unsupported"]
-ImplementationState = Literal["planned"]
+ImplementationState = Literal["planned", "implemented"]
 OptionKind = Literal["integer", "boolean", "string"]
+StringFormat = Literal["text", "identifier", "positive_integer"]
+TargetKind = Literal["url", "native_id", "resource_ref", "local_file"]
 DataScope = Literal["public", "account_visible"]
 
 CATALOG_VERSION: Final = "v1"
@@ -25,6 +27,17 @@ class OptionSpec:
     kind: OptionKind
     minimum: int | None = None
     maximum: int | None = None
+    required: bool = False
+    string_format: StringFormat = "text"
+
+
+@dataclass(frozen=True, slots=True)
+class TargetSpec:
+    """One catalog-owned routing target accepted by an operation."""
+
+    kind: TargetKind
+    maximum: int = 4096
+    string_format: StringFormat = "text"
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,6 +63,7 @@ class OperationSpec:
     alpha_wave: int
     access_class: AccessClass
     options: tuple[OptionSpec, ...]
+    targets: tuple[TargetSpec, ...] = ()
     runtime: OperationRuntimeSpec = OperationRuntimeSpec()
     implementation_state: ImplementationState = "planned"
     unavailable_reason: str = "No adapter is implemented for this operation yet."
@@ -69,6 +83,21 @@ class SourceSpec:
 LIMIT: Final = OptionSpec(name="limit", kind="integer", minimum=1, maximum=50)
 PAGE: Final = OptionSpec(name="page", kind="integer", minimum=1, maximum=100)
 LANGUAGE: Final = OptionSpec(name="language", kind="string", maximum=32)
+NODE: Final = OptionSpec(
+    name="node",
+    kind="string",
+    maximum=64,
+    required=True,
+    string_format="identifier",
+)
+URL_TARGET: Final = TargetSpec("url")
+NATIVE_ID_TARGET: Final = TargetSpec("native_id")
+POSITIVE_ID_TARGET: Final = TargetSpec(
+    "native_id", maximum=32, string_format="positive_integer"
+)
+USERNAME_TARGET: Final = TargetSpec("native_id", maximum=64, string_format="identifier")
+RESOURCE_REF_TARGET: Final = TargetSpec("resource_ref")
+LOCAL_FILE_TARGET: Final = TargetSpec("local_file")
 
 
 def _operation(
@@ -81,7 +110,12 @@ def _operation(
     data_scope: DataScope = "public",
     resource_ref_eligible: bool = False,
     continuation_eligible: bool = False,
+    *,
+    targets: tuple[TargetSpec, ...] | None = None,
+    implementation_state: ImplementationState = "planned",
+    unavailable_reason: str = "No adapter is implemented for this operation yet.",
 ) -> OperationSpec:
+    operation_targets = _default_targets(tool) if targets is None else targets
     return OperationSpec(
         source=source,
         name=name,
@@ -89,12 +123,28 @@ def _operation(
         alpha_wave=wave,
         access_class=access_class,
         options=options,
+        targets=operation_targets,
         runtime=OperationRuntimeSpec(
             data_scope=data_scope,
             resource_ref_eligible=resource_ref_eligible,
             continuation_eligible=continuation_eligible,
         ),
+        implementation_state=implementation_state,
+        unavailable_reason=unavailable_reason,
     )
+
+
+def _default_targets(tool: ToolFamily) -> tuple[TargetSpec, ...]:
+    if tool == "read":
+        return (URL_TARGET, NATIVE_ID_TARGET, RESOURCE_REF_TARGET)
+    if tool == "transcribe":
+        return (
+            URL_TARGET,
+            NATIVE_ID_TARGET,
+            RESOURCE_REF_TARGET,
+            LOCAL_FILE_TARGET,
+        )
+    return ()
 
 
 def _source(
@@ -361,17 +411,42 @@ SOURCE_CATALOG: Final[tuple[SourceSpec, ...]] = (
         1,
         "credential_free",
         (
-            _operation("v2ex", "browse.hot", "browse", 1, "credential_free", (LIMIT,)),
+            _operation(
+                "v2ex",
+                "browse.hot",
+                "browse",
+                1,
+                "credential_free",
+                (LIMIT,),
+                implementation_state="implemented",
+            ),
             _operation(
                 "v2ex",
                 "browse.node_topics",
                 "browse",
                 1,
                 "credential_free",
-                (LIMIT, PAGE),
+                (NODE, LIMIT, PAGE),
+                implementation_state="implemented",
             ),
-            _operation("v2ex", "read.topic", "read", 1, "credential_free"),
-            _operation("v2ex", "read.user", "read", 1, "credential_free"),
+            _operation(
+                "v2ex",
+                "read.topic",
+                "read",
+                1,
+                "credential_free",
+                targets=(POSITIVE_ID_TARGET,),
+                implementation_state="implemented",
+            ),
+            _operation(
+                "v2ex",
+                "read.user",
+                "read",
+                1,
+                "credential_free",
+                targets=(USERNAME_TARGET,),
+                implementation_state="implemented",
+            ),
         ),
     ),
     _source(
@@ -398,9 +473,24 @@ SOURCE_CATALOG: Final[tuple[SourceSpec, ...]] = (
         1,
         "credential_free",
         (
-            _operation("rss", "read.feed", "read", 1, "credential_free"),
             _operation(
-                "rss", "browse.entries", "browse", 1, "credential_free", (LIMIT,)
+                "rss",
+                "read.feed",
+                "read",
+                1,
+                "credential_free",
+                targets=(URL_TARGET,),
+                implementation_state="implemented",
+            ),
+            _operation(
+                "rss",
+                "browse.entries",
+                "browse",
+                1,
+                "credential_free",
+                (LIMIT,),
+                targets=(URL_TARGET,),
+                implementation_state="implemented",
             ),
         ),
     ),
@@ -410,8 +500,26 @@ SOURCE_CATALOG: Final[tuple[SourceSpec, ...]] = (
         1,
         "api_key",
         (
-            _operation("exa", "search.web", "search", 1, "api_key", (LIMIT,)),
-            _operation("exa", "search.code", "search", 1, "api_key", (LIMIT,)),
+            _operation(
+                "exa",
+                "search.web",
+                "search",
+                1,
+                "api_key",
+                (LIMIT,),
+                implementation_state="implemented",
+                unavailable_reason="Configure an audited Exa client to enable search.",
+            ),
+            _operation(
+                "exa",
+                "search.code",
+                "search",
+                1,
+                "api_key",
+                (LIMIT,),
+                implementation_state="implemented",
+                unavailable_reason="Configure an audited Exa client to enable search.",
+            ),
         ),
     ),
     _source(
@@ -419,7 +527,17 @@ SOURCE_CATALOG: Final[tuple[SourceSpec, ...]] = (
         "Generic Web",
         1,
         "credential_free",
-        (_operation("web", "read.url", "read", 1, "credential_free"),),
+        (
+            _operation(
+                "web",
+                "read.url",
+                "read",
+                1,
+                "credential_free",
+                targets=(URL_TARGET,),
+                implementation_state="implemented",
+            ),
+        ),
     ),
 )
 

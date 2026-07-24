@@ -1,17 +1,21 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import builtins
 import json
 import os
 import socket
 import subprocess
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 import pytest
 
+import hermes_reach.tools as reach_tools
 from hermes_reach.cli import command_payload, register_cli
+from hermes_reach.sources.public_http import HttpResponse
+from hermes_reach.sources.registry import build_alpha1_runtime
 from hermes_reach.tools import (
     reach_browse,
     reach_read,
@@ -26,13 +30,27 @@ def _unexpected_side_effect(*args: object, **kwargs: object) -> None:
     raise AssertionError("foundation tools must not perform this side effect")
 
 
+def _run(value: Awaitable[str]) -> dict[str, object]:
+    return json.loads(asyncio.run(value))
+
+
+class _FixtureHttpClient:
+    def __init__(self, response: HttpResponse) -> None:
+        self.response = response
+        self.calls: list[str] = []
+
+    async def get(self, url: str) -> HttpResponse:
+        self.calls.append(url)
+        return self.response
+
+
 def test_known_operation_is_unavailable_without_network_or_process(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(socket, "create_connection", _unexpected_side_effect)
     monkeypatch.setattr(subprocess, "run", _unexpected_side_effect)
 
-    response = json.loads(
+    response = _run(
         reach_search(
             {
                 "requests": [
@@ -47,9 +65,34 @@ def test_known_operation_is_unavailable_without_network_or_process(
     )
 
     assert response["outcome"] == "error"
-    assert response["error"]["code"] == "capability_unavailable"
+    assert response["error"]["code"] == "all_sources_failed"
     assert response["groups"][0]["availability"] == "unavailable"
+    assert response["groups"][0]["error"]["code"] == "capability_unavailable"
     assert "private-query-token" not in json.dumps(response)
+
+
+def test_exa_search_requires_an_audited_client_without_echoing_query() -> None:
+    private_query = "private-exa-query"
+
+    response = _run(
+        reach_search(
+            {
+                "requests": [
+                    {
+                        "source": "exa",
+                        "operation": "search.web",
+                        "query": private_query,
+                    }
+                ]
+            }
+        )
+    )
+
+    assert response["outcome"] == "error"
+    assert response["groups"][0]["availability"] == "setup_required"
+    assert response["groups"][0]["error"]["code"] == "setup_required"
+    assert response["groups"][0]["attempts"] == []
+    assert private_query not in json.dumps(response)
 
 
 @pytest.mark.parametrize(
@@ -58,12 +101,12 @@ def test_known_operation_is_unavailable_without_network_or_process(
         (
             reach_read,
             {
-                "source": "web",
-                "operation": "read.url",
-                "target": {"url": "https://example.com"},
+                "source": "github",
+                "operation": "read.repository",
+                "target": {"native_id": "owner/repository"},
             },
         ),
-        (reach_browse, {"source": "v2ex", "operation": "browse.hot"}),
+        (reach_browse, {"source": "reddit", "operation": "browse.hot"}),
         (
             reach_transcribe,
             {
@@ -75,12 +118,47 @@ def test_known_operation_is_unavailable_without_network_or_process(
     ],
 )
 def test_non_search_tools_use_the_same_planned_contract(
-    handler: Callable[[dict[str, object]], str], args: dict[str, object]
+    handler: Callable[[dict[str, object]], Awaitable[str]],
+    args: dict[str, object],
 ) -> None:
-    response = json.loads(handler(args))
+    response = _run(handler(args))
 
-    assert response["error"]["code"] == "capability_unavailable"
+    assert response["error"]["code"] == "all_sources_failed"
     assert response["groups"][0]["availability"] == "unavailable"
+
+
+def test_reach_read_executes_injected_web_runtime_end_to_end(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    private_url = "https://example.com/article?private=token"
+    client = _FixtureHttpClient(
+        HttpResponse(
+            200,
+            "text/html; charset=utf-8",
+            b"<html><head><title>Fixture</title></head><body>Useful body</body></html>",
+            "https://example.com/article",
+        )
+    )
+    monkeypatch.setattr(reach_tools, "_RUNTIME", build_alpha1_runtime(client))
+
+    response = _run(
+        reach_read(
+            {
+                "source": "web",
+                "operation": "read.url",
+                "target": {"url": private_url},
+            }
+        )
+    )
+
+    assert client.calls == [private_url]
+    assert response["outcome"] == "ok"
+    group = response["groups"][0]
+    assert group["source"] == "web"
+    assert group["provenance"]["backend_id"] == "web-public-http-v1"
+    assert group["items"][0]["title"] == "Fixture"
+    assert group["items"][0]["url"] == "https://example.com/article"
+    assert private_url not in json.dumps(response)
 
 
 def test_status_is_local_and_lists_all_sources() -> None:
@@ -88,14 +166,35 @@ def test_status_is_local_and_lists_all_sources() -> None:
 
     assert response["outcome"] == "ok"
     assert len(response["data"]["sources"]) == 15
-    assert {source["availability"] for source in response["data"]["sources"]} == {
-        "unavailable"
+    availability = {
+        source["source"]: source["availability"]
+        for source in response["data"]["sources"]
     }
+    assert availability["web"] == "available"
+    assert availability["rss"] == "available"
+    assert availability["v2ex"] == "available"
+    assert availability["exa"] == "setup_required"
+    assert availability["github"] == "unavailable"
+
+
+def test_status_can_filter_planned_operations_without_hiding_released_rows() -> None:
+    response = json.loads(reach_status({"include_planned": False}))
+    sources = {source["source"]: source for source in response["data"]["sources"]}
+
+    assert [operation["name"] for operation in sources["web"]["operations"]] == [
+        "read.url"
+    ]
+    assert [operation["name"] for operation in sources["exa"]["operations"]] == [
+        "search.web",
+        "search.code",
+    ]
+    assert sources["github"]["operations"] == []
+    assert sources["github"]["availability"] == "unavailable"
 
 
 def test_invalid_input_returns_redacted_error() -> None:
     private_value = "super-secret-user-input"
-    response = json.loads(
+    response = _run(
         reach_search(
             {
                 "requests": [
@@ -130,7 +229,7 @@ def test_all_public_entrypoints_are_side_effect_free(
     monkeypatch.setattr(Path, "mkdir", _unexpected_side_effect)
 
     tool_calls: tuple[
-        tuple[Callable[[dict[str, object]], str], dict[str, object]], ...
+        tuple[Callable[[dict[str, object]], Awaitable[str]], dict[str, object]], ...
     ] = (
         (
             reach_search,
@@ -147,12 +246,12 @@ def test_all_public_entrypoints_are_side_effect_free(
         (
             reach_read,
             {
-                "source": "web",
-                "operation": "read.url",
-                "target": {"url": "https://example.com"},
+                "source": "github",
+                "operation": "read.repository",
+                "target": {"native_id": "owner/repository"},
             },
         ),
-        (reach_browse, {"source": "v2ex", "operation": "browse.hot"}),
+        (reach_browse, {"source": "reddit", "operation": "browse.hot"}),
         (
             reach_transcribe,
             {
@@ -161,10 +260,10 @@ def test_all_public_entrypoints_are_side_effect_free(
                 "target": {"url": "https://example.com/media"},
             },
         ),
-        (reach_status, {}),
     )
     for handler, arguments in tool_calls:
-        assert json.loads(handler(arguments))["trace_id"]
+        assert _run(handler(arguments))["trace_id"]
+    assert json.loads(reach_status({}))["trace_id"]
 
     command_arguments = (
         parser.parse_args(["status", "--json"]),

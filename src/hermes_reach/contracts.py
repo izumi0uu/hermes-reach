@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Final
 
 from .catalog import (
@@ -20,6 +22,7 @@ from .catalog import (
 )
 
 MAX_QUERY_LENGTH: Final = 4096
+_IDENTIFIER: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*")
 
 
 class ReachValidationError(Exception):
@@ -184,19 +187,19 @@ def validate_search(args: object) -> tuple[OperationCall, ...]:
 def validate_read(args: object) -> OperationCall:
     """Validate a single content retrieval request."""
 
-    return _single_call(args, "read", requires_target=True)
+    return _single_call(args, "read")
 
 
 def validate_browse(args: object) -> OperationCall:
     """Validate a single source-native collection request."""
 
-    return _single_call(args, "browse", requires_target=False)
+    return _single_call(args, "browse")
 
 
 def validate_transcribe(args: object) -> OperationCall:
     """Validate a single media transcription request without opening media."""
 
-    return _single_call(args, "transcribe", requires_target=True)
+    return _single_call(args, "transcribe")
 
 
 def validate_status(args: object) -> StatusRequest:
@@ -229,18 +232,14 @@ def validate_status(args: object) -> StatusRequest:
     return StatusRequest(tuple(sources), include_planned)
 
 
-def _single_call(
-    args: object, tool: ToolFamily, requires_target: bool
-) -> OperationCall:
-    allowed = {"protocol_version", "source", "operation", "options"}
-    if requires_target:
-        allowed.add("target")
+def _single_call(args: object, tool: ToolFamily) -> OperationCall:
+    allowed = {"protocol_version", "source", "operation", "options", "target"}
     request = _request_object(args, allowed)
     _validate_protocol_version(request)
     source = _source(request.get("source"))
     operation = _operation(source, request.get("operation"), tool)
     options = _options(operation, request.get("options", {}))
-    target = _target(request.get("target"), tool) if requires_target else None
+    target = _target(request.get("target"), operation)
     return OperationCall(source, operation, options, target=target)
 
 
@@ -251,7 +250,7 @@ def _request_object(args: object, allowed: set[str]) -> Mapping[str, object]:
 
 
 def _object(value: object, field: str) -> Mapping[str, object]:
-    if not isinstance(value, dict):
+    if not isinstance(value, Mapping):
         raise _invalid(field, "Use a JSON object.")
     return value
 
@@ -303,9 +302,16 @@ def _options(operation: OperationSpec, value: object) -> Mapping[str, object]:
     options = _object(value, "options")
     option_specs = {option.name: option for option in operation.options}
     _reject_unknown(options, set(option_specs))
+    missing = {
+        option.name
+        for option in operation.options
+        if option.required and option.name not in options
+    }
+    if missing:
+        raise _invalid("options", "Provide every required operation option.")
     for name, option_value in options.items():
         _validate_option(option_specs[name], option_value)
-    return dict(options)
+    return MappingProxyType(dict(options))
 
 
 def operation_options_are_valid(operation: OperationSpec, value: object) -> bool:
@@ -316,6 +322,26 @@ def operation_options_are_valid(operation: OperationSpec, value: object) -> bool
     except ReachValidationError:
         return False
     return True
+
+
+def operation_call_is_valid(call: OperationCall) -> bool:
+    """Revalidate a complete call before any adapter can observe it."""
+
+    try:
+        if dict(_options(call.operation, call.options)) != dict(call.options):
+            return False
+        if call.operation.tool == "search":
+            return call.target is None and call.query == _text(
+                call.query, "query", MAX_QUERY_LENGTH
+            )
+        if call.query is not None:
+            return False
+        expected = _target(call.target, call.operation)
+        if expected is None:
+            return call.target is None
+        return call.target is not None and dict(expected) == dict(call.target)
+    except ReachValidationError:
+        return False
 
 
 def _validate_option(spec: OptionSpec, value: object) -> None:
@@ -330,7 +356,8 @@ def _validate_option(spec: OptionSpec, value: object) -> None:
         if not isinstance(value, bool):
             raise _invalid("options", "An option has an invalid value type.")
     elif spec.kind == "string":
-        _text(value, "options", spec.maximum or 256)
+        normalized = _text(value, "options", spec.maximum or 256)
+        _validate_string_format(normalized, spec.string_format, "options")
     else:
         raise ReachValidationError(
             "internal_error",
@@ -339,23 +366,40 @@ def _validate_option(spec: OptionSpec, value: object) -> None:
         )
 
 
-def _target(value: object, tool: ToolFamily) -> Mapping[str, str]:
+def _target(value: object, operation: OperationSpec) -> Mapping[str, str] | None:
+    if not operation.targets:
+        if value is not None:
+            raise _invalid("target", "This operation does not accept a target.")
+        return None
     target = _object(value, "target")
-    allowed = {"url", "native_id", "resource_ref"}
-    if tool == "transcribe":
-        allowed.add("local_file")
-    _reject_unknown(target, allowed)
+    target_specs = {spec.kind: spec for spec in operation.targets}
+    _reject_unknown(target, set(target_specs))
     if len(target) != 1:
         raise _invalid("target", "Provide exactly one supported target type.")
     name, raw_value = next(iter(target.items()))
-    target_value = _text(raw_value, "target", MAX_QUERY_LENGTH)
+    spec = next((item for item in operation.targets if item.kind == name), None)
+    if spec is None:
+        raise _invalid("target", "Use a target kind owned by this operation.")
+    target_value = _text(raw_value, "target", spec.maximum)
     if name == "url" and not target_value.startswith(("https://", "http://")):
         raise ReachValidationError(
             "invalid_target",
             "The URL target must use http or https.",
             "Provide a public http(s) URL or another supported target type.",
         )
-    return {name: target_value}
+    _validate_string_format(target_value, spec.string_format, "target")
+    return MappingProxyType({name: target_value})
+
+
+def _validate_string_format(value: str, string_format: str, field: str) -> None:
+    if string_format == "text":
+        return
+    if string_format == "identifier" and _IDENTIFIER.fullmatch(value):
+        return
+    if string_format == "positive_integer" and value.isascii() and value.isdigit():
+        if int(value) > 0:
+            return
+    raise _invalid(field, "Use the documented closed value format.")
 
 
 def _text(value: object, field: str, maximum: int) -> str:

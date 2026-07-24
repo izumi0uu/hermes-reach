@@ -6,7 +6,12 @@ from dataclasses import replace
 import pytest
 
 from hermes_reach.catalog import get_operation, get_source
-from hermes_reach.contracts import OperationCall, validate_browse, validate_search
+from hermes_reach.contracts import (
+    OperationCall,
+    validate_browse,
+    validate_read,
+    validate_search,
+)
 from hermes_reach.runtime.adapters import (
     AdapterBinding,
     AdapterRegistry,
@@ -94,6 +99,23 @@ def test_policy_rejects_forged_options_before_adapter_selection() -> None:
 
     assert exc_info.value.code == "policy_denied"
     assert "private-backend-argument" not in str(exc_info.value)
+
+
+def test_policy_rejects_forged_target_before_adapter_selection() -> None:
+    call = validate_read(
+        {
+            "source": "web",
+            "operation": "read.url",
+            "target": {"url": "https://example.com"},
+        }
+    )
+    forged = replace(call, target={"native_id": "private-routing-value"})
+
+    with pytest.raises(RuntimePolicyError) as exc_info:
+        ReadOnlyPolicy().authorize(forged)
+
+    assert exc_info.value.code == "policy_denied"
+    assert "private-routing-value" not in str(exc_info.value)
 
 
 def test_policy_requires_account_visible_scope_for_private_feeds() -> None:

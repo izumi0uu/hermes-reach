@@ -338,6 +338,7 @@ version = "0.1.0a0"
 source = { editable = "." }
 dependencies = [
     { name = "hermes-agent" },
+    { name = "httpcore" },
 ]
 
 [package.dev-dependencies]
@@ -349,7 +350,10 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "hermes-agent", specifier = ">=0.19.0,<0.20.0" }]
+requires-dist = [
+    { name = "hermes-agent", specifier = ">=0.19.0,<0.20.0" },
+    { name = "httpcore", specifier = ">=1.0.9,<2" },
+]
 
 [package.metadata.requires-dev]
 dev = [

@@ -84,7 +84,11 @@ REACH_SEARCH: Final[dict[str, object]] = {
 
 
 def _single_schema(
-    name: str, description: str, target: dict[str, object] | None
+    name: str,
+    description: str,
+    target: dict[str, object] | None,
+    *,
+    target_required: bool = True,
 ) -> dict[str, object]:
     properties: dict[str, object] = {
         "protocol_version": _PROTOCOL_VERSION,
@@ -95,7 +99,8 @@ def _single_schema(
     required = ["source", "operation"]
     if target is not None:
         properties["target"] = target
-        required.append("target")
+        if target_required:
+            required.append("target")
     return {
         "name": name,
         "description": description,
@@ -114,7 +119,10 @@ REACH_READ: Final[dict[str, object]] = _single_schema(
     _TARGET,
 )
 REACH_BROWSE: Final[dict[str, object]] = _single_schema(
-    "reach_browse", "Browse a registered source-native collection.", None
+    "reach_browse",
+    "Browse a registered source-native collection.",
+    _TARGET,
+    target_required=False,
 )
 REACH_TRANSCRIBE: Final[dict[str, object]] = _single_schema(
     "reach_transcribe",

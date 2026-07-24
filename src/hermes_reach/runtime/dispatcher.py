@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from ..contracts import OperationCall
 from .adapters import AdapterRegistry
+from .availability import AvailabilityRecord
 from .policy import EffectiveScope, ReadOnlyPolicy
 from .runner import BoundedRunner, RunnerResult
 
@@ -25,6 +26,11 @@ class RuntimeDispatcher:
         """Return whether a validated public call has no registered adapter."""
 
         return not self._registry.has_binding(call.source.name, call.operation.name)
+
+    def operation_availability(self, source: str, operation: str) -> AvailabilityRecord:
+        """Project registry state without contacting an adapter."""
+
+        return self._registry.availability(source, operation)
 
     async def dispatch(
         self, call: OperationCall, effective_scope: EffectiveScope = "public"

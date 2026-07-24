@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from typing import Any
 
+from .bootstrap import DEFAULT_RUNTIME
 from .catalog import SOURCE_CATALOG
 from .contracts import (
     ReachValidationError,
@@ -72,12 +73,20 @@ def command_payload(args: argparse.Namespace) -> dict[str, object]:
         if command == "status":
             request = validate_status({"sources": getattr(args, "sources", None)})
             return success_response(
-                trace_id, status_data(request.sources, request.include_planned)
+                trace_id,
+                status_data(
+                    request.sources,
+                    request.include_planned,
+                    DEFAULT_RUNTIME.operation_availability,
+                ),
             )
         if command == "sources":
             return success_response(trace_id, sources_data(SOURCE_CATALOG))
         if command == "doctor":
-            return success_response(trace_id, doctor_data(SOURCE_CATALOG))
+            return success_response(
+                trace_id,
+                doctor_data(SOURCE_CATALOG, DEFAULT_RUNTIME.operation_availability),
+            )
         if command == "setup":
             return _unavailable_response("setup", trace_id)
         if (

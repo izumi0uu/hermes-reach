@@ -6,6 +6,7 @@ from hermes_reach.contracts import (
     ReachValidationError,
     error_response,
     planned_response,
+    validate_browse,
     validate_read,
     validate_search,
 )
@@ -98,6 +99,55 @@ def test_read_target_is_closed_and_http_urls_are_checked() -> None:
         )
 
     assert exc_info.value.code == "invalid_target"
+
+
+def test_operation_owned_targets_and_required_options_are_enforced() -> None:
+    rss = validate_browse(
+        {
+            "source": "rss",
+            "operation": "browse.entries",
+            "target": {"url": "https://example.com/feed.xml"},
+        }
+    )
+    node = validate_browse(
+        {
+            "source": "v2ex",
+            "operation": "browse.node_topics",
+            "options": {"node": "python", "page": 2},
+        }
+    )
+
+    assert rss.target == {"url": "https://example.com/feed.xml"}
+    assert node.options == {"node": "python", "page": 2}
+
+    with pytest.raises(ReachValidationError):
+        validate_browse({"source": "rss", "operation": "browse.entries"})
+    with pytest.raises(ReachValidationError):
+        validate_browse({"source": "v2ex", "operation": "browse.node_topics"})
+    with pytest.raises(ReachValidationError):
+        validate_read(
+            {
+                "source": "v2ex",
+                "operation": "read.topic",
+                "target": {"native_id": "not-a-topic-id"},
+            }
+        )
+
+
+def test_deferred_operations_keep_foundation_target_behavior() -> None:
+    for target in (
+        {"url": "https://example.com/repository"},
+        {"native_id": "owner/repository"},
+        {"resource_ref": "opaque-reference"},
+    ):
+        call = validate_read(
+            {
+                "source": "github",
+                "operation": "read.repository",
+                "target": target,
+            }
+        )
+        assert call.target == target
 
 
 def test_planned_response_does_not_echo_query_or_target() -> None:
