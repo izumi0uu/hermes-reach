@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from typing import Any
 
+from .agent_reach_bridge import AgentReachBridgeError, upstream_doctor_data
 from .bootstrap import DEFAULT_RUNTIME
 from .catalog import SOURCE_CATALOG
 from .contracts import (
@@ -32,8 +33,13 @@ def register_cli(subparser: argparse.ArgumentParser) -> None:
     sources = commands.add_parser("sources", help="List registered Reach sources")
     _add_json_flag(sources)
 
-    doctor = commands.add_parser("doctor", help="Run the local-only Reach doctor")
+    doctor = commands.add_parser("doctor", help="Inspect Reach capabilities")
     _add_json_flag(doctor)
+    doctor.add_argument(
+        "--upstream",
+        action="store_true",
+        help="Run the explicit Agent-Reach backend health check.",
+    )
 
     setup = commands.add_parser("setup", help="Configure Reach capabilities")
     setup.add_argument("--dry-run", action="store_true")
@@ -83,9 +89,28 @@ def command_payload(args: argparse.Namespace) -> dict[str, object]:
         if command == "sources":
             return success_response(trace_id, sources_data(SOURCE_CATALOG))
         if command == "doctor":
+            local_doctor = doctor_data(
+                SOURCE_CATALOG, DEFAULT_RUNTIME.operation_availability
+            )
+            if not getattr(args, "upstream", False):
+                return success_response(trace_id, local_doctor)
+            try:
+                upstream = upstream_doctor_data()
+            except AgentReachBridgeError:
+                raise ReachValidationError(
+                    "capability_unavailable",
+                    (
+                        "The installed Agent-Reach package cannot provide a "
+                        "compatible doctor report."
+                    ),
+                    (
+                        "Reinstall the pinned Agent-Reach dependency, then retry "
+                        "the operator doctor."
+                    ),
+                ) from None
             return success_response(
                 trace_id,
-                doctor_data(SOURCE_CATALOG, DEFAULT_RUNTIME.operation_availability),
+                {"local": local_doctor, "agent_reach": upstream},
             )
         if command == "setup":
             return _unavailable_response("setup", trace_id)

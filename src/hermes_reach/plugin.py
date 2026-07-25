@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import Any, Final
 
+from .agent_reach_bridge import load_agent_reach_catalog
 from .cli import reach_command, register_cli
 from .schemas import (
     REACH_BROWSE,
@@ -35,6 +36,7 @@ _TOOLS: Final[tuple[tuple[str, dict[str, object], ToolHandler, bool], ...]] = (
 def register(ctx: Any) -> None:
     """Register the fixed public tool and operator CLI surface."""
 
+    load_agent_reach_catalog()
     for name, schema, handler, is_async in _TOOLS:
         description = schema["description"]
         ctx.register_tool(

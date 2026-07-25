@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from hermes_reach.plugin import register
+import pytest
+
+from hermes_reach import plugin
 
 
 class FakePluginContext:
@@ -20,7 +22,7 @@ class FakePluginContext:
 def test_registers_exactly_the_five_public_tools_and_one_cli_namespace() -> None:
     context = FakePluginContext()
 
-    register(context)
+    plugin.register(context)
 
     assert [tool["name"] for tool in context.tools] == [
         "reach_search",
@@ -39,3 +41,21 @@ def test_registers_exactly_the_five_public_tools_and_one_cli_namespace() -> None
         False,
     ]
     assert [command["name"] for command in context.commands] == ["reach"]
+
+
+def test_registration_validates_the_agent_reach_catalog_without_probing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = FakePluginContext()
+    loaded = False
+
+    def load_catalog() -> object:
+        nonlocal loaded
+        loaded = True
+        return object()
+
+    monkeypatch.setattr(plugin, "load_agent_reach_catalog", load_catalog)
+
+    plugin.register(context)
+
+    assert loaded is True

@@ -15,6 +15,18 @@ def test_project_declares_the_documented_hermes_plugin_entry_point() -> None:
         "reach": "hermes_reach"
     }
     assert "hermes-agent>=0.19.0,<0.20.0" in project["project"]["dependencies"]
+    assert (
+        "agent-reach @ git+https://github.com/Panniantong/Agent-Reach.git@"
+        "1494c2ab239e7355a77e7cceaf3271453a1f34b5"
+    ) in project["project"]["dependencies"]
+
+
+def test_lockfile_keeps_the_inspected_agent_reach_commit() -> None:
+    root = Path(__file__).resolve().parents[1]
+    lockfile = (root / "uv.lock").read_text(encoding="utf-8")
+
+    assert 'name = "agent-reach"' in lockfile
+    assert "1494c2ab239e7355a77e7cceaf3271453a1f34b5" in lockfile
 
 
 def test_installed_entry_point_loads_the_plugin_module() -> None:
