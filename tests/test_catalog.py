@@ -92,7 +92,7 @@ def test_catalog_covers_every_parent_matrix_source_and_operation() -> None:
     } == EXPECTED_OPERATIONS
 
 
-def test_catalog_marks_only_alpha1_web_source_boundaries_implemented() -> None:
+def test_catalog_marks_released_alpha1_source_boundaries_implemented() -> None:
     operations = all_operations()
 
     assert operations
@@ -102,6 +102,22 @@ def test_catalog_marks_only_alpha1_web_source_boundaries_implemented() -> None:
         if operation.implementation_state == "implemented"
     }
     assert implemented == {
+        ("github", "search.repositories"),
+        ("github", "search.code"),
+        ("github", "read.repository"),
+        ("github", "read.issue"),
+        ("github", "read.pull_request"),
+        ("github", "browse.actions"),
+        ("github", "read.action_run"),
+        ("github", "browse.releases"),
+        ("youtube", "search.videos"),
+        ("youtube", "read.video"),
+        ("youtube", "read.subtitles"),
+        ("youtube", "read.comments"),
+        ("bilibili", "search.videos"),
+        ("bilibili", "read.video"),
+        ("bilibili", "browse.hot"),
+        ("bilibili", "browse.rank"),
         ("web", "read.url"),
         ("rss", "read.feed"),
         ("rss", "browse.entries"),
@@ -135,6 +151,26 @@ def test_alpha1_operation_inputs_are_catalog_owned() -> None:
     assert [
         target.string_format for target in get_operation(v2ex, "read.topic").targets
     ] == ["positive_integer"]
+
+    github = get_source("github")
+    youtube = get_source("youtube")
+    bilibili = get_source("bilibili")
+    assert github is not None
+    assert youtube is not None
+    assert bilibili is not None
+    assert [
+        target.string_format
+        for target in get_operation(github, "read.repository").targets
+    ] == ["github_repository"]
+    assert [
+        target.string_format for target in get_operation(github, "read.issue").targets
+    ] == ["github_resource"]
+    assert [
+        target.string_format for target in get_operation(youtube, "read.video").targets
+    ] == ["youtube_video_url"]
+    assert [
+        target.string_format for target in get_operation(bilibili, "read.video").targets
+    ] == ["bilibili_video_url"]
 
 
 def test_catalog_runtime_defaults_and_account_visible_overrides_are_explicit() -> None:

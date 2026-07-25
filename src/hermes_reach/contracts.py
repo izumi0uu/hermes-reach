@@ -9,6 +9,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Final
+from urllib.parse import parse_qs, urlsplit
 
 from .catalog import (
     CATALOG_VERSION,
@@ -23,6 +24,10 @@ from .catalog import (
 
 MAX_QUERY_LENGTH: Final = 4096
 _IDENTIFIER: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*")
+_GITHUB_OWNER: Final = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?")
+_GITHUB_REPOSITORY: Final = re.compile(r"[A-Za-z0-9._-]{1,100}")
+_YOUTUBE_VIDEO_ID: Final = re.compile(r"[A-Za-z0-9_-]{11}")
+_BILIBILI_VIDEO_ID: Final = re.compile(r"BV[A-Za-z0-9]{10}")
 
 
 class ReachValidationError(Exception):
@@ -399,7 +404,72 @@ def _validate_string_format(value: str, string_format: str, field: str) -> None:
     if string_format == "positive_integer" and value.isascii() and value.isdigit():
         if int(value) > 0:
             return
+    if string_format == "github_repository" and _github_repository(value):
+        return
+    if string_format == "github_resource" and _github_resource(value):
+        return
+    if string_format == "youtube_video_url" and _youtube_video_url(value):
+        return
+    if string_format == "bilibili_video_url" and _bilibili_video_url(value):
+        return
     raise _invalid(field, "Use the documented closed value format.")
+
+
+def _github_repository(value: str) -> bool:
+    parts = value.split("/")
+    if len(parts) != 2:
+        return False
+    owner, repository = parts
+    return bool(
+        _GITHUB_OWNER.fullmatch(owner)
+        and _GITHUB_REPOSITORY.fullmatch(repository)
+        and repository not in {".", ".."}
+    )
+
+
+def _github_resource(value: str) -> bool:
+    repository, separator, raw_id = value.partition("#")
+    return bool(
+        separator
+        and _github_repository(repository)
+        and raw_id.isascii()
+        and raw_id.isdigit()
+        and int(raw_id) > 0
+    )
+
+
+def _youtube_video_url(value: str) -> bool:
+    try:
+        parsed = urlsplit(value)
+        query = parse_qs(parsed.query, keep_blank_values=True, strict_parsing=True)
+    except ValueError:
+        return False
+    return bool(
+        parsed.scheme == "https"
+        and parsed.netloc == "www.youtube.com"
+        and parsed.path == "/watch"
+        and not parsed.fragment
+        and set(query) == {"v"}
+        and len(query["v"]) == 1
+        and _YOUTUBE_VIDEO_ID.fullmatch(query["v"][0])
+    )
+
+
+def _bilibili_video_url(value: str) -> bool:
+    try:
+        parsed = urlsplit(value)
+    except ValueError:
+        return False
+    parts = parsed.path.split("/")
+    return bool(
+        parsed.scheme == "https"
+        and parsed.netloc == "www.bilibili.com"
+        and not parsed.query
+        and not parsed.fragment
+        and len(parts) == 3
+        and parts[1] == "video"
+        and _BILIBILI_VIDEO_ID.fullmatch(parts[2])
+    )
 
 
 def _text(value: object, field: str, maximum: int) -> str:

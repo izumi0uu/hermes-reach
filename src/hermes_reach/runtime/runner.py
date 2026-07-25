@@ -223,6 +223,14 @@ class BoundedRunner:
         title = display(item.title, 512)
         author = display(item.author, 256)
         published_at = display(item.published_at, 128)
+        media = item.media
+        if media is not None:
+            media_characters = media.character_count()
+            if media_characters > remaining:
+                media = None
+                truncated = True
+            else:
+                remaining -= media_characters
         text = item.text[:remaining]
         if text != item.text:
             truncated = True
@@ -235,13 +243,14 @@ class BoundedRunner:
                 url=url,
                 author=author,
                 published_at=published_at,
+                media=media,
             ),
             truncated,
         )
 
     @staticmethod
     def _item_characters(item: RawItem) -> int:
-        return sum(
+        scalar_characters = sum(
             len(value)
             for value in (
                 item.kind,
@@ -253,4 +262,7 @@ class BoundedRunner:
                 item.published_at,
             )
             if value is not None
+        )
+        return scalar_characters + (
+            0 if item.media is None else item.media.character_count()
         )

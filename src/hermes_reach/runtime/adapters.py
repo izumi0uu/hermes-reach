@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Final, Literal
@@ -36,6 +37,74 @@ ItemKind = Literal["content", "entry", "topic", "reply", "profile", "result"]
 _ITEM_KINDS: Final[frozenset[str]] = frozenset(
     {"content", "entry", "topic", "reply", "profile", "result"}
 )
+MediaCoverage = Literal["complete", "partial", "unknown"]
+SubtitleOrigin = Literal["manual", "automatic"]
+_MEDIA_COVERAGE: Final[frozenset[str]] = frozenset({"complete", "partial", "unknown"})
+_SUBTITLE_ORIGINS: Final[frozenset[str]] = frozenset({"manual", "automatic"})
+_LANGUAGE_TAG: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,31}")
+
+
+@dataclass(frozen=True, slots=True)
+class MediaMetadata:
+    """Closed, versioned metadata for media items and coverage claims."""
+
+    duration_seconds: int | None = None
+    view_count: int | None = None
+    comment_count: int | None = None
+    subtitle_language: str | None = None
+    subtitle_origin: SubtitleOrigin | None = None
+    coverage: MediaCoverage = "unknown"
+
+    def __post_init__(self) -> None:
+        for value in (self.duration_seconds, self.view_count, self.comment_count):
+            if value is not None and (
+                isinstance(value, bool) or not isinstance(value, int) or value < 0
+            ):
+                raise ValueError("Media counts must be non-negative integers.")
+        if self.subtitle_language is not None and not _LANGUAGE_TAG.fullmatch(
+            self.subtitle_language
+        ):
+            raise ValueError("Media subtitle language must be a closed language tag.")
+        if (
+            self.subtitle_origin not in _SUBTITLE_ORIGINS
+            and self.subtitle_origin is not None
+        ):
+            raise ValueError("Media subtitle origin must be known.")
+        if self.coverage not in _MEDIA_COVERAGE:
+            raise ValueError("Media coverage must be known.")
+
+    def character_count(self) -> int:
+        """Return the scalar contribution to the runner's output budget."""
+
+        return sum(
+            len(value)
+            for value in (
+                "v1",
+                self.coverage,
+                self.subtitle_language,
+                self.subtitle_origin,
+                None if self.duration_seconds is None else str(self.duration_seconds),
+                None if self.view_count is None else str(self.view_count),
+                None if self.comment_count is None else str(self.comment_count),
+            )
+            if value is not None
+        )
+
+    def as_data(self) -> dict[str, object]:
+        """Return only the fixed public media projection."""
+
+        data: dict[str, object] = {"version": "v1", "coverage": self.coverage}
+        for name in (
+            "duration_seconds",
+            "view_count",
+            "comment_count",
+            "subtitle_language",
+            "subtitle_origin",
+        ):
+            value = getattr(self, name)
+            if value is not None:
+                data[name] = value
+        return data
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +118,7 @@ class RawItem:
     url: str | None = None
     author: str | None = None
     published_at: str | None = None
+    media: MediaMetadata | None = None
 
     def __post_init__(self) -> None:
         if self.kind not in _ITEM_KINDS:

@@ -5,7 +5,12 @@ from dataclasses import asdict, replace
 
 from hermes_reach.catalog import OperationRuntimeSpec, get_operation, get_source
 from hermes_reach.contracts import OperationCall
-from hermes_reach.runtime.adapters import AdapterBinding, AdapterResult, RawItem
+from hermes_reach.runtime.adapters import (
+    AdapterBinding,
+    AdapterResult,
+    MediaMetadata,
+    RawItem,
+)
 from hermes_reach.runtime.policy import AuthorizedCall
 from hermes_reach.runtime.runner import BoundedRunner
 
@@ -215,3 +220,31 @@ def test_runner_preserves_closed_item_fields_and_partial_state() -> None:
     assert result.selected_backend_id == "primary"
     assert result.items[0].kind == "entry"
     assert [attempt.outcome for attempt in result.attempts] == ["partial"]
+
+
+def test_runner_budgets_closed_media_metadata_with_item_characters() -> None:
+    async def execute(_: AuthorizedCall) -> AdapterResult:
+        return AdapterResult(
+            (
+                RawItem(
+                    "body",
+                    kind="result",
+                    media=MediaMetadata(
+                        duration_seconds=3600,
+                        view_count=2_000_000,
+                        subtitle_language="en",
+                        subtitle_origin="manual",
+                        coverage="complete",
+                    ),
+                ),
+            )
+        )
+
+    runtime = OperationRuntimeSpec(maximum_characters=12)
+    result = asyncio.run(
+        BoundedRunner().run(_authorized(runtime=runtime), (_binding(execute),))
+    )
+
+    assert result.truncated is True
+    assert result.items[0].media is None
+    assert result.items[0].text == "body"

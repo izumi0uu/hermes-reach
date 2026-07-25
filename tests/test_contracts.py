@@ -142,12 +142,92 @@ def test_deferred_operations_keep_foundation_target_behavior() -> None:
     ):
         call = validate_read(
             {
-                "source": "github",
-                "operation": "read.repository",
+                "source": "reddit",
+                "operation": "read.post",
                 "target": target,
             }
         )
         assert call.target == target
+
+
+def test_github_and_media_targets_are_exact_and_closed() -> None:
+    repository = validate_read(
+        {
+            "source": "github",
+            "operation": "read.repository",
+            "target": {"native_id": "openai/hermes-reach"},
+        }
+    )
+    action = validate_browse(
+        {
+            "source": "github",
+            "operation": "browse.actions",
+            "target": {"native_id": "openai/hermes-reach"},
+        }
+    )
+    issue = validate_read(
+        {
+            "source": "github",
+            "operation": "read.issue",
+            "target": {"native_id": "openai/hermes-reach#42"},
+        }
+    )
+    video = validate_read(
+        {
+            "source": "youtube",
+            "operation": "read.video",
+            "target": {"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"},
+        }
+    )
+    bilibili = validate_read(
+        {
+            "source": "bilibili",
+            "operation": "read.video",
+            "target": {"url": "https://www.bilibili.com/video/BV1xx411c7mD"},
+        }
+    )
+
+    assert repository.target == {"native_id": "openai/hermes-reach"}
+    assert action.target == {"native_id": "openai/hermes-reach"}
+    assert issue.target == {"native_id": "openai/hermes-reach#42"}
+    assert video.target is not None
+    assert bilibili.target is not None
+
+    for source, operation, target in (
+        ("github", "read.repository", {"native_id": "openai/../secrets"}),
+        ("github", "read.issue", {"native_id": "openai/hermes-reach#0"}),
+        ("github", "browse.actions", {"url": "https://github.com/openai/reach"}),
+        (
+            "youtube",
+            "read.video",
+            {"url": "https://youtu.be/dQw4w9WgXcQ?tracking=private"},
+        ),
+        (
+            "youtube",
+            "read.video",
+            {"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=private"},
+        ),
+        (
+            "bilibili",
+            "read.video",
+            {"url": "https://www.bilibili.com/video/BV1xx411c7mD?private=yes"},
+        ),
+        (
+            "youtube",
+            "transcribe.video",
+            {"url": "https://example.com/untrusted-media"},
+        ),
+        (
+            "bilibili",
+            "read.subtitles",
+            {"url": "https://example.com/untrusted-media"},
+        ),
+    ):
+        validator = (
+            validate_browse if operation.startswith("browse.") else validate_read
+        )
+        with pytest.raises(ReachValidationError):
+            validator({"source": source, "operation": operation, "target": target})
 
 
 def test_planned_response_does_not_echo_query_or_target() -> None:

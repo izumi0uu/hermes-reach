@@ -6,6 +6,15 @@ from ..runtime.adapters import AdapterBinding, AdapterCallable, AdapterRegistry
 from ..runtime.availability import Availability
 from ..runtime.dispatcher import RuntimeDispatcher
 from .exa import AuditedExaClient, exa_bindings, exa_client_is_eligible
+from .github import GitHubAdapter
+from .media import (
+    AuditedBilibiliBackend,
+    AuditedYouTubeBackend,
+    bilibili_backend_is_eligible,
+    bilibili_bindings,
+    youtube_backend_is_eligible,
+    youtube_bindings,
+)
 from .public_http import PublicHttpClient, PublicHttpTransport
 from .rss import RssAdapter
 from .v2ex import V2exAdapter
@@ -15,6 +24,8 @@ from .web import WebAdapter
 def build_alpha1_registry(
     http_client: PublicHttpClient | None = None,
     exa_client: AuditedExaClient | None = None,
+    youtube_backend: AuditedYouTubeBackend | None = None,
+    bilibili_backend: AuditedBilibiliBackend | None = None,
 ) -> AdapterRegistry:
     """Register deterministic adapters without probing network or secrets."""
 
@@ -23,6 +34,7 @@ def build_alpha1_registry(
     web = WebAdapter(client)
     rss = RssAdapter(client)
     v2ex = V2exAdapter(client)
+    github = GitHubAdapter(client)
 
     _register(registry, "web", "read.url", "web-public-http-v1", web.execute)
     _register(registry, "rss", "read.feed", "rss-atom-parser-v1", rss.execute)
@@ -41,6 +53,24 @@ def build_alpha1_registry(
             v2ex.execute,
         )
 
+    for operation in (
+        "search.repositories",
+        "search.code",
+        "read.repository",
+        "read.issue",
+        "read.pull_request",
+        "browse.actions",
+        "read.action_run",
+        "browse.releases",
+    ):
+        _register(
+            registry,
+            "github",
+            operation,
+            "github-public-rest-v1",
+            github.execute,
+        )
+
     if exa_client is None:
         _mark_exa(
             registry,
@@ -56,14 +86,24 @@ def build_alpha1_registry(
             "unavailable",
             "The configured Exa client failed the exact-provider safety gate.",
         )
+    _register_media_backends(registry, youtube_backend, bilibili_backend)
     return registry
 
 
 def build_alpha1_runtime(
     http_client: PublicHttpClient | None = None,
     exa_client: AuditedExaClient | None = None,
+    youtube_backend: AuditedYouTubeBackend | None = None,
+    bilibili_backend: AuditedBilibiliBackend | None = None,
 ) -> RuntimeDispatcher:
-    return RuntimeDispatcher(build_alpha1_registry(http_client, exa_client))
+    return RuntimeDispatcher(
+        build_alpha1_registry(
+            http_client,
+            exa_client,
+            youtube_backend,
+            bilibili_backend,
+        )
+    )
 
 
 def _register(
@@ -95,3 +135,60 @@ def _mark_exa(registry: AdapterRegistry, state: Availability, reason: str) -> No
             state,
             reason,
         )
+
+
+def _register_media_backends(
+    registry: AdapterRegistry,
+    youtube_backend: AuditedYouTubeBackend | None,
+    bilibili_backend: AuditedBilibiliBackend | None,
+) -> None:
+    if youtube_backend is None:
+        _mark_media(
+            registry,
+            "youtube",
+            ("search.videos", "read.video", "read.subtitles", "read.comments"),
+            "setup_required",
+            "Configure an audited YouTube backend through operator setup.",
+        )
+    elif youtube_backend_is_eligible(youtube_backend):
+        for binding in youtube_bindings(youtube_backend):
+            registry.register(binding)
+    else:
+        _mark_media(
+            registry,
+            "youtube",
+            ("search.videos", "read.video", "read.subtitles", "read.comments"),
+            "unavailable",
+            "The configured YouTube backend failed the exact safety gate.",
+        )
+
+    if bilibili_backend is None:
+        _mark_media(
+            registry,
+            "bilibili",
+            ("search.videos", "read.video", "browse.hot", "browse.rank"),
+            "setup_required",
+            "Configure an audited Bilibili backend through operator setup.",
+        )
+    elif bilibili_backend_is_eligible(bilibili_backend):
+        for binding in bilibili_bindings(bilibili_backend):
+            registry.register(binding)
+    else:
+        _mark_media(
+            registry,
+            "bilibili",
+            ("search.videos", "read.video", "browse.hot", "browse.rank"),
+            "unavailable",
+            "The configured Bilibili backend failed the exact safety gate.",
+        )
+
+
+def _mark_media(
+    registry: AdapterRegistry,
+    source: str,
+    operations: tuple[str, ...],
+    state: Availability,
+    reason: str,
+) -> None:
+    for operation in operations:
+        registry.mark(source, operation, state, reason)

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 
 from hermes_reach.contracts import OperationCall, validate_search
-from hermes_reach.runtime.adapters import RawItem
+from hermes_reach.runtime.adapters import MediaMetadata, RawItem
 from hermes_reach.runtime.availability import AvailabilityRecord
 from hermes_reach.runtime.responses import (
     execution_response,
@@ -49,6 +49,34 @@ def test_execution_response_maps_complete_result_to_ok() -> None:
     assert "error" not in response
     assert response["groups"][0]["items"][0]["title"] == "Result"
     assert response["groups"][0]["provenance"]["backend_id"] == "exa-client"
+
+
+def test_execution_response_emits_only_the_closed_versioned_media_projection() -> None:
+    exa, _ = _search_calls()
+    result = RunnerResult(
+        (
+            RawItem(
+                "subtitle text",
+                kind="content",
+                media=MediaMetadata(
+                    subtitle_language="zh-Hans",
+                    subtitle_origin="automatic",
+                    coverage="partial",
+                ),
+            ),
+        ),
+        False,
+        (),
+    )
+
+    response = execution_response((runner_group(exa, result),), "trace-safe")
+
+    assert response["groups"][0]["items"][0]["media"] == {
+        "version": "v1",
+        "coverage": "partial",
+        "subtitle_language": "zh-Hans",
+        "subtitle_origin": "automatic",
+    }
 
 
 def test_execution_response_preserves_group_order_and_maps_mixed_to_partial() -> None:

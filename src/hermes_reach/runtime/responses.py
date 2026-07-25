@@ -216,6 +216,8 @@ def _item_data(item: RawItem) -> dict[str, object]:
         value = getattr(item, name)
         if value is not None:
             data[name] = value
+    if item.media is not None:
+        data["media"] = item.media.as_data()
     return data
 
 

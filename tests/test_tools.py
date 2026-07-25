@@ -44,11 +44,20 @@ class _FixtureHttpClient:
         return self.response
 
 
-def test_known_operation_is_unavailable_without_network_or_process(
+def test_github_execution_uses_the_injected_public_http_client_without_process(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(socket, "create_connection", _unexpected_side_effect)
     monkeypatch.setattr(subprocess, "run", _unexpected_side_effect)
+    client = _FixtureHttpClient(
+        HttpResponse(
+            200,
+            "application/vnd.github+json",
+            b'{"items":[]}',
+            "https://api.github.com/search/repositories",
+        )
+    )
+    monkeypatch.setattr(reach_tools, "_RUNTIME", build_alpha1_runtime(client))
 
     response = _run(
         reach_search(
@@ -64,10 +73,12 @@ def test_known_operation_is_unavailable_without_network_or_process(
         )
     )
 
-    assert response["outcome"] == "error"
-    assert response["error"]["code"] == "all_sources_failed"
-    assert response["groups"][0]["availability"] == "unavailable"
-    assert response["groups"][0]["error"]["code"] == "capability_unavailable"
+    assert response["outcome"] == "ok"
+    assert response["groups"][0]["availability"] == "available"
+    assert response["groups"][0]["items"] == []
+    assert client.calls == [
+        "https://api.github.com/search/repositories?q=private-query-token&per_page=20"
+    ]
     assert "private-query-token" not in json.dumps(response)
 
 
@@ -101,9 +112,9 @@ def test_exa_search_requires_an_audited_client_without_echoing_query() -> None:
         (
             reach_read,
             {
-                "source": "github",
-                "operation": "read.repository",
-                "target": {"native_id": "owner/repository"},
+                "source": "reddit",
+                "operation": "read.post",
+                "target": {"native_id": "owner/post"},
             },
         ),
         (reach_browse, {"source": "reddit", "operation": "browse.hot"}),
@@ -112,7 +123,7 @@ def test_exa_search_requires_an_audited_client_without_echoing_query() -> None:
             {
                 "source": "youtube",
                 "operation": "transcribe.video",
-                "target": {"url": "https://example.com/media"},
+                "target": {"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"},
             },
         ),
     ],
@@ -174,7 +185,9 @@ def test_status_is_local_and_lists_all_sources() -> None:
     assert availability["rss"] == "available"
     assert availability["v2ex"] == "available"
     assert availability["exa"] == "setup_required"
-    assert availability["github"] == "unavailable"
+    assert availability["github"] == "available"
+    assert availability["youtube"] == "setup_required"
+    assert availability["bilibili"] == "setup_required"
 
 
 def test_status_can_filter_planned_operations_without_hiding_released_rows() -> None:
@@ -188,8 +201,14 @@ def test_status_can_filter_planned_operations_without_hiding_released_rows() -> 
         "search.web",
         "search.code",
     ]
-    assert sources["github"]["operations"] == []
-    assert sources["github"]["availability"] == "unavailable"
+    assert len(sources["github"]["operations"]) == 8
+    assert sources["github"]["availability"] == "available"
+    assert [operation["name"] for operation in sources["youtube"]["operations"]] == [
+        "search.videos",
+        "read.video",
+        "read.subtitles",
+        "read.comments",
+    ]
 
 
 def test_invalid_input_returns_redacted_error() -> None:
@@ -199,8 +218,8 @@ def test_invalid_input_returns_redacted_error() -> None:
             {
                 "requests": [
                     {
-                        "source": "github",
-                        "operation": "search.repositories",
+                        "source": "exa",
+                        "operation": "search.web",
                         "query": private_value,
                         "unexpected": private_value,
                     }
@@ -257,7 +276,7 @@ def test_all_public_entrypoints_are_side_effect_free(
             {
                 "source": "youtube",
                 "operation": "transcribe.video",
-                "target": {"url": "https://example.com/media"},
+                "target": {"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"},
             },
         ),
     )

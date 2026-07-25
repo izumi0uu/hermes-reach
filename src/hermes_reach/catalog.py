@@ -11,7 +11,15 @@ ToolFamily = Literal["search", "read", "browse", "transcribe", "status"]
 AccessClass = Literal["credential_free", "api_key", "account_session", "unsupported"]
 ImplementationState = Literal["planned", "implemented"]
 OptionKind = Literal["integer", "boolean", "string"]
-StringFormat = Literal["text", "identifier", "positive_integer"]
+StringFormat = Literal[
+    "text",
+    "identifier",
+    "positive_integer",
+    "github_repository",
+    "github_resource",
+    "youtube_video_url",
+    "bilibili_video_url",
+]
 TargetKind = Literal["url", "native_id", "resource_ref", "local_file"]
 DataScope = Literal["public", "account_visible"]
 
@@ -82,7 +90,9 @@ class SourceSpec:
 
 LIMIT: Final = OptionSpec(name="limit", kind="integer", minimum=1, maximum=50)
 PAGE: Final = OptionSpec(name="page", kind="integer", minimum=1, maximum=100)
-LANGUAGE: Final = OptionSpec(name="language", kind="string", maximum=32)
+LANGUAGE: Final = OptionSpec(
+    name="language", kind="string", maximum=32, string_format="identifier"
+)
 NODE: Final = OptionSpec(
     name="node",
     kind="string",
@@ -98,6 +108,18 @@ POSITIVE_ID_TARGET: Final = TargetSpec(
 USERNAME_TARGET: Final = TargetSpec("native_id", maximum=64, string_format="identifier")
 RESOURCE_REF_TARGET: Final = TargetSpec("resource_ref")
 LOCAL_FILE_TARGET: Final = TargetSpec("local_file")
+GITHUB_REPOSITORY_TARGET: Final = TargetSpec(
+    "native_id", maximum=140, string_format="github_repository"
+)
+GITHUB_RESOURCE_TARGET: Final = TargetSpec(
+    "native_id", maximum=160, string_format="github_resource"
+)
+YOUTUBE_VIDEO_TARGET: Final = TargetSpec(
+    "url", maximum=128, string_format="youtube_video_url"
+)
+BILIBILI_VIDEO_TARGET: Final = TargetSpec(
+    "url", maximum=128, string_format="bilibili_video_url"
+)
 
 
 def _operation(
@@ -177,19 +199,72 @@ SOURCE_CATALOG: Final[tuple[SourceSpec, ...]] = (
                 1,
                 "credential_free",
                 (LIMIT,),
+                implementation_state="implemented",
             ),
             _operation(
-                "github", "search.code", "search", 1, "credential_free", (LIMIT,)
+                "github",
+                "search.code",
+                "search",
+                1,
+                "credential_free",
+                (LIMIT,),
+                implementation_state="implemented",
             ),
-            _operation("github", "read.repository", "read", 1, "credential_free"),
-            _operation("github", "read.issue", "read", 1, "credential_free"),
-            _operation("github", "read.pull_request", "read", 1, "credential_free"),
             _operation(
-                "github", "browse.actions", "browse", 1, "credential_free", (LIMIT,)
+                "github",
+                "read.repository",
+                "read",
+                1,
+                "credential_free",
+                targets=(GITHUB_REPOSITORY_TARGET,),
+                implementation_state="implemented",
             ),
-            _operation("github", "read.action_run", "read", 1, "credential_free"),
             _operation(
-                "github", "browse.releases", "browse", 1, "credential_free", (LIMIT,)
+                "github",
+                "read.issue",
+                "read",
+                1,
+                "credential_free",
+                targets=(GITHUB_RESOURCE_TARGET,),
+                implementation_state="implemented",
+            ),
+            _operation(
+                "github",
+                "read.pull_request",
+                "read",
+                1,
+                "credential_free",
+                targets=(GITHUB_RESOURCE_TARGET,),
+                implementation_state="implemented",
+            ),
+            _operation(
+                "github",
+                "browse.actions",
+                "browse",
+                1,
+                "credential_free",
+                (LIMIT,),
+                targets=(GITHUB_REPOSITORY_TARGET,),
+                implementation_state="implemented",
+            ),
+            _operation(
+                "github",
+                "read.action_run",
+                "read",
+                1,
+                "credential_free",
+                targets=(GITHUB_RESOURCE_TARGET,),
+                implementation_state="implemented",
+            ),
+            _operation(
+                "github",
+                "browse.releases",
+                "browse",
+                1,
+                "credential_free",
+                (LIMIT,),
+                targets=(GITHUB_REPOSITORY_TARGET,),
+                implementation_state="implemented",
             ),
         ),
     ),
@@ -226,17 +301,51 @@ SOURCE_CATALOG: Final[tuple[SourceSpec, ...]] = (
         "credential_free",
         (
             _operation(
-                "youtube", "search.videos", "search", 1, "credential_free", (LIMIT,)
+                "youtube",
+                "search.videos",
+                "search",
+                1,
+                "credential_free",
+                (LIMIT,),
+                implementation_state="implemented",
             ),
-            _operation("youtube", "read.video", "read", 1, "credential_free"),
             _operation(
-                "youtube", "read.subtitles", "read", 1, "credential_free", (LANGUAGE,)
+                "youtube",
+                "read.video",
+                "read",
+                1,
+                "credential_free",
+                targets=(YOUTUBE_VIDEO_TARGET,),
+                implementation_state="implemented",
             ),
             _operation(
-                "youtube", "read.comments", "read", 1, "credential_free", (LIMIT, PAGE)
+                "youtube",
+                "read.subtitles",
+                "read",
+                1,
+                "credential_free",
+                (LANGUAGE,),
+                targets=(YOUTUBE_VIDEO_TARGET,),
+                implementation_state="implemented",
             ),
             _operation(
-                "youtube", "transcribe.video", "transcribe", 1, "api_key", (LANGUAGE,)
+                "youtube",
+                "read.comments",
+                "read",
+                1,
+                "credential_free",
+                (LIMIT, PAGE),
+                targets=(YOUTUBE_VIDEO_TARGET,),
+                implementation_state="implemented",
+            ),
+            _operation(
+                "youtube",
+                "transcribe.video",
+                "transcribe",
+                1,
+                "api_key",
+                (LANGUAGE,),
+                targets=(YOUTUBE_VIDEO_TARGET,),
             ),
         ),
     ),
@@ -323,20 +432,58 @@ SOURCE_CATALOG: Final[tuple[SourceSpec, ...]] = (
         "credential_free",
         (
             _operation(
-                "bilibili", "search.videos", "search", 1, "credential_free", (LIMIT,)
-            ),
-            _operation("bilibili", "read.video", "read", 1, "credential_free"),
-            _operation(
-                "bilibili", "read.subtitles", "read", 1, "account_session", (LANGUAGE,)
-            ),
-            _operation(
-                "bilibili", "browse.hot", "browse", 1, "credential_free", (LIMIT,)
-            ),
-            _operation(
-                "bilibili", "browse.rank", "browse", 1, "credential_free", (LIMIT,)
+                "bilibili",
+                "search.videos",
+                "search",
+                1,
+                "credential_free",
+                (LIMIT,),
+                implementation_state="implemented",
             ),
             _operation(
-                "bilibili", "transcribe.video", "transcribe", 1, "api_key", (LANGUAGE,)
+                "bilibili",
+                "read.video",
+                "read",
+                1,
+                "credential_free",
+                targets=(BILIBILI_VIDEO_TARGET,),
+                implementation_state="implemented",
+            ),
+            _operation(
+                "bilibili",
+                "read.subtitles",
+                "read",
+                1,
+                "account_session",
+                (LANGUAGE,),
+                targets=(BILIBILI_VIDEO_TARGET,),
+            ),
+            _operation(
+                "bilibili",
+                "browse.hot",
+                "browse",
+                1,
+                "credential_free",
+                (LIMIT,),
+                implementation_state="implemented",
+            ),
+            _operation(
+                "bilibili",
+                "browse.rank",
+                "browse",
+                1,
+                "credential_free",
+                (LIMIT,),
+                implementation_state="implemented",
+            ),
+            _operation(
+                "bilibili",
+                "transcribe.video",
+                "transcribe",
+                1,
+                "api_key",
+                (LANGUAGE,),
+                targets=(BILIBILI_VIDEO_TARGET,),
             ),
         ),
     ),
