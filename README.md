@@ -14,6 +14,18 @@ separately audited client is supplied through operator setup, its operations
 remain `setup_required`; Reach does not accept API keys from tool input or make
 direct Exa requests.
 
+## Hermes Usage
+
+Ask Hermes to load the namespaced plugin skill `reach:agent-reach` before an
+internet research or platform retrieval task. Plugin skills are explicit-load;
+this skill is not injected into every Hermes system prompt.
+
+The skill preserves Agent-Reach's 15-platform routing scope while allowing
+execution only through `reach_status`, `reach_search`, `reach_read`,
+`reach_browse`, and `reach_transcribe`. It directs Hermes to inspect local,
+operation-specific availability first and never bypass a `setup_required` or
+unavailable result with an unreviewed backend.
+
 ## Development
 
 ```bash

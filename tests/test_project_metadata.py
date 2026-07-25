@@ -15,6 +15,9 @@ def test_project_declares_the_documented_hermes_plugin_entry_point() -> None:
         "reach": "hermes_reach"
     }
     assert "hermes-agent>=0.19.0,<0.20.0" in project["project"]["dependencies"]
+    assert project["tool"]["setuptools"]["package-data"] == {
+        "hermes_reach": ["skill/SKILL.md"]
+    }
     assert (
         "agent-reach @ git+https://github.com/Panniantong/Agent-Reach.git@"
         "1494c2ab239e7355a77e7cceaf3271453a1f34b5"
