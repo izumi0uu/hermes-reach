@@ -64,6 +64,7 @@ from .protocol import (
 )
 from .tls import ConnectorCACertificate, verify_connector_ca_der
 from .transport import (
+    ConnectorDeliveryError,
     ConnectorTransport,
     PairingExchange,
     PairingWssClient,
@@ -556,29 +557,33 @@ class ConnectorAvailabilityResolver:
                 cause_code=ConnectorErrorCode.CONNECTOR_SCHEMA_INCOMPATIBLE.value,
                 snapshot_at=snapshot.observed_at,
             )
-        if snapshot.state == "unavailable":
-            cause = snapshot.cause_code or ConnectorErrorCode.CONNECTOR_STATE_INVALID
+        if (source, operation) not in snapshot.scopes:
             return AvailabilityRecord(
-                "unavailable",
-                "The Connector is not authorized for this operation.",
-                cause_code=cause.value,
+                "degraded",
+                "The exact Connector operation has no recent snapshot.",
+                cause_code=ConnectorErrorCode.CONNECTOR_OFFLINE.value,
                 snapshot_at=snapshot.observed_at,
             )
-        if (
-            snapshot.state == "disconnected"
-            or now - snapshot.observed_at > self._ttl_seconds
-        ):
+        if now - snapshot.observed_at > self._ttl_seconds:
             return AvailabilityRecord(
                 "degraded",
                 "The Connector is offline or its snapshot is stale.",
                 cause_code=ConnectorErrorCode.CONNECTOR_OFFLINE.value,
                 snapshot_at=snapshot.observed_at,
             )
-        if (source, operation) not in snapshot.scopes:
+        if snapshot.state == "disconnected":
             return AvailabilityRecord(
                 "degraded",
-                "The exact Connector operation has no recent snapshot.",
+                "The Connector is offline or its snapshot is stale.",
                 cause_code=ConnectorErrorCode.CONNECTOR_OFFLINE.value,
+                snapshot_at=snapshot.observed_at,
+            )
+        if snapshot.state == "unavailable":
+            cause = snapshot.cause_code or ConnectorErrorCode.CONNECTOR_STATE_INVALID
+            return AvailabilityRecord(
+                "unavailable",
+                "The Connector is not authorized for this operation.",
+                cause_code=cause.value,
                 snapshot_at=snapshot.observed_at,
             )
         return AvailabilityRecord(
@@ -659,10 +664,10 @@ class ConnectorClient:
             protected_payload=protected,
         )
         invocation = OperationInvocationV1(request.message_id, request, protected)
+        transport_deadline = float(self._monotonic_clock()) + (deadline - now)
         try:
-            response = await self._transport.exchange(
-                invocation,
-                deadline=float(self._monotonic_clock()) + (deadline - now),
+            response = await self._exchange_with_retry(
+                invocation, deadline=transport_deadline
             )
         except ConnectorError as error:
             code = _transport_error_code(error)
@@ -672,6 +677,8 @@ class ConnectorClient:
                     self._profile,
                     _clock_value(self._wall_clock),
                     code,
+                    source=call.source.name,
+                    operation=call.operation.name,
                 ),
             )
             if code.value != error.code:
@@ -685,6 +692,8 @@ class ConnectorClient:
                     _clock_value(self._wall_clock),
                     "disconnected",
                     ConnectorErrorCode.CONNECTOR_OFFLINE,
+                    source=call.source.name,
+                    operation=call.operation.name,
                 ),
             )
             raise ConnectorError(ConnectorErrorCode.CONNECTOR_OFFLINE) from None
@@ -696,6 +705,8 @@ class ConnectorClient:
                     _clock_value(self._wall_clock),
                     "unavailable",
                     ConnectorErrorCode.CONNECTOR_PROTOCOL_MISMATCH,
+                    source=call.source.name,
+                    operation=call.operation.name,
                 ),
             )
             raise ConnectorError(ConnectorErrorCode.CONNECTOR_PROTOCOL_MISMATCH)
@@ -707,6 +718,8 @@ class ConnectorClient:
                     _clock_value(self._wall_clock),
                     "unavailable",
                     ConnectorErrorCode.CONNECTOR_PROTOCOL_MISMATCH,
+                    source=call.source.name,
+                    operation=call.operation.name,
                 ),
             )
             raise ConnectorError(ConnectorErrorCode.CONNECTOR_PROTOCOL_MISMATCH)
@@ -733,6 +746,8 @@ class ConnectorClient:
                     _clock_value(self._wall_clock),
                     "unavailable",
                     ConnectorErrorCode.CONNECTOR_STATE_INVALID,
+                    source=request.source,
+                    operation=request.operation,
                 ),
             )
             raise ConnectorError(ConnectorErrorCode.CONNECTOR_STATE_INVALID) from None
@@ -742,6 +757,31 @@ class ConnectorClient:
         if receipt.failure is not None:
             raise ConnectorError(receipt.failure.cause_code)
         return response
+
+    async def _exchange_with_retry(
+        self, invocation: OperationInvocationV1, *, deadline: float
+    ) -> OperationResponseV1 | ErrorFrame:
+        for attempt in range(2):
+            try:
+                return await self._transport.exchange(invocation, deadline=deadline)
+            except ConnectorError as error:
+                if attempt == 0 and self._retry_eligible(error, deadline=deadline):
+                    continue
+                raise
+        raise AssertionError("The Connector retry loop did not terminate.")
+
+    def _retry_eligible(self, error: ConnectorError, *, deadline: float) -> bool:
+        if self._monotonic_clock() >= deadline:
+            return False
+        code = ConnectorErrorCode(error.code)
+        if code not in {
+            ConnectorErrorCode.CONNECTOR_OFFLINE,
+            ConnectorErrorCode.CONNECTOR_DEADLINE_EXCEEDED,
+        }:
+            return False
+        if isinstance(error, ConnectorDeliveryError):
+            return error.delivery_state in {"not_sent", "delivery_unknown"}
+        return True
 
 
 def _endpoint_digest(endpoint: WssEndpoint) -> str:
@@ -846,6 +886,9 @@ def _snapshot(
     observed_at: int,
     state: SnapshotState,
     cause_code: ConnectorErrorCode | None,
+    *,
+    source: str,
+    operation: str,
 ) -> ConnectorSnapshot:
     claims = profile.signed_grant.claims
     return ConnectorSnapshot(
@@ -855,25 +898,37 @@ def _snapshot(
         observed_at=observed_at,
         state=state,
         cause_code=cause_code,
-        scopes=tuple(
-            sorted((scope.source, scope.operation) for scope in claims.scopes)
-        ),
+        scopes=((source, operation),),
     )
 
 
 def _snapshot_for_transport_error(
-    profile: PairedVpsProfile, observed_at: int, code: ConnectorErrorCode
+    profile: PairedVpsProfile,
+    observed_at: int,
+    code: ConnectorErrorCode,
+    *,
+    source: str,
+    operation: str,
 ) -> ConnectorSnapshot:
     if code in {
         ConnectorErrorCode.CONNECTOR_TLS_FAILED,
         ConnectorErrorCode.CONNECTOR_PROTOCOL_MISMATCH,
     }:
-        return _snapshot(profile, observed_at, "unavailable", code)
+        return _snapshot(
+            profile,
+            observed_at,
+            "unavailable",
+            code,
+            source=source,
+            operation=operation,
+        )
     return _snapshot(
         profile,
         observed_at,
         "disconnected",
         ConnectorErrorCode.CONNECTOR_OFFLINE,
+        source=source,
+        operation=operation,
     )
 
 
@@ -892,14 +947,36 @@ def _transport_error_code(error: ConnectorError) -> ConnectorErrorCode:
 def _snapshot_from_receipt(
     profile: PairedVpsProfile, receipt: SignedReceipt, observed_at: int
 ) -> ConnectorSnapshot:
-    if receipt.decision == "deny":
-        cause = (
-            ConnectorErrorCode.CONNECTOR_STATE_INVALID
-            if receipt.failure is None
-            else receipt.failure.cause_code
+    failure = receipt.failure
+    if failure is None:
+        return _snapshot(
+            profile,
+            observed_at,
+            "authenticated",
+            None,
+            source=receipt.source,
+            operation=receipt.operation,
         )
-        return _snapshot(profile, observed_at, "unavailable", cause)
-    return _snapshot(profile, observed_at, "authenticated", None)
+    if (
+        receipt.decision == "deny"
+        and failure.cause_code is ConnectorErrorCode.REQUEST_REPLAYED
+    ):
+        return _snapshot(
+            profile,
+            observed_at,
+            "disconnected",
+            ConnectorErrorCode.REQUEST_REPLAYED,
+            source=receipt.source,
+            operation=receipt.operation,
+        )
+    return _snapshot(
+        profile,
+        observed_at,
+        "unavailable",
+        failure.cause_code,
+        source=receipt.source,
+        operation=receipt.operation,
+    )
 
 
 def _save_snapshot_after_error(

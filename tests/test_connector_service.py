@@ -4,7 +4,7 @@ import asyncio
 import base64
 import hashlib
 import io
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Never
 
@@ -12,6 +12,10 @@ import pytest
 
 from hermes_reach.connector.authority import GrantAuthority
 from hermes_reach.connector.errors import ConnectorError, ConnectorErrorCode
+from hermes_reach.connector.execution import (
+    ConnectorExecutionComposition,
+    ConnectorExecutorBinding,
+)
 from hermes_reach.connector.identity import (
     ConnectorKeyStore,
     DevicePrivateIdentity,
@@ -29,22 +33,32 @@ from hermes_reach.connector.protocol import (
     ErrorFrame,
     FileGrant,
     GrantScope,
+    OperationInvocationV1,
+    OperationResponseV1,
+    OperationResultItemV1,
+    OperationResultV1,
     PairingChallenge,
     PairingInit,
     PairingResolution,
+    PublicBackendIdentity,
     create_pairing_init,
+    create_signed_request,
     encode_record,
+    protect_operation_call,
+    verify_operation_response,
     verify_pairing_resolution,
 )
 from hermes_reach.connector.service import ConnectorService
 from hermes_reach.connector.store import AuthorityStore, StoreWriterLease
 from hermes_reach.connector.tls import ConnectorTLSStore, EphemeralTLSMaterial
 from hermes_reach.connector.transport import ServerFrameHandler, WssEndpoint
+from hermes_reach.contracts import validate_read
 
 NOW = 1_800_000_000
 PASSPHRASE = "service-test-passphrase"
 SCOPE = GrantScope("web", "read.url", "public")
 TRANSCRIBE_SCOPE = GrantScope("youtube", "transcribe.video", "public")
+BACKEND = PublicBackendIdentity("reach-bounded-executor-v1", "1")
 
 
 def _id(value: int) -> str:
@@ -102,6 +116,23 @@ class _FakeWssServer:
         self.closed = True
 
 
+class _BlockingCloseWssServer(_FakeWssServer):
+    def __init__(
+        self,
+        material: EphemeralTLSMaterial,
+        close_started: asyncio.Event,
+        release_close: asyncio.Event,
+    ) -> None:
+        super().__init__(material)
+        self._close_started = close_started
+        self._release_close = release_close
+
+    async def close(self) -> None:
+        self._close_started.set()
+        await self._release_close.wait()
+        await super().close()
+
+
 class _ServerStarter:
     def __init__(self) -> None:
         self.calls = 0
@@ -126,7 +157,50 @@ class _ServerStarter:
         return self.server
 
 
-def _pairing(vps: DevicePrivateIdentity) -> PairingInit:
+class _BlockingCloseServerStarter(_ServerStarter):
+    def __init__(self) -> None:
+        super().__init__()
+        self.close_started = asyncio.Event()
+        self.release_close = asyncio.Event()
+
+    async def __call__(
+        self,
+        *,
+        bind_host: str,
+        port: int,
+        material: EphemeralTLSMaterial,
+        handler: ServerFrameHandler,
+        wall_clock: Callable[[], int] | None = None,
+    ) -> _FakeWssServer:
+        assert bind_host == "127.0.0.1"
+        assert port == 8765
+        assert wall_clock is not None
+        self.calls += 1
+        self.handler = handler
+        self.server = _BlockingCloseWssServer(
+            material, self.close_started, self.release_close
+        )
+        return self.server
+
+
+class _OperationExecutor:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def execute(
+        self,
+        execution,  # type: ignore[no-untyped-def]
+        environment: Mapping[str, str],
+    ) -> OperationResultV1:
+        self.calls += 1
+        assert execution.operation_call().source.name == "web"
+        assert dict(environment) == {}
+        return OperationResultV1(
+            (OperationResultItemV1("content", "service fixture result"),), False
+        )
+
+
+def _pairing(vps: DevicePrivateIdentity, scope: GrantScope = SCOPE) -> PairingInit:
     return create_pairing_init(
         signer=vps,
         message_id=_id(1),
@@ -134,7 +208,7 @@ def _pairing(vps: DevicePrivateIdentity) -> PairingInit:
         device_label="vps-production",
         endpoint_digest=hashlib.sha256(b"endpoint").hexdigest(),
         vps_nonce=bytes(range(32)),
-        requested_scopes=(SCOPE,),
+        requested_scopes=(scope,),
         grant_expires_at=NOW + 3_600,
         grant_max_uses=2,
         issued_at=NOW,
@@ -352,6 +426,275 @@ def test_pairing_approval_requires_the_exact_original_tty_confirmation(
             _assert_code(rejected, ConnectorErrorCode.INTERACTIVE_UNLOCK_REQUIRED)
             assert service.pending_pairing(pairing.pairing_id) is not None
             assert store.inspect_devices() == ()
+        finally:
+            await service.close()
+            lease.close()
+
+    asyncio.run(exercise())
+
+
+def test_cancelled_service_lock_still_discards_authority_and_material(
+    tmp_path: Path,
+) -> None:
+    async def exercise() -> None:
+        state = tmp_path / "connector"
+        key_store = ConnectorKeyStore(state, _platform="linux")
+        connector_public = key_store._initialize_from_tty_for_testing(
+            _reader(PASSPHRASE)
+        )
+        signer = key_store._unlock_from_tty_for_testing(_reader(PASSPHRASE))
+        tls_store = ConnectorTLSStore(state, _platform="linux")
+        tls_store.initialize(signer, now=NOW)
+        lease = StoreWriterLease(state)
+        store = AuthorityStore.initialize(
+            state,
+            connector_public,
+            lease,
+            initial_policy_digest=ModelPolicy.default_deny(1).digest(),
+            now=NOW,
+        )
+        authority = GrantAuthority(store, clock=lambda: NOW)
+        starter = _BlockingCloseServerStarter()
+        service = ConnectorService._from_test_dependencies(
+            key_store=key_store,
+            tls_store=tls_store,
+            store=store,
+            authority=authority,
+            tty_reader=_reader(PASSPHRASE),
+            bind_host="127.0.0.1",
+            port=8765,
+            clock=lambda: NOW,
+            id_factory=_IdFactory(),
+            server_starter=starter,  # type: ignore[arg-type]
+        )
+        try:
+            await service.unlock()
+            assert authority.is_unlocked
+            assert starter.server is not None
+            material = starter.server._material
+            lock_task = asyncio.create_task(service.lock())
+            await starter.close_started.wait()
+
+            lock_task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await lock_task
+
+            assert service.is_locked
+            assert not authority.is_unlocked
+            with pytest.raises(ConnectorError) as material_closed:
+                _ = material.server_context
+            _assert_code(material_closed, ConnectorErrorCode.CONNECTOR_KEY_LOCKED)
+        finally:
+            starter.release_close.set()
+            await service.close()
+            lease.close()
+
+    asyncio.run(exercise())
+
+
+def test_foreground_service_executes_one_exact_operation_and_signs_replay(
+    tmp_path: Path,
+) -> None:
+    async def exercise() -> None:
+        state = tmp_path / "connector"
+        key_store = ConnectorKeyStore(state, _platform="linux")
+        connector_public = key_store._initialize_from_tty_for_testing(
+            _reader(PASSPHRASE)
+        )
+        signer = key_store._unlock_from_tty_for_testing(_reader(PASSPHRASE))
+        tls_store = ConnectorTLSStore(state, _platform="linux")
+        tls_store.initialize(signer, now=NOW)
+        lease = StoreWriterLease(state)
+        store = AuthorityStore.initialize(
+            state,
+            connector_public,
+            lease,
+            initial_policy_digest=ModelPolicy.default_deny(1).digest(),
+            now=NOW,
+        )
+        authority = GrantAuthority(store, clock=lambda: NOW)
+        starter = _ServerStarter()
+        executor = _OperationExecutor()
+        composition = ConnectorExecutionComposition(
+            (ConnectorExecutorBinding(SCOPE, BACKEND, executor),)
+        )
+        service = ConnectorService._from_test_dependencies(
+            key_store=key_store,
+            tls_store=tls_store,
+            store=store,
+            authority=authority,
+            tty_reader=_reader(PASSPHRASE, confirmation="approve\n"),
+            bind_host="127.0.0.1",
+            port=8765,
+            clock=lambda: NOW,
+            id_factory=_IdFactory(),
+            server_starter=starter,  # type: ignore[arg-type]
+            execution_composition=composition,
+        )
+        try:
+            await service.unlock()
+            assert starter.handler is not None
+            vps = DevicePrivateIdentity._from_seed_for_testing(bytes(range(32)))
+            pairing = _pairing(vps)
+            assert isinstance(await starter.handler(pairing), PairingChallenge)
+            service.approve_pairing(pairing.pairing_id)
+            resolution = await starter.handler(pairing)
+            assert isinstance(resolution, PairingResolution)
+            claims = resolution.signed_grant.claims
+            protected = protect_operation_call(
+                validate_read(
+                    {
+                        "source": "web",
+                        "operation": "read.url",
+                        "target": {"url": "https://example.com/service-canary"},
+                    }
+                )
+            )
+            request = create_signed_request(
+                vps,
+                message_id=_id(101),
+                request_id=_id(102),
+                trace_id="2" * 32,
+                audience_key_id=connector_public.key_id,
+                grant_id=claims.grant_id,
+                grant_revision=claims.revision,
+                policy_revision=claims.policy_revision,
+                source="web",
+                operation="read.url",
+                issued_at=NOW,
+                deadline=NOW + 30,
+                protected_payload=protected,
+            )
+            invocation = OperationInvocationV1(request.message_id, request, protected)
+
+            response = await starter.handler(invocation)
+
+            assert isinstance(response, OperationResponseV1)
+            verify_operation_response(
+                response,
+                pinned_connector=connector_public,
+                request=request,
+                now=NOW,
+            )
+            assert response.result is not None
+            assert response.result.items[0].text == "service fixture result"
+            assert response.receipt.usage is not None
+            assert response.receipt.usage.sequence == 1
+            assert executor.calls == 1
+            assert store.inspect_grants()[0].used_count == 1
+
+            replay = await starter.handler(invocation)
+
+            assert isinstance(replay, OperationResponseV1)
+            verify_operation_response(
+                replay,
+                pinned_connector=connector_public,
+                request=request,
+                now=NOW,
+            )
+            assert replay.result is None
+            assert replay.receipt.failure is not None
+            assert (
+                replay.receipt.failure.cause_code is ConnectorErrorCode.REQUEST_REPLAYED
+            )
+            assert executor.calls == 1
+            assert store.inspect_grants()[0].used_count == 1
+        finally:
+            await service.close()
+            lease.close()
+
+    asyncio.run(exercise())
+
+
+def test_empty_composition_uses_grant_capability_then_signs_backend_unbound(
+    tmp_path: Path,
+) -> None:
+    async def exercise() -> None:
+        state = tmp_path / "connector"
+        key_store = ConnectorKeyStore(state, _platform="linux")
+        connector_public = key_store._initialize_from_tty_for_testing(
+            _reader(PASSPHRASE)
+        )
+        signer = key_store._unlock_from_tty_for_testing(_reader(PASSPHRASE))
+        tls_store = ConnectorTLSStore(state, _platform="linux")
+        tls_store.initialize(signer, now=NOW)
+        lease = StoreWriterLease(state)
+        store = AuthorityStore.initialize(
+            state,
+            connector_public,
+            lease,
+            initial_policy_digest=ModelPolicy.default_deny(1).digest(),
+            now=NOW,
+        )
+        starter = _ServerStarter()
+        service = ConnectorService._from_test_dependencies(
+            key_store=key_store,
+            tls_store=tls_store,
+            store=store,
+            authority=GrantAuthority(store, clock=lambda: NOW),
+            tty_reader=_reader(PASSPHRASE, confirmation="approve\n"),
+            bind_host="127.0.0.1",
+            port=8765,
+            clock=lambda: NOW,
+            id_factory=_IdFactory(),
+            server_starter=starter,  # type: ignore[arg-type]
+        )
+        try:
+            await service.unlock()
+            assert starter.handler is not None
+            vps = DevicePrivateIdentity._from_seed_for_testing(bytes(range(32)))
+            capability_scope = GrantScope("web", "read.url", "public", _id(103))
+            pairing = _pairing(vps, capability_scope)
+            assert isinstance(await starter.handler(pairing), PairingChallenge)
+            service.approve_pairing(pairing.pairing_id)
+            resolution = await starter.handler(pairing)
+            assert isinstance(resolution, PairingResolution)
+            claims = resolution.signed_grant.claims
+            protected = protect_operation_call(
+                validate_read(
+                    {
+                        "source": "web",
+                        "operation": "read.url",
+                        "target": {"url": "https://example.com/unbound-canary"},
+                    }
+                )
+            )
+            request = create_signed_request(
+                vps,
+                message_id=_id(104),
+                request_id=_id(105),
+                trace_id="3" * 32,
+                audience_key_id=connector_public.key_id,
+                grant_id=claims.grant_id,
+                grant_revision=claims.revision,
+                policy_revision=claims.policy_revision,
+                source="web",
+                operation="read.url",
+                issued_at=NOW,
+                deadline=NOW + 30,
+                protected_payload=protected,
+            )
+            invocation = OperationInvocationV1(request.message_id, request, protected)
+
+            response = await starter.handler(invocation)
+
+            assert isinstance(response, OperationResponseV1)
+            verify_operation_response(
+                response,
+                pinned_connector=connector_public,
+                request=request,
+                now=NOW,
+            )
+            assert response.result is None
+            assert response.receipt.decision == "allow"
+            assert response.receipt.failure is not None
+            assert (
+                response.receipt.failure.cause_code
+                is ConnectorErrorCode.BACKEND_UNBOUND
+            )
+            assert response.receipt.usage is not None
+            assert response.receipt.usage.sequence == 1
+            assert store.inspect_grants()[0].used_count == 1
         finally:
             await service.close()
             lease.close()

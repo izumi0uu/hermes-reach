@@ -923,6 +923,35 @@ class AuthorityStore:
         except sqlite3.Error:
             raise ConnectorError(ConnectorErrorCode.CONNECTOR_STATE_INVALID) from None
 
+    def current_scope_for_request(self, request: SignedRequest) -> GrantScope | None:
+        """Return the current signed grant's exact scope without authorizing it."""
+
+        if not isinstance(request, SignedRequest):
+            raise TypeError("Grant scope lookup requires a signed request.")
+        try:
+            with self._connection() as connection:
+                row = connection.execute(
+                    "SELECT * FROM grant_revisions "
+                    "WHERE grant_id=? AND superseded_at IS NULL",
+                    (request.grant_id,),
+                ).fetchone()
+                if row is None:
+                    return None
+                grant = self._load_stored_grant(connection, row)
+                matches = tuple(
+                    scope
+                    for scope in grant.claims.scopes
+                    if scope.source == request.source
+                    and scope.operation == request.operation
+                )
+                if len(matches) > 1:
+                    raise ConnectorError(ConnectorErrorCode.CONNECTOR_STATE_INVALID)
+                return matches[0] if matches else None
+        except ConnectorError:
+            raise
+        except sqlite3.Error:
+            raise ConnectorError(ConnectorErrorCode.CONNECTOR_STATE_INVALID) from None
+
     def deny_authenticated_request(
         self,
         request: SignedRequest,

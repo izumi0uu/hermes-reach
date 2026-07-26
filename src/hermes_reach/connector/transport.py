@@ -9,7 +9,7 @@ import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import dataclass
-from typing import Final, Protocol
+from typing import Final, Literal, Protocol
 from urllib.parse import urlsplit
 
 from websockets.asyncio.client import ClientConnection
@@ -117,6 +117,22 @@ class ConnectorTransport(Protocol):
     async def exchange(
         self, invocation: OperationInvocationV1, *, deadline: float
     ) -> OperationResponseV1 | ErrorFrame: ...
+
+
+DeliveryState = Literal["not_sent", "delivery_unknown"]
+
+
+class ConnectorDeliveryError(ConnectorError):
+    """Closed transport error retaining whether request delivery is ambiguous."""
+
+    def __init__(self, code: ConnectorErrorCode, delivery_state: DeliveryState) -> None:
+        if code not in {
+            ConnectorErrorCode.CONNECTOR_OFFLINE,
+            ConnectorErrorCode.CONNECTOR_DEADLINE_EXCEEDED,
+        } or delivery_state not in {"not_sent", "delivery_unknown"}:
+            raise ValueError("The Connector delivery failure is invalid.")
+        super().__init__(code)
+        self.delivery_state = delivery_state
 
 
 class WssConnection(Protocol):
@@ -407,6 +423,8 @@ async def _exchange_record(
     ):
         raise ConnectorError(ConnectorErrorCode.CONNECTOR_DEADLINE_EXCEEDED)
     encoded = encode_record(request)
+    delivery_state: DeliveryState = "not_sent"
+    received_response: tuple[WireRecord, bytes] | None = None
     try:
         async with asyncio.timeout_at(float(deadline)):
             async with dialer.open(endpoint, context) as connection:
@@ -418,25 +436,35 @@ async def _exchange_record(
                     leaf_der = connection.peer_certificate_der
                     if peer_validator is not None:
                         peer_validator(leaf_der)
+                    delivery_state = "delivery_unknown"
                     await connection.send_text(encoded.decode("ascii"))
                     message = await connection.receive()
                     response = _parse_text_message(message)
-                    await connection.close(_CLOSE_NORMAL)
-                    return response, leaf_der
+                    received_response = (response, leaf_der)
+                    await _close_client_connection(connection, _CLOSE_NORMAL)
+                    return received_response
                 except asyncio.CancelledError:
-                    await connection.close(_CLOSE_POLICY)
+                    await _close_client_after_cancellation(connection)
                     raise
                 except ConnectorError:
-                    await connection.close(_CLOSE_PROTOCOL)
+                    await _close_client_connection(connection, _CLOSE_PROTOCOL)
                     raise
     except asyncio.CancelledError:
         raise
     except ConnectorError:
+        if received_response is not None:
+            return received_response
         raise
     except (ssl.SSLCertVerificationError, ssl.SSLError):
+        if received_response is not None:
+            return received_response
         raise ConnectorError(ConnectorErrorCode.CONNECTOR_TLS_FAILED) from None
     except TimeoutError:
-        raise ConnectorError(ConnectorErrorCode.CONNECTOR_DEADLINE_EXCEEDED) from None
+        if received_response is not None:
+            return received_response
+        raise ConnectorDeliveryError(
+            ConnectorErrorCode.CONNECTOR_DEADLINE_EXCEEDED, delivery_state
+        ) from None
     except (
         InvalidURI,
         InvalidHandshake,
@@ -444,11 +472,38 @@ async def _exchange_record(
         NegotiationError,
         PayloadTooBig,
     ):
+        if received_response is not None:
+            return received_response
         raise ConnectorError(ConnectorErrorCode.CONNECTOR_PROTOCOL_MISMATCH) from None
     except (ConnectionClosed, OSError):
-        raise ConnectorError(ConnectorErrorCode.CONNECTOR_OFFLINE) from None
+        if received_response is not None:
+            return received_response
+        raise ConnectorDeliveryError(
+            ConnectorErrorCode.CONNECTOR_OFFLINE, delivery_state
+        ) from None
     except Exception:
-        raise ConnectorError(ConnectorErrorCode.CONNECTOR_OFFLINE) from None
+        if received_response is not None:
+            return received_response
+        raise ConnectorDeliveryError(
+            ConnectorErrorCode.CONNECTOR_OFFLINE, delivery_state
+        ) from None
+
+
+async def _close_client_connection(connection: WssConnection, code: int) -> None:
+    try:
+        await connection.close(code)
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        pass
+
+
+async def _close_client_after_cancellation(connection: WssConnection) -> None:
+    try:
+        async with asyncio.timeout(_CLOSE_TIMEOUT_SECONDS):
+            await connection.close(_CLOSE_POLICY)
+    except BaseException:
+        pass
 
 
 def _parse_text_message(message: str | bytes) -> WireRecord:
@@ -477,14 +532,20 @@ class WssServer:
         host: str,
         port: int,
         wall_clock: Callable[[], int],
+        connection_tasks: set[asyncio.Task[None]] | None = None,
+        shutdown_started: asyncio.Event | None = None,
     ) -> None:
         self._server = server
         self._material = material
         self._host = host
         self._port = port
         self._wall_clock = wall_clock
-        self._closed = False
         self._close_lock = asyncio.Lock()
+        self._close_task: asyncio.Task[None] | None = None
+        self._connection_tasks = set() if connection_tasks is None else connection_tasks
+        self._shutdown_started = (
+            asyncio.Event() if shutdown_started is None else shutdown_started
+        )
         self._expiry_task = asyncio.create_task(self._close_at_expiry())
 
     @classmethod
@@ -517,13 +578,27 @@ class WssServer:
             material.close()
             raise ConnectorError(ConnectorErrorCode.CONNECTOR_TLS_FAILED)
 
+        connection_tasks: set[asyncio.Task[None]] = set()
+        shutdown_started = asyncio.Event()
+
         async def connection_handler(connection: ServerConnection) -> None:
-            await _serve_connection(
-                connection,
-                handler,
-                request_timeout=float(request_timeout),
-                message_idle_timeout=float(message_idle_timeout),
-            )
+            if shutdown_started.is_set():
+                await connection.close(code=_CLOSE_POLICY, reason="")
+                return
+            task = asyncio.current_task()
+            if task is None:
+                await connection.close(code=_CLOSE_INTERNAL, reason="")
+                return
+            connection_tasks.add(task)
+            try:
+                await _serve_connection(
+                    connection,
+                    handler,
+                    request_timeout=float(request_timeout),
+                    message_idle_timeout=float(message_idle_timeout),
+                )
+            finally:
+                connection_tasks.discard(task)
 
         try:
             server = await websocket_serve(
@@ -560,6 +635,8 @@ class WssServer:
             host=str(address),
             port=bound_port,
             wall_clock=clock,
+            connection_tasks=connection_tasks,
+            shutdown_started=shutdown_started,
         )
 
     @property
@@ -569,16 +646,44 @@ class WssServer:
 
     async def close(self) -> None:
         async with self._close_lock:
-            if self._closed:
-                return
-            self._closed = True
-            expiry_task = self._expiry_task
-            if expiry_task is not asyncio.current_task():
-                expiry_task.cancel()
+            close_task = self._close_task
+            if close_task is None:
+                close_task = asyncio.create_task(
+                    self._finish_close(
+                        cancel_expiry=self._expiry_task is not asyncio.current_task()
+                    )
+                )
+                self._close_task = close_task
+
+        cancelled = False
+        while not close_task.done():
+            try:
+                await asyncio.shield(close_task)
+            except asyncio.CancelledError:
+                cancelled = True
+        close_task.result()
+        if cancelled:
+            raise asyncio.CancelledError
+
+    async def _finish_close(self, *, cancel_expiry: bool) -> None:
+        expiry_task = self._expiry_task
+        if cancel_expiry:
+            expiry_task.cancel()
+        try:
+            self._shutdown_started.set()
             self._server.close(close_connections=True)
+            current = asyncio.current_task()
+            connection_tasks = tuple(
+                task for task in self._connection_tasks if task is not current
+            )
+            for task in connection_tasks:
+                task.cancel()
+            if connection_tasks:
+                await asyncio.gather(*connection_tasks, return_exceptions=True)
             await self._server.wait_closed()
+        finally:
             self._material.close()
-            if expiry_task is not asyncio.current_task():
+            if cancel_expiry:
                 await asyncio.gather(expiry_task, return_exceptions=True)
 
     async def _close_at_expiry(self) -> None:
@@ -594,6 +699,8 @@ async def _serve_connection(
     request_timeout: float,
     message_idle_timeout: float,
 ) -> None:
+    handler_task: asyncio.Task[WireRecord] | None = None
+    peer_closed_task: asyncio.Task[None] | None = None
     try:
         if connection.subprotocol != WSS_SUBPROTOCOL:
             await connection.close(code=_CLOSE_PROTOCOL, reason="")
@@ -608,8 +715,20 @@ async def _serve_connection(
         except ConnectorError:
             await connection.close(code=_CLOSE_PROTOCOL, reason="")
             return
+
+        async def invoke_handler() -> WireRecord:
+            return await handler(request)
+
+        handler_task = asyncio.create_task(invoke_handler())
+        peer_closed_task = asyncio.create_task(connection.wait_closed())
         async with asyncio.timeout(request_timeout):
-            response = await handler(request)
+            completed, _ = await asyncio.wait(
+                (handler_task, peer_closed_task),
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+        if peer_closed_task in completed:
+            return
+        response = handler_task.result()
         encoded = encode_record(response)
         await connection.send(encoded.decode("ascii"))
         await connection.close(code=_CLOSE_NORMAL, reason="")
@@ -624,6 +743,15 @@ async def _serve_connection(
         return
     except Exception:
         await connection.close(code=_CLOSE_INTERNAL, reason="")
+    finally:
+        owned_tasks = tuple(
+            task for task in (handler_task, peer_closed_task) if task is not None
+        )
+        for task in owned_tasks:
+            if not task.done():
+                task.cancel()
+        if owned_tasks:
+            await asyncio.gather(*owned_tasks, return_exceptions=True)
 
 
 def _wall_timestamp() -> int:

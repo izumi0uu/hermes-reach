@@ -18,6 +18,7 @@ from hermes_reach.connector.authority import (
 )
 from hermes_reach.connector.errors import ConnectorErrorCode
 from hermes_reach.connector.identity import DevicePrivateIdentity, DevicePublicIdentity
+from hermes_reach.connector.limits import MAX_CLOCK_SKEW_SECONDS
 from hermes_reach.connector.protocol import (
     GrantClaims,
     GrantScope,
@@ -248,6 +249,49 @@ def test_authority_commits_claim_before_redacted_executor_handoff(
     assert decision.receipt_issuer is not None
     assert len(seen) == 1
     assert harness.store.inspect_grants()[0].used_count == 1
+
+
+@pytest.mark.parametrize(
+    ("connector_now", "request_issued_at", "slot"),
+    (
+        (NOW + 1, NOW + 1 + MAX_CLOCK_SKEW_SECONDS, 31),
+        (NOW + 1 + MAX_CLOCK_SKEW_SECONDS, NOW + 1, 32),
+    ),
+)
+def test_receipt_times_cover_allowed_vps_clock_skew(
+    harness: AuthorityHarness,
+    connector_now: int,
+    request_issued_at: int,
+    slot: int,
+) -> None:
+    request = _request(harness, slot, issued_at=request_issued_at)
+    decision = harness.authority.authorize_and_handoff(
+        request,
+        PROTECTED,
+        SCOPE,
+        now=connector_now,
+        handoff=lambda execution: execution,
+    )
+    assert decision.accepted
+    assert decision.receipt_issuer is not None
+    ended_at = max(connector_now, request_issued_at)
+
+    receipt = decision.receipt_issuer.issue(
+        ended_at=ended_at,
+        expires_at=ended_at + 120,
+        failure_code=ConnectorErrorCode.BACKEND_UNBOUND,
+    )
+
+    assert receipt.started_at == max(connector_now, request_issued_at)
+    assert (
+        verify_receipt(
+            receipt,
+            pinned_connector=harness.connector.public_identity,
+            request=request,
+            now=request_issued_at,
+        )
+        is receipt
+    )
 
 
 def test_unpaired_or_payload_substituted_request_never_reaches_authority(
