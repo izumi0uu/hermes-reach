@@ -26,7 +26,10 @@ from hermes_reach.connector.client import (
 )
 from hermes_reach.connector.errors import ConnectorError, ConnectorErrorCode
 from hermes_reach.connector.identity import DevicePrivateIdentity, VpsKeyStore
-from hermes_reach.connector.limits import PAIRING_TTL_SECONDS
+from hermes_reach.connector.limits import (
+    MAX_CLOCK_SKEW_SECONDS,
+    PAIRING_TTL_SECONDS,
+)
 from hermes_reach.connector.protocol import (
     ErrorFrame,
     GrantClaims,
@@ -38,6 +41,7 @@ from hermes_reach.connector.protocol import (
     PairingInit,
     PairingResolution,
     PublicBackendIdentity,
+    ReceiptFailure,
     ReceiptUsage,
     canonical_json_bytes,
     create_pairing_challenge,
@@ -52,7 +56,7 @@ from hermes_reach.connector.protocol import (
     record_digest,
 )
 from hermes_reach.connector.tls import ConnectorTLSStore, verify_connector_ca_der
-from hermes_reach.connector.transport import WssEndpoint
+from hermes_reach.connector.transport import ConnectorDeliveryError, WssEndpoint
 from hermes_reach.contracts import validate_read
 
 NOW = int(time.time())
@@ -240,6 +244,148 @@ class _OfflineTransport:
         raise ConnectorError(ConnectorErrorCode.CONNECTOR_OFFLINE)
 
 
+class _ClosedErrorTransport:
+    def __init__(self, code: ConnectorErrorCode) -> None:
+        self._code = code
+        self.calls = 0
+
+    async def exchange(
+        self, request: object, *, deadline: float
+    ) -> OperationResponseV1:
+        del request, deadline
+        self.calls += 1
+        raise ConnectorError(self._code)
+
+
+class _DeadlineExhaustingTransport:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def exchange(
+        self, request: object, *, deadline: float
+    ) -> OperationResponseV1:
+        del request, deadline
+        self.calls += 1
+        raise ConnectorDeliveryError(
+            ConnectorErrorCode.CONNECTOR_DEADLINE_EXCEEDED,
+            "delivery_unknown",
+        )
+
+
+class _RetryingReceiptTransport(_ReceiptTransport):
+    def __init__(self, connector: DevicePrivateIdentity, ids: _IdFactory) -> None:
+        super().__init__(connector, ids)
+        self.attempts: list[OperationInvocationV1] = []
+        self.deadlines: list[float] = []
+
+    async def exchange(
+        self, invocation: object, *, deadline: float
+    ) -> OperationResponseV1:
+        assert isinstance(invocation, OperationInvocationV1)
+        self.attempts.append(invocation)
+        self.deadlines.append(deadline)
+        if len(self.attempts) == 1:
+            raise ConnectorDeliveryError(
+                ConnectorErrorCode.CONNECTOR_OFFLINE, "not_sent"
+            )
+        return await super().exchange(invocation, deadline=deadline)
+
+
+class _LostResponseTransport:
+    def __init__(self, connector: DevicePrivateIdentity, ids: _IdFactory) -> None:
+        self._connector = connector
+        self._ids = ids
+        self.attempts: list[OperationInvocationV1] = []
+        self.deadlines: list[float] = []
+
+    async def exchange(
+        self, invocation: object, *, deadline: float
+    ) -> OperationResponseV1:
+        assert isinstance(invocation, OperationInvocationV1)
+        self.attempts.append(invocation)
+        self.deadlines.append(deadline)
+        attempt = len(self.attempts)
+        if attempt == 1:
+            raise ConnectorDeliveryError(
+                ConnectorErrorCode.CONNECTOR_OFFLINE, "delivery_unknown"
+            )
+        request = invocation.signed_request
+        if attempt > 2:
+            result = OperationResultV1(
+                (OperationResultItemV1("content", "recovered new request"),),
+                False,
+            )
+            receipt = create_signed_receipt(
+                self._connector,
+                message_id=self._ids(),
+                receipt_id=self._ids(),
+                request=request,
+                decision="allow",
+                failure=None,
+                usage=ReceiptUsage(2, 8),
+                backend=PublicBackendIdentity("reach-bounded-executor-v1", "1"),
+                started_at=request.issued_at,
+                ended_at=request.issued_at + 1,
+                expires_at=request.issued_at + 120,
+                result=result,
+                outcome="ok",
+            )
+            return OperationResponseV1(receipt.message_id, receipt, result)
+        receipt = create_signed_receipt(
+            self._connector,
+            message_id=self._ids(),
+            receipt_id=self._ids(),
+            request=request,
+            decision="deny",
+            failure=ReceiptFailure("authority", ConnectorErrorCode.REQUEST_REPLAYED),
+            usage=None,
+            backend=None,
+            started_at=request.issued_at,
+            ended_at=request.issued_at + 1,
+            expires_at=request.issued_at + 120,
+            result=None,
+            outcome="error",
+        )
+        return OperationResponseV1(receipt.message_id, receipt, None)
+
+
+class _AcceptedFailureTransport:
+    def __init__(
+        self,
+        connector: DevicePrivateIdentity,
+        ids: _IdFactory,
+        failure: ReceiptFailure,
+    ) -> None:
+        self._connector = connector
+        self._ids = ids
+        self._failure = failure
+        self.calls = 0
+
+    async def exchange(
+        self, invocation: object, *, deadline: float
+    ) -> OperationResponseV1:
+        assert isinstance(invocation, OperationInvocationV1)
+        assert deadline > 0
+        self.calls += 1
+        request = invocation.signed_request
+        receipt = create_signed_receipt(
+            self._connector,
+            message_id=self._ids(),
+            receipt_id=self._ids(),
+            request=request,
+            decision="allow",
+            failure=self._failure,
+            usage=ReceiptUsage(1, 9),
+            backend=None,
+            started_at=request.issued_at,
+            ended_at=request.issued_at + 1,
+            expires_at=request.issued_at + 120,
+            result=None,
+            outcome="error",
+        )
+        return OperationResponseV1(receipt.message_id, receipt, None)
+
+
 class _UnsignedTransport:
     async def exchange(self, request: object, *, deadline: float) -> ErrorFrame:
         del request, deadline
@@ -263,7 +409,10 @@ def _scope() -> GrantScope:
 
 
 def _paired_fixture(
-    tmp_path: Path, *, pending_polls: int = 0
+    tmp_path: Path,
+    *,
+    pending_polls: int = 0,
+    requested_scopes: tuple[GrantScope, ...] | None = None,
 ) -> tuple[
     PairedVpsProfile,
     DevicePrivateIdentity,
@@ -284,6 +433,7 @@ def _paired_fixture(
     pairing_client = _PairingClient(connector, ca.der, ids, pending_polls=pending_polls)
     profile_store = VpsProfileStore(state_directory)
     displays: list[PairingDisplay] = []
+    effective_scopes = (_scope(),) if requested_scopes is None else requested_scopes
 
     async def no_wait(_: float) -> None:
         return None
@@ -302,7 +452,7 @@ def _paired_fixture(
         orchestrator.pair(
             WssEndpoint.parse("wss://127.0.0.1:8765"),
             device_label="reach-vps-1",
-            requested_scopes=(_scope(),),
+            requested_scopes=effective_scopes,
             grant_expires_at=NOW + 3600,
             grant_max_uses=10,
             display=displays.append,
@@ -564,7 +714,13 @@ def test_invalid_pairing_display_input_fails_closed_before_transport(
 def test_connector_client_verifies_before_evidence_and_updates_snapshot(
     tmp_path: Path,
 ) -> None:
-    profile, vps, connector, profile_store, _, _ = _paired_fixture(tmp_path)
+    profile, vps, connector, profile_store, _, _ = _paired_fixture(
+        tmp_path,
+        requested_scopes=(
+            GrantScope("rss", "read.feed", "public"),
+            _scope(),
+        ),
+    )
     receipt_path = tmp_path / "vps" / "receipts.jsonl"
     ledger = ReceiptEvidenceLedger(receipt_path, connector.public_identity, role="vps")
     snapshots = ConnectorSnapshotStore(tmp_path / "vps")
@@ -602,11 +758,282 @@ def test_connector_client_verifies_before_evidence_and_updates_snapshot(
     ).resolve("web", "read.url")
     assert availability.state == "available"
     assert availability.snapshot_at == NOW + 2
+    other_availability = ConnectorAvailabilityResolver(
+        profile_store, snapshots, clock=lambda: NOW + 3
+    ).resolve("rss", "read.feed")
+    assert other_availability.state == "degraded"
+    assert other_availability.cause_code == ConnectorErrorCode.CONNECTOR_OFFLINE.value
     for path in (receipt_path, tmp_path / "vps" / "vps-connector-snapshot.json"):
         raw = path.read_bytes()
         assert CANARY.encode() not in raw
         assert b"https://" not in raw
         assert stat.S_IMODE(path.stat().st_mode) == 0o600
+
+
+def test_connector_client_retries_not_sent_failure_with_identical_invocation(
+    tmp_path: Path,
+) -> None:
+    profile, vps, connector, _, _, _ = _paired_fixture(tmp_path)
+    transport = _RetryingReceiptTransport(connector, _IdFactory(750))
+    client = ConnectorClient(
+        profile,
+        vps,
+        transport,
+        ReceiptEvidenceLedger(
+            tmp_path / "vps" / "receipts.jsonl",
+            connector.public_identity,
+            role="vps",
+        ),
+        ConnectorSnapshotStore(tmp_path / "vps"),
+        wall_clock=lambda: NOW + 2,
+        monotonic_clock=lambda: 20.0,
+        id_factory=_IdFactory(800),
+    )
+    call = validate_read(
+        {
+            "source": "web",
+            "operation": "read.url",
+            "target": {"url": "https://example.com/retry-canary"},
+        }
+    )
+
+    response = asyncio.run(client.execute(call, trace_id=TRACE_ID))
+
+    assert response.receipt.outcome == "ok"
+    assert len(transport.attempts) == 2
+    assert transport.attempts[0] is transport.attempts[1]
+    assert encode_record(transport.attempts[0]) == encode_record(transport.attempts[1])
+    assert transport.deadlines == [50.0, 50.0]
+    request = transport.attempts[0].signed_request
+    assert request.trace_id == TRACE_ID
+    assert request.request_id == transport.attempts[1].signed_request.request_id
+
+
+def test_connector_client_records_signed_replay_after_ambiguous_response_loss(
+    tmp_path: Path,
+) -> None:
+    profile, vps, connector, _, _, _ = _paired_fixture(tmp_path)
+    transport = _LostResponseTransport(connector, _IdFactory(850))
+    ledger = ReceiptEvidenceLedger(
+        tmp_path / "vps" / "receipts.jsonl",
+        connector.public_identity,
+        role="vps",
+    )
+    snapshots = ConnectorSnapshotStore(tmp_path / "vps")
+    client = ConnectorClient(
+        profile,
+        vps,
+        transport,
+        ledger,
+        snapshots,
+        wall_clock=lambda: NOW + 2,
+        monotonic_clock=lambda: 20.0,
+        id_factory=_IdFactory(900),
+    )
+    call = validate_read(
+        {
+            "source": "web",
+            "operation": "read.url",
+            "target": {"url": "https://example.com/lost-response-canary"},
+        }
+    )
+
+    with pytest.raises(ConnectorError) as replayed:
+        asyncio.run(client.execute(call, trace_id=TRACE_ID))
+
+    _assert_code(replayed, ConnectorErrorCode.REQUEST_REPLAYED.value)
+    assert len(transport.attempts) == 2
+    assert transport.attempts[0] is transport.attempts[1]
+    assert encode_record(transport.attempts[0]) == encode_record(transport.attempts[1])
+    assert transport.deadlines == [50.0, 50.0]
+    assert len(ledger.records()) == 1
+    snapshot = snapshots.load()
+    assert snapshot is not None
+    assert snapshot.state == "disconnected"
+    assert snapshot.cause_code is ConnectorErrorCode.REQUEST_REPLAYED
+    assert snapshot.scopes == (("web", "read.url"),)
+    replay_availability = ConnectorAvailabilityResolver(
+        VpsProfileStore(tmp_path / "vps"), snapshots, clock=lambda: NOW + 3
+    ).resolve("web", "read.url")
+    assert replay_availability.state == "degraded"
+    assert replay_availability.cause_code == ConnectorErrorCode.CONNECTOR_OFFLINE.value
+
+    recovered = asyncio.run(client.execute(call, trace_id="2" * 32))
+
+    assert recovered.result is not None
+    assert recovered.result.items[0].text == "recovered new request"
+    assert len(transport.attempts) == 3
+    assert transport.attempts[2] is not transport.attempts[0]
+    assert (
+        transport.attempts[2].signed_request.request_id
+        != transport.attempts[0].signed_request.request_id
+    )
+    assert len(ledger.records()) == 2
+    availability = ConnectorAvailabilityResolver(
+        VpsProfileStore(tmp_path / "vps"), snapshots, clock=lambda: NOW + 3
+    ).resolve("web", "read.url")
+    assert availability.state == "available"
+
+
+@pytest.mark.parametrize(
+    ("failure_class", "code"),
+    (
+        ("authority", ConnectorErrorCode.BACKEND_UNBOUND),
+        ("secret", ConnectorErrorCode.SECRET_UNAVAILABLE),
+        ("transport", ConnectorErrorCode.CONNECTOR_DEADLINE_EXCEEDED),
+    ),
+)
+def test_accepted_remediable_failure_blocks_exact_operation_until_snapshot_ttl(
+    tmp_path: Path, failure_class: str, code: ConnectorErrorCode
+) -> None:
+    profile, vps, connector, profile_store, _, _ = _paired_fixture(
+        tmp_path,
+        requested_scopes=(
+            GrantScope("rss", "read.feed", "public"),
+            _scope(),
+        ),
+    )
+    snapshots = ConnectorSnapshotStore(tmp_path / "vps")
+    transport = _AcceptedFailureTransport(
+        connector,
+        _IdFactory(925),
+        ReceiptFailure(failure_class, code),
+    )
+    client = ConnectorClient(
+        profile,
+        vps,
+        transport,
+        ReceiptEvidenceLedger(
+            tmp_path / "vps" / "receipts.jsonl",
+            connector.public_identity,
+            role="vps",
+        ),
+        snapshots,
+        wall_clock=lambda: NOW + 2,
+        monotonic_clock=lambda: 20.0,
+        id_factory=_IdFactory(940),
+    )
+
+    with pytest.raises(ConnectorError) as caught:
+        asyncio.run(
+            client.execute(
+                validate_read(
+                    {
+                        "source": "web",
+                        "operation": "read.url",
+                        "target": {"url": "https://example.com/unbound"},
+                    }
+                ),
+                trace_id=TRACE_ID,
+            )
+        )
+
+    _assert_code(caught, code.value)
+    assert transport.calls == 1
+    snapshot = snapshots.load()
+    assert snapshot is not None
+    assert snapshot.state == "unavailable"
+    assert snapshot.cause_code is code
+    assert snapshot.scopes == (("web", "read.url"),)
+    availability = ConnectorAvailabilityResolver(
+        profile_store, snapshots, clock=lambda: NOW + 3
+    ).resolve("web", "read.url")
+    assert availability.state == "unavailable"
+    assert availability.cause_code == code.value
+    other_availability = ConnectorAvailabilityResolver(
+        profile_store, snapshots, clock=lambda: NOW + 3
+    ).resolve("rss", "read.feed")
+    assert other_availability.state == "degraded"
+
+    retry_availability = ConnectorAvailabilityResolver(
+        profile_store, snapshots, clock=lambda: NOW + 63
+    ).resolve("web", "read.url")
+    assert retry_availability.state == "degraded"
+    assert retry_availability.cause_code == ConnectorErrorCode.CONNECTOR_OFFLINE.value
+
+
+@pytest.mark.parametrize(
+    "code",
+    (
+        ConnectorErrorCode.CONNECTOR_TLS_FAILED,
+        ConnectorErrorCode.CONNECTOR_PROTOCOL_MISMATCH,
+    ),
+)
+def test_connector_client_never_retries_tls_or_protocol_failure(
+    tmp_path: Path, code: ConnectorErrorCode
+) -> None:
+    profile, vps, connector, _, _, _ = _paired_fixture(tmp_path)
+    transport = _ClosedErrorTransport(code)
+    client = ConnectorClient(
+        profile,
+        vps,
+        transport,
+        ReceiptEvidenceLedger(
+            tmp_path / "vps" / "receipts.jsonl",
+            connector.public_identity,
+            role="vps",
+        ),
+        ConnectorSnapshotStore(tmp_path / "vps"),
+        wall_clock=lambda: NOW + 2,
+        monotonic_clock=lambda: 20.0,
+        id_factory=_IdFactory(950),
+    )
+
+    with pytest.raises(ConnectorError) as caught:
+        asyncio.run(
+            client.execute(
+                validate_read(
+                    {
+                        "source": "web",
+                        "operation": "read.url",
+                        "target": {"url": "https://example.com/no-retry"},
+                    }
+                ),
+                trace_id=TRACE_ID,
+            )
+        )
+
+    _assert_code(caught, code.value)
+    assert transport.calls == 1
+
+
+def test_connector_client_does_not_retry_after_original_deadline_expires(
+    tmp_path: Path,
+) -> None:
+    profile, vps, connector, _, _, _ = _paired_fixture(tmp_path)
+    transport = _DeadlineExhaustingTransport()
+    monotonic_times = iter((20.0, 50.0))
+    client = ConnectorClient(
+        profile,
+        vps,
+        transport,
+        ReceiptEvidenceLedger(
+            tmp_path / "vps" / "receipts.jsonl",
+            connector.public_identity,
+            role="vps",
+        ),
+        ConnectorSnapshotStore(tmp_path / "vps"),
+        wall_clock=lambda: NOW + 2,
+        monotonic_clock=lambda: next(monotonic_times),
+        id_factory=_IdFactory(975),
+    )
+
+    with pytest.raises(ConnectorError) as caught:
+        asyncio.run(
+            client.execute(
+                validate_read(
+                    {
+                        "source": "web",
+                        "operation": "read.url",
+                        "target": {"url": "https://example.com/deadline"},
+                    }
+                ),
+                trace_id=TRACE_ID,
+            )
+        )
+
+    _assert_code(caught, ConnectorErrorCode.CONNECTOR_DEADLINE_EXCEEDED.value)
+    assert transport.calls == 1
 
 
 def test_tampered_receipt_creates_no_evidence_or_snapshot(tmp_path: Path) -> None:
@@ -617,10 +1044,11 @@ def test_tampered_receipt_creates_no_evidence_or_snapshot(tmp_path: Path) -> Non
         role="vps",
     )
     snapshots = ConnectorSnapshotStore(tmp_path / "vps")
+    transport = _ReceiptTransport(connector, _IdFactory(900), tamper=True)
     client = ConnectorClient(
         profile,
         vps,
-        _ReceiptTransport(connector, _IdFactory(900), tamper=True),
+        transport,
         ledger,
         snapshots,
         wall_clock=lambda: NOW + 2,
@@ -641,6 +1069,7 @@ def test_tampered_receipt_creates_no_evidence_or_snapshot(tmp_path: Path) -> Non
             )
         )
     _assert_code(caught, ConnectorErrorCode.RECEIPT_INVALID.value)
+    assert len(transport.requests) == 1
     assert ledger.records() == ()
     assert snapshots.load() is None
 
@@ -760,7 +1189,7 @@ def test_offline_dispatch_overrides_cached_health_with_degraded_snapshot(
     with pytest.raises(ConnectorError) as caught:
         asyncio.run(offline_client.execute(call, trace_id="2" * 32))
     _assert_code(caught, ConnectorErrorCode.CONNECTOR_OFFLINE.value)
-    assert offline.calls == 1
+    assert offline.calls == 2
     availability = ConnectorAvailabilityResolver(
         profile_store, snapshots, clock=lambda: NOW + 4
     ).resolve("web", "read.url")
@@ -860,6 +1289,36 @@ def test_availability_snapshot_is_local_and_expires_after_sixty_seconds(
     assert availability.state == "degraded"
     assert availability.cause_code == ConnectorErrorCode.CONNECTOR_OFFLINE.value
     assert availability.snapshot_at == NOW
+
+
+def test_availability_rejects_failed_snapshot_beyond_clock_skew(
+    tmp_path: Path,
+) -> None:
+    profile, _, _, profile_store, _, _ = _paired_fixture(tmp_path)
+    snapshots = ConnectorSnapshotStore(tmp_path / "vps")
+    observed_at = NOW + MAX_CLOCK_SKEW_SECONDS + 1
+    snapshots.save(
+        ConnectorSnapshot(
+            connector_key_id=profile.connector_identity.key_id,
+            grant_id=profile.signed_grant.claims.grant_id,
+            grant_revision=profile.signed_grant.claims.revision,
+            observed_at=observed_at,
+            state="unavailable",
+            cause_code=ConnectorErrorCode.BACKEND_UNBOUND,
+            scopes=(("web", "read.url"),),
+        )
+    )
+
+    availability = ConnectorAvailabilityResolver(
+        profile_store, snapshots, clock=lambda: NOW
+    ).resolve("web", "read.url")
+
+    assert availability.state == "unavailable"
+    assert (
+        availability.cause_code
+        == ConnectorErrorCode.CONNECTOR_SCHEMA_INCOMPATIBLE.value
+    )
+    assert availability.snapshot_at == observed_at
 
 
 def test_snapshot_rejects_hardlink_and_resolver_closes_malformed_state(

@@ -34,6 +34,7 @@ from hermes_reach.connector.tls import (
 )
 from hermes_reach.connector.transport import (
     WSS_SUBPROTOCOL,
+    ConnectorDeliveryError,
     PairingExchange,
     PairingWssClient,
     PinnedWssClient,
@@ -137,32 +138,47 @@ class _FakeConnection:
         subprotocol: str | None = str(WSS_SUBPROTOCOL),
         peer_certificate_der: bytes = b"fixture-leaf",
         wait_for_receive: bool = False,
+        send_error: OSError | None = None,
+        receive_error: OSError | None = None,
+        close_error: BaseException | None = None,
     ) -> None:
         self.subprotocol = subprotocol
         self.peer_certificate_der = peer_certificate_der
         self._response = response
         self._wait_for_receive = wait_for_receive
+        self._send_error = send_error
+        self._receive_error = receive_error
+        self._close_error = close_error
         self.receive_started = asyncio.Event()
         self.release_receive = asyncio.Event()
         self.sent: list[str] = []
         self.close_codes: list[int] = []
 
     async def send_text(self, value: str) -> None:
+        if self._send_error is not None:
+            raise self._send_error
         self.sent.append(value)
 
     async def receive(self) -> str | bytes:
         self.receive_started.set()
         if self._wait_for_receive:
             await self.release_receive.wait()
+        if self._receive_error is not None:
+            raise self._receive_error
         return self._response
 
     async def close(self, code: int) -> None:
         self.close_codes.append(code)
+        if self._close_error is not None:
+            raise self._close_error
 
 
 class _FakeDialer:
-    def __init__(self, connection: _FakeConnection) -> None:
+    def __init__(
+        self, connection: _FakeConnection, *, open_error: OSError | None = None
+    ) -> None:
         self.connection = connection
+        self._open_error = open_error
         self.contexts: list[ssl.SSLContext] = []
         self.endpoints: list[WssEndpoint] = []
 
@@ -172,6 +188,8 @@ class _FakeDialer:
     ) -> AsyncIterator[WssConnection]:
         self.endpoints.append(endpoint)
         self.contexts.append(context)
+        if self._open_error is not None:
+            raise self._open_error
         yield self.connection
 
 
@@ -184,6 +202,7 @@ class _FakeServerConnection:
     ) -> None:
         self.subprotocol = subprotocol
         self._message = message
+        self._closed = asyncio.Event()
         self.sent: list[str] = []
         self.close_calls: list[tuple[int, str]] = []
 
@@ -195,6 +214,10 @@ class _FakeServerConnection:
 
     async def close(self, *, code: int, reason: str) -> None:
         self.close_calls.append((code, reason))
+        self._closed.set()
+
+    async def wait_closed(self) -> None:
+        await self._closed.wait()
 
 
 class _FakeServer:
@@ -367,6 +390,69 @@ def test_exchange_rejects_subprotocol_and_binary_frames_with_protocol_close() ->
     assert binary.close_codes == [1002]
 
 
+def test_exchange_close_failure_does_not_mask_protocol_or_tls_error() -> None:
+    endpoint = WssEndpoint.parse("wss://127.0.0.1:8765")
+    context = ssl.create_default_context()
+    protocol_connection = _FakeConnection(
+        response=_error_response(),
+        subprotocol=None,
+        close_error=OSError("close failed"),
+    )
+    with pytest.raises(ConnectorError) as protocol_error:
+        asyncio.run(
+            _exchange_record(
+                _FakeDialer(protocol_connection),
+                endpoint,
+                context,
+                _pairing_init(),
+                deadline=time.monotonic() + 1,
+            )
+        )
+    _assert_code(protocol_error, ConnectorErrorCode.CONNECTOR_PROTOCOL_MISMATCH.value)
+    assert not isinstance(protocol_error.value, ConnectorDeliveryError)
+
+    tls_connection = _FakeConnection(
+        response=_error_response(), close_error=OSError("close failed")
+    )
+
+    def reject_peer(_: bytes) -> None:
+        raise ConnectorError(ConnectorErrorCode.CONNECTOR_TLS_FAILED)
+
+    with pytest.raises(ConnectorError) as tls_error:
+        asyncio.run(
+            _exchange_record(
+                _FakeDialer(tls_connection),
+                endpoint,
+                context,
+                _pairing_init(),
+                deadline=time.monotonic() + 1,
+                peer_validator=reject_peer,
+            )
+        )
+    _assert_code(tls_error, ConnectorErrorCode.CONNECTOR_TLS_FAILED.value)
+    assert not isinstance(tls_error.value, ConnectorDeliveryError)
+
+
+def test_exchange_returns_received_response_when_graceful_close_fails() -> None:
+    connection = _FakeConnection(
+        response=_error_response(), close_error=OSError("close failed")
+    )
+
+    response, _ = asyncio.run(
+        _exchange_record(
+            _FakeDialer(connection),
+            WssEndpoint.parse("wss://127.0.0.1:8765"),
+            ssl.create_default_context(),
+            _pairing_init(),
+            deadline=time.monotonic() + 1,
+        )
+    )
+
+    assert isinstance(response, ErrorFrame)
+    assert response.code is ConnectorErrorCode.CONNECTOR_PROTOCOL_MISMATCH
+    assert connection.close_codes == [1000]
+
+
 def test_exchange_rejects_an_expired_deadline_before_dialing() -> None:
     async def exchange() -> None:
         connection = _FakeConnection(response=_error_response())
@@ -385,9 +471,72 @@ def test_exchange_rejects_an_expired_deadline_before_dialing() -> None:
     asyncio.run(exchange())
 
 
+def test_exchange_classifies_open_failure_as_not_sent() -> None:
+    async def exchange() -> None:
+        connection = _FakeConnection(response=_error_response())
+        dialer = _FakeDialer(connection, open_error=OSError("dial failed"))
+        with pytest.raises(ConnectorDeliveryError) as caught:
+            await _exchange_record(
+                dialer,
+                WssEndpoint.parse("wss://127.0.0.1:8765"),
+                ssl.create_default_context(),
+                _pairing_init(),
+                deadline=asyncio.get_running_loop().time() + 1,
+            )
+        _assert_code(caught, ConnectorErrorCode.CONNECTOR_OFFLINE.value)
+        assert caught.value.delivery_state == "not_sent"
+        assert connection.sent == []
+
+    asyncio.run(exchange())
+
+
+def test_exchange_classifies_post_send_receive_failure_as_delivery_unknown() -> None:
+    async def exchange() -> None:
+        connection = _FakeConnection(
+            response=_error_response(), receive_error=OSError("receive failed")
+        )
+        with pytest.raises(ConnectorDeliveryError) as caught:
+            await _exchange_record(
+                _FakeDialer(connection),
+                WssEndpoint.parse("wss://127.0.0.1:8765"),
+                ssl.create_default_context(),
+                _pairing_init(),
+                deadline=asyncio.get_running_loop().time() + 1,
+            )
+        _assert_code(caught, ConnectorErrorCode.CONNECTOR_OFFLINE.value)
+        assert caught.value.delivery_state == "delivery_unknown"
+        assert connection.sent == [encode_record(_pairing_init()).decode("ascii")]
+
+    asyncio.run(exchange())
+
+
+def test_exchange_classifies_send_failure_as_delivery_unknown() -> None:
+    async def exchange() -> None:
+        connection = _FakeConnection(
+            response=_error_response(), send_error=OSError("send failed")
+        )
+        with pytest.raises(ConnectorDeliveryError) as caught:
+            await _exchange_record(
+                _FakeDialer(connection),
+                WssEndpoint.parse("wss://127.0.0.1:8765"),
+                ssl.create_default_context(),
+                _pairing_init(),
+                deadline=asyncio.get_running_loop().time() + 1,
+            )
+        _assert_code(caught, ConnectorErrorCode.CONNECTOR_OFFLINE.value)
+        assert caught.value.delivery_state == "delivery_unknown"
+        assert connection.sent == []
+
+    asyncio.run(exchange())
+
+
 def test_exchange_cancellation_closes_the_connection_and_reraises() -> None:
     async def exchange() -> None:
-        connection = _FakeConnection(response=_error_response(), wait_for_receive=True)
+        connection = _FakeConnection(
+            response=_error_response(),
+            wait_for_receive=True,
+            close_error=OSError("close failed"),
+        )
         task = asyncio.create_task(
             _exchange_record(
                 _FakeDialer(connection),
@@ -484,6 +633,96 @@ def test_wss_server_close_stops_connections_before_disposing_tls_material(
         with pytest.raises(ConnectorError) as caught:
             _ = material.server_context
         _assert_code(caught, ConnectorErrorCode.CONNECTOR_KEY_LOCKED.value)
+
+    asyncio.run(close_server())
+
+
+def test_wss_server_close_cancels_and_awaits_active_handlers(tmp_path: Path) -> None:
+    async def close_server() -> None:
+        connector = _identity(_CONNECTOR_SEED)
+        store = ConnectorTLSStore(tmp_path / "connector", _platform="linux")
+        store.initialize(connector, now=_NOW)
+        material = store.create_unlock_material(
+            connector, bind_host="127.0.0.1", now=_NOW
+        )
+        listener = _FakeServer()
+        started = asyncio.Event()
+        cleaned = asyncio.Event()
+
+        async def active_handler() -> None:
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cleaned.set()
+
+        handler_task = asyncio.create_task(active_handler())
+        await started.wait()
+        server = WssServer(
+            listener,  # type: ignore[arg-type]
+            material,
+            host="127.0.0.1",
+            port=8765,
+            wall_clock=lambda: _NOW,
+            connection_tasks={handler_task},
+        )
+
+        await server.close()
+
+        assert handler_task.cancelled()
+        assert cleaned.is_set()
+        assert listener.closed.is_set()
+        with pytest.raises(ConnectorError) as caught:
+            _ = material.server_context
+        _assert_code(caught, ConnectorErrorCode.CONNECTOR_KEY_LOCKED.value)
+
+    asyncio.run(close_server())
+
+
+def test_wss_server_close_finishes_after_caller_cancellation(tmp_path: Path) -> None:
+    async def close_server() -> None:
+        connector = _identity(_CONNECTOR_SEED)
+        store = ConnectorTLSStore(tmp_path / "connector", _platform="linux")
+        store.initialize(connector, now=_NOW)
+        material = store.create_unlock_material(
+            connector, bind_host="127.0.0.1", now=_NOW
+        )
+        listener = _FakeServer()
+        cleanup_started = asyncio.Event()
+        release_cleanup = asyncio.Event()
+
+        async def active_handler() -> None:
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cleanup_started.set()
+                await release_cleanup.wait()
+
+        handler_task = asyncio.create_task(active_handler())
+        server = WssServer(
+            listener,  # type: ignore[arg-type]
+            material,
+            host="127.0.0.1",
+            port=8765,
+            wall_clock=lambda: _NOW,
+            connection_tasks={handler_task},
+        )
+        close_task = asyncio.create_task(server.close())
+        await cleanup_started.wait()
+
+        close_task.cancel()
+        await asyncio.sleep(0)
+        assert not close_task.done()
+        release_cleanup.set()
+        with pytest.raises(asyncio.CancelledError):
+            await close_task
+
+        assert handler_task.cancelled()
+        assert listener.closed.is_set()
+        with pytest.raises(ConnectorError) as caught:
+            _ = material.server_context
+        _assert_code(caught, ConnectorErrorCode.CONNECTOR_KEY_LOCKED.value)
+        await server.close()
 
     asyncio.run(close_server())
 

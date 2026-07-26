@@ -11,8 +11,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from .authority import GrantAuthority
+from .authority import (
+    AuthorizedExecution,
+    GrantAuthority,
+    UnauthenticatedRequestError,
+)
 from .errors import ConnectorError, ConnectorErrorCode
+from .execution import ConnectorExecutionComposition, PreparedConnectorExecution
 from .identity import (
     ConnectorKeyStore,
     DevicePrivateIdentity,
@@ -21,12 +26,15 @@ from .identity import (
     _require_test_tty_reader,
     _require_tty_reader,
 )
-from .limits import MAX_DEVICE_LABEL_LENGTH
+from .limits import MAX_DEVICE_LABEL_LENGTH, MAX_RECEIPT_TTL_SECONDS
 from .media_policy import FileGrantProposal, ModelPolicy, ProcessLocalFileGrants
 from .protocol import (
     ErrorFrame,
     FileGrant,
     GrantClaims,
+    GrantScope,
+    OperationInvocationV1,
+    OperationResponseV1,
     PairingComplete,
     PairingInit,
     ProtocolValidationError,
@@ -102,6 +110,8 @@ class ConnectorService:
         owned_lease: StoreWriterLease | None = None,
         model_policy: ModelPolicy | None = None,
         file_grants: ProcessLocalFileGrants | None = None,
+        execution_composition: ConnectorExecutionComposition | None = None,
+        monotonic_clock: Callable[[], float] | None = None,
     ) -> None:
         _require_tty_reader(tty_reader)
         self._initialize(
@@ -118,6 +128,8 @@ class ConnectorService:
             owned_lease=owned_lease,
             model_policy=model_policy,
             file_grants=file_grants,
+            execution_composition=execution_composition,
+            monotonic_clock=monotonic_clock,
             test_reader=False,
         )
 
@@ -138,6 +150,8 @@ class ConnectorService:
         owned_lease: StoreWriterLease | None = None,
         model_policy: ModelPolicy | None = None,
         file_grants: ProcessLocalFileGrants | None = None,
+        execution_composition: ConnectorExecutionComposition | None = None,
+        monotonic_clock: Callable[[], float] | None = None,
     ) -> ConnectorService:
         """Construct a service with a hermetic reader only from private tests."""
 
@@ -157,6 +171,8 @@ class ConnectorService:
             owned_lease=owned_lease,
             model_policy=model_policy,
             file_grants=file_grants,
+            execution_composition=execution_composition,
+            monotonic_clock=monotonic_clock,
             test_reader=True,
         )
         return service
@@ -177,6 +193,8 @@ class ConnectorService:
         owned_lease: StoreWriterLease | None,
         model_policy: ModelPolicy | None,
         file_grants: ProcessLocalFileGrants | None,
+        execution_composition: ConnectorExecutionComposition | None,
+        monotonic_clock: Callable[[], float] | None,
         test_reader: bool,
     ) -> None:
         effective_clock = _wall_timestamp if clock is None else clock
@@ -213,8 +231,21 @@ class ConnectorService:
             if file_grants is None
             else file_grants
         )
-        if not isinstance(effective_model_policy, ModelPolicy) or not isinstance(
-            effective_file_grants, ProcessLocalFileGrants
+        effective_execution_composition = (
+            ConnectorExecutionComposition()
+            if execution_composition is None
+            else execution_composition
+        )
+        effective_monotonic_clock = (
+            time.monotonic if monotonic_clock is None else monotonic_clock
+        )
+        if (
+            not isinstance(effective_model_policy, ModelPolicy)
+            or not isinstance(effective_file_grants, ProcessLocalFileGrants)
+            or not isinstance(
+                effective_execution_composition, ConnectorExecutionComposition
+            )
+            or not callable(effective_monotonic_clock)
         ):
             raise TypeError("The Connector service dependencies are invalid.")
         if (
@@ -242,6 +273,8 @@ class ConnectorService:
         self._owned_lease = owned_lease
         self._model_policy = effective_model_policy
         self._file_grants = effective_file_grants
+        self._execution_composition = effective_execution_composition
+        self._monotonic_clock = effective_monotonic_clock
         self._test_reader = test_reader
         self._lifecycle_lock = asyncio.Lock()
         self._server: WssServer | None = None
@@ -418,6 +451,8 @@ class ConnectorService:
                     owned_lease=lease,
                     model_policy=None,
                     file_grants=None,
+                    execution_composition=None,
+                    monotonic_clock=None,
                 )
             return cls(
                 key_store=ConnectorKeyStore(state_directory),
@@ -433,6 +468,8 @@ class ConnectorService:
                 owned_lease=lease,
                 model_policy=None,
                 file_grants=None,
+                execution_composition=None,
+                monotonic_clock=None,
             )
         except BaseException:
             lease.close()
@@ -493,14 +530,16 @@ class ConnectorService:
             server = self._server
             material = self._material
             self._server = None
-            if server is not None:
-                await server.close()
-            if material is not None:
-                material.close()
-            self._authority.lock()
-            self._signer = None
-            self._authority_certificate = None
-            self._material = None
+            try:
+                if server is not None:
+                    await server.close()
+            finally:
+                if material is not None:
+                    material.close()
+                self._authority.lock()
+                self._signer = None
+                self._authority_certificate = None
+                self._material = None
 
     async def close(self) -> None:
         try:
@@ -725,10 +764,15 @@ class ConnectorService:
         )
 
     async def _handle_record(self, record: WireRecord) -> WireRecord:
-        if not isinstance(record, PairingInit):
-            return ErrorFrame(
-                self._id_factory(), ConnectorErrorCode.CONNECTOR_PROTOCOL_MISMATCH
-            )
+        if isinstance(record, PairingInit):
+            return await self._handle_pairing(record)
+        if isinstance(record, OperationInvocationV1):
+            return await self._handle_operation(record)
+        return ErrorFrame(
+            self._id_factory(), ConnectorErrorCode.CONNECTOR_PROTOCOL_MISMATCH
+        )
+
+    async def _handle_pairing(self, record: PairingInit) -> WireRecord:
         signer = self._signer
         certificate = self._authority_certificate
         material = self._material
@@ -776,6 +820,96 @@ class ConnectorService:
             return ErrorFrame(
                 self._id_factory(), ConnectorErrorCode.CONNECTOR_PROTOCOL_MISMATCH
             )
+
+    async def _handle_operation(self, invocation: OperationInvocationV1) -> WireRecord:
+        if self._signer is None or self._server is None:
+            return ErrorFrame(
+                self._id_factory(), ConnectorErrorCode.CONNECTOR_KEY_LOCKED
+            )
+        request = invocation.signed_request
+        call = invocation.protected_payload.to_operation_call()
+        binding_scope = self._execution_composition.required_scope(
+            request.source, request.operation
+        )
+        required_scope = binding_scope or GrantScope(
+            request.source, request.operation, call.operation.runtime.data_scope
+        )
+        now = self._clock()
+        remaining = request.deadline - now
+        execution_deadline = self._monotonic_clock() + max(0, remaining)
+        prepared: PreparedConnectorExecution | None = None
+
+        def handoff(execution: AuthorizedExecution) -> PreparedConnectorExecution:
+            nonlocal prepared
+            prepared = self._execution_composition.prepare(
+                execution, deadline=execution_deadline
+            )
+            return prepared
+
+        try:
+            decision = self._authority.authorize_and_handoff(
+                request,
+                invocation.protected_payload,
+                required_scope,
+                now=now,
+                handoff=handoff,
+                use_grant_bound_scope=binding_scope is None,
+            )
+        except (UnauthenticatedRequestError, ConnectorError, ProtocolValidationError):
+            return ErrorFrame(
+                self._id_factory(), ConnectorErrorCode.CONNECTOR_PROTOCOL_MISMATCH
+            )
+
+        issuer = decision.receipt_issuer
+        if issuer is None:
+            if prepared is not None:
+                prepared.close()
+            return ErrorFrame(
+                self._id_factory(), ConnectorErrorCode.CONNECTOR_KEY_LOCKED
+            )
+
+        result = None
+        failure_code = decision.claim.cause_code
+        if decision.accepted:
+            if prepared is None:
+                failure_code = ConnectorErrorCode.CONNECTOR_STATE_INVALID
+            else:
+                try:
+                    result = await prepared.execute()
+                    if self._clock() >= request.deadline:
+                        result = None
+                        failure_code = ConnectorErrorCode.CONNECTOR_DEADLINE_EXCEEDED
+                except asyncio.CancelledError:
+                    raise
+                except ConnectorError as error:
+                    failure_code = ConnectorErrorCode(error.code)
+                except ProtocolValidationError:
+                    failure_code = ConnectorErrorCode.CONNECTOR_STATE_INVALID
+                except Exception:
+                    failure_code = ConnectorErrorCode.CONNECTOR_STATE_INVALID
+                finally:
+                    prepared.close()
+
+        ended_at = max(now, request.issued_at, self._clock())
+        receipt = issuer.issue(
+            ended_at=ended_at,
+            expires_at=ended_at + MAX_RECEIPT_TTL_SECONDS,
+            failure_code=failure_code,
+            backend=(
+                prepared.backend
+                if decision.accepted and failure_code is None and prepared is not None
+                else None
+            ),
+            result=result,
+        )
+        response = OperationResponseV1(receipt.message_id, receipt, result)
+        if decision.accepted:
+            self._store.complete_claim(
+                request.request_id,
+                record_digest(receipt),
+                now=ended_at,
+            )
+        return response
 
     def _require_unlocked_signer(self) -> DevicePrivateIdentity:
         signer = self._signer

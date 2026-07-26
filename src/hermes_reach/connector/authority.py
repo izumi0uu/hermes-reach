@@ -254,6 +254,7 @@ class GrantAuthority:
         *,
         now: int,
         handoff: Callable[[AuthorizedExecution], HandoffResult],
+        use_grant_bound_scope: bool = False,
     ) -> AuthorityDecision[HandoffResult]:
         """Verify immutable input, commit live authority, then start execution."""
 
@@ -263,7 +264,7 @@ class GrantAuthority:
             or not isinstance(required_scope, GrantScope)
         ):
             raise ProtocolValidationError("The authority request type is invalid.")
-        if not callable(handoff):
+        if not callable(handoff) or type(use_grant_bound_scope) is not bool:
             raise TypeError("Authority executor handoff must be callable.")
         identity = self._store.active_device_identity(request.subject_key_id)
         if identity is None:
@@ -287,6 +288,10 @@ class GrantAuthority:
                     now=claim_time,
                 )
                 return AuthorityDecision(claim, None)
+            if use_grant_bound_scope:
+                grant_scope = self._store.current_scope_for_request(request)
+                if grant_scope is not None:
+                    required_scope = grant_scope
             claim = self._store.claim(
                 request, required_scope=required_scope, now=claim_time
             )
@@ -294,7 +299,7 @@ class GrantAuthority:
                 signer,
                 request,
                 claim,
-                started_at=now,
+                started_at=max(now, request.issued_at),
                 id_factory=self._id_factory,
             )
             if not claim.accepted:
