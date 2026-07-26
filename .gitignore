@@ -214,5 +214,11 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
+# Trellis project framework and local workflow state
+.trellis/
+.agents/
+.codex/
+AGENTS.md
+
 # Streamlit
 .streamlit/secrets.toml
