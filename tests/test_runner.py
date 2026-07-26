@@ -44,6 +44,7 @@ def _binding(
     required_scope: str = "public",
     equivalence_group: str = "same-operation",
     cancel: object | None = None,
+    retry_owner: str = "runner",
 ) -> AdapterBinding:
     return AdapterBinding(
         source=source,
@@ -55,6 +56,7 @@ def _binding(
         equivalence_group=equivalence_group,
         execute=execute,  # type: ignore[arg-type]
         cancel=cancel,  # type: ignore[arg-type]
+        retry_owner=retry_owner,  # type: ignore[arg-type]
     )
 
 
@@ -96,6 +98,32 @@ def test_runner_retries_once_after_a_transient_failure() -> None:
     assert invocations == ["attempt", "attempt"]
     assert [attempt.outcome for attempt in result.attempts] == ["transient", "success"]
     assert result.items == (RawItem("ok"),)
+
+
+def test_binding_owned_retry_prevents_outer_retry_and_fallback() -> None:
+    invocations: list[str] = []
+
+    async def transient(_: AuthorizedCall) -> AdapterResult:
+        invocations.append("connector")
+        return AdapterResult(failure_class="transient")
+
+    async def fallback(_: AuthorizedCall) -> AdapterResult:
+        invocations.append("fallback")
+        return AdapterResult((RawItem("not-reached"),))
+
+    result = asyncio.run(
+        BoundedRunner().run(
+            _authorized(),
+            (
+                _binding(transient, retry_owner="binding"),
+                _binding(fallback, backend_id="fallback"),
+            ),
+        )
+    )
+
+    assert invocations == ["connector"]
+    assert result.failure_class == "transient"
+    assert [attempt.outcome for attempt in result.attempts] == ["transient"]
 
 
 def test_non_retryable_failures_do_not_retry_or_fall_back() -> None:

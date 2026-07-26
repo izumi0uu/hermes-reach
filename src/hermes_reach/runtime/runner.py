@@ -71,6 +71,8 @@ class BoundedRunner:
             return self._bounded(result, call, primary, attempts)
         if result.failure_class in _NON_RETRYABLE_FAILURES:
             return RunnerResult((), False, tuple(attempts), result.failure_class)
+        if primary.retry_owner == "binding":
+            return RunnerResult((), False, tuple(attempts), result.failure_class)
 
         result = await self._attempt(call, primary, start, attempts)
         if result.is_success:
@@ -173,7 +175,7 @@ class BoundedRunner:
         selected = result.items[:limit]
         normalized: list[RawItem] = []
         used_characters = 0
-        truncated = len(result.items) > len(selected)
+        truncated = result.truncated or len(result.items) > len(selected)
         for item in selected:
             remaining = character_limit - used_characters
             if remaining < len(item.kind):
