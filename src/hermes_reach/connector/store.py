@@ -60,6 +60,7 @@ class ClaimResult:
     cause_code: ConnectorErrorCode | None
     use_sequence: int | None
     remaining_uses: int | None
+    policy_digest: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -490,6 +491,17 @@ class AuthorityStore:
         except sqlite3.Error:
             raise ConnectorError(ConnectorErrorCode.CONNECTOR_STATE_INVALID) from None
 
+    def current_policy_digest(self) -> str:
+        """Return the digest bound to the single live immutable policy revision."""
+
+        try:
+            with self._connection() as connection:
+                return _current_policy_digest(connection)
+        except ConnectorError:
+            raise
+        except (ProtocolValidationError, sqlite3.Error):
+            raise ConnectorError(ConnectorErrorCode.CONNECTOR_STATE_INVALID) from None
+
     def approve_pairing(
         self,
         pairing_id: str,
@@ -810,6 +822,7 @@ class AuthorityStore:
                         now,
                     )
                 current_policy = _current_policy_revision(connection)
+                current_policy_digest = _current_policy_digest(connection)
                 if (
                     request.policy_revision != current_policy
                     or claims.policy_revision != current_policy
@@ -886,7 +899,13 @@ class AuthorityStore:
                         max_uses - used_count,
                     ),
                 )
-                return ClaimResult(True, None, used_count, max_uses - used_count)
+                return ClaimResult(
+                    True,
+                    None,
+                    used_count,
+                    max_uses - used_count,
+                    current_policy_digest,
+                )
         except (ConnectorError, ProtocolValidationError):
             raise
         except sqlite3.Error:
@@ -1435,6 +1454,17 @@ def _current_policy_revision(connection: sqlite3.Connection) -> int:
     if len(rows) != 1:
         raise ConnectorError(ConnectorErrorCode.CONNECTOR_STATE_INVALID)
     return _integer_value(rows[0]["revision"])
+
+
+def _current_policy_digest(connection: sqlite3.Connection) -> str:
+    rows = connection.execute(
+        "SELECT policy_digest FROM policy_revisions WHERE replaced_at IS NULL"
+    ).fetchall()
+    if len(rows) != 1:
+        raise ConnectorError(ConnectorErrorCode.CONNECTOR_STATE_INVALID)
+    digest = _text_value(rows[0]["policy_digest"])
+    _require_digest(digest)
+    return digest
 
 
 def _claim_values(

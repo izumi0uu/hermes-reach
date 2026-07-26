@@ -44,6 +44,7 @@ class AuthorizedExecution:
 
     __slots__ = (
         "_protected_payload",
+        "policy_digest",
         "remaining_uses",
         "request",
         "required_scope",
@@ -61,12 +62,18 @@ class AuthorizedExecution:
             not claim.accepted
             or claim.use_sequence is None
             or claim.remaining_uses is None
+            or claim.policy_digest is None
+            or len(claim.policy_digest) != 64
+            or any(
+                character not in "0123456789abcdef" for character in claim.policy_digest
+            )
         ):
             raise ValueError("Authorized execution requires a spent grant use.")
         self.request = request
         self.required_scope = required_scope
         self.use_sequence = claim.use_sequence
         self.remaining_uses = claim.remaining_uses
+        self.policy_digest = claim.policy_digest
         self._protected_payload = protected_payload
 
     def operation_call(self) -> OperationCall:

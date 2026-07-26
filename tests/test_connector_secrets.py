@@ -114,7 +114,7 @@ def _execution(binding: BitwardenSecretBinding) -> AuthorizedExecution:
         request,
         protected,
         scope,
-        ClaimResult(True, None, 1, 9),
+        ClaimResult(True, None, 1, 9, "0" * 64),
     )
 
 

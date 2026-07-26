@@ -606,7 +606,10 @@ def test_stale_policy_denies_old_grant_and_replacement_requires_current_policy(
     harness: StoreHarness,
 ) -> None:
     grant_id, _ = _approve_first_grant(harness)
-    assert harness.store.advance_policy_revision(_digest("policy-2"), now=NOW + 20) == 2
+    assert harness.store.current_policy_digest() == INITIAL_POLICY_DIGEST
+    next_digest = _digest("policy-2")
+    assert harness.store.advance_policy_revision(next_digest, now=NOW + 20) == 2
+    assert harness.store.current_policy_digest() == next_digest
 
     stale = harness.store.claim(
         _request(harness.connector, harness.vps, slot=70, grant_id=grant_id),
