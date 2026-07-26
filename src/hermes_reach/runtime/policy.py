@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Final, Literal
 
@@ -21,6 +22,7 @@ _SCOPE_RANK: Final[dict[EffectiveScope, int]] = {
 _READ_ONLY_TOOLS: Final[frozenset[str]] = frozenset(
     {"search", "read", "browse", "transcribe"}
 )
+_TRACE_ID: Final = re.compile(r"[0-9a-f]{32}")
 
 
 class RuntimePolicyError(ReachValidationError):
@@ -34,6 +36,7 @@ class AuthorizedCall:
     call: OperationCall
     effective_scope: EffectiveScope
     policy_revision: str
+    trace_id: str | None = None
 
     @property
     def operation(self) -> OperationSpec:
@@ -49,7 +52,11 @@ class ReadOnlyPolicy:
         self._revision = revision
 
     def authorize(
-        self, call: OperationCall, effective_scope: EffectiveScope = "public"
+        self,
+        call: OperationCall,
+        effective_scope: EffectiveScope = "public",
+        *,
+        trace_id: str | None = None,
     ) -> AuthorizedCall:
         """Reject forged, mutating, or scope-expanding operation calls."""
 
@@ -69,7 +76,11 @@ class ReadOnlyPolicy:
             raise self._denied("The operation input is not authorized by the catalog.")
         if not scope_includes(effective_scope, operation.runtime.data_scope):
             raise self._denied("The operation requires an operator-granted scope.")
-        return AuthorizedCall(call, effective_scope, self._revision)
+        if trace_id is not None and (
+            type(trace_id) is not str or _TRACE_ID.fullmatch(trace_id) is None
+        ):
+            raise self._denied("The execution trace context is invalid.")
+        return AuthorizedCall(call, effective_scope, self._revision, trace_id)
 
     def _denied(self, remediation: str) -> RuntimePolicyError:
         return RuntimePolicyError(

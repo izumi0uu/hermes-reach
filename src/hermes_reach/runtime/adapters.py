@@ -137,10 +137,15 @@ class AdapterResult:
     items: tuple[RawItem, ...] = ()
     failure_class: FailureClass | None = None
     partial_failure_class: FailureClass | None = None
+    truncated: bool = False
 
     def __post_init__(self) -> None:
         if self.failure_class is not None and self.items:
             raise ValueError("Failed adapter results cannot contain raw items.")
+        if type(self.truncated) is not bool or (
+            self.failure_class is not None and self.truncated
+        ):
+            raise ValueError("Failed adapter results cannot be truncated.")
         if self.failure_class is not None and self.partial_failure_class is not None:
             raise ValueError("A result cannot be both failed and partial.")
         if self.partial_failure_class is not None and not self.items:
@@ -165,6 +170,8 @@ class AdapterResult:
 
 AdapterCallable = Callable[[AuthorizedCall], Awaitable[AdapterResult]]
 CancelCallable = Callable[[], Awaitable[None]]
+AvailabilityCallable = Callable[[str, str], AvailabilityRecord]
+RetryOwner = Literal["runner", "binding"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -180,6 +187,8 @@ class AdapterBinding:
     equivalence_group: str
     execute: AdapterCallable
     cancel: CancelCallable | None = None
+    availability_resolver: AvailabilityCallable | None = None
+    retry_owner: RetryOwner = "runner"
 
 
 class AdapterRegistry:
@@ -192,6 +201,15 @@ class AdapterRegistry:
     def register(self, binding: AdapterBinding) -> None:
         """Register a binding only for an existing catalog operation."""
 
+        if (
+            not isinstance(binding, AdapterBinding)
+            or (
+                binding.availability_resolver is not None
+                and not callable(binding.availability_resolver)
+            )
+            or binding.retry_owner not in {"runner", "binding"}
+        ):
+            raise ValueError("The adapter binding is invalid.")
         source = get_source(binding.source)
         operation = (
             get_operation(source, binding.operation) if source is not None else None
@@ -249,6 +267,33 @@ class AdapterRegistry:
         bindings = self._bindings.get(key, ())
         if bindings:
             binding = bindings[0]
+            resolver = binding.availability_resolver
+            if resolver is not None:
+                try:
+                    resolved = resolver(source_name, operation_name)
+                except Exception:
+                    resolved = None
+                if not isinstance(resolved, AvailabilityRecord):
+                    return AvailabilityRecord(
+                        "unavailable",
+                        "The registered adapter availability is invalid.",
+                    )
+                return AvailabilityRecord(
+                    resolved.state,
+                    resolved.reason,
+                    (
+                        binding.backend_id
+                        if resolved.state == "available"
+                        else resolved.backend_id
+                    ),
+                    (
+                        binding.backend_version
+                        if resolved.state == "available"
+                        else resolved.backend_version
+                    ),
+                    resolved.cause_code,
+                    resolved.snapshot_at,
+                )
             return AvailabilityRecord(
                 "available",
                 "A registered read-only adapter is executable on request.",

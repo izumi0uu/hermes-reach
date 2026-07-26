@@ -93,7 +93,9 @@ async def _execution_handler(args: object, validator: Validator) -> str:
             calls = validated
         else:
             calls = (validated,)
-        groups = await asyncio.gather(*(_dispatch_group(call) for call in calls))
+        groups = await asyncio.gather(
+            *(_dispatch_group(call, trace_id=trace_id) for call in calls)
+        )
         return json_result(execution_response(groups, trace_id))
     except ReachValidationError as error:
         return json_result(error_response(error, trace_id))
@@ -103,14 +105,16 @@ async def _execution_handler(args: object, validator: Validator) -> str:
 
 async def _dispatch_group(
     call: OperationCall,
+    *,
+    trace_id: str,
 ) -> tuple[dict[str, object], GroupOutcome]:
     availability = _RUNTIME.operation_availability(
         call.source.name, call.operation.name
     )
-    if availability.state != "available":
+    if availability.state not in {"available", "degraded"}:
         return unavailable_group(call, availability)
     try:
-        result = await _RUNTIME.dispatch(call)
+        result = await _RUNTIME.dispatch(call, trace_id=trace_id)
         if result is None:
             refreshed = _RUNTIME.operation_availability(
                 call.source.name, call.operation.name

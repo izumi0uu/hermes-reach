@@ -33,11 +33,15 @@ class RuntimeDispatcher:
         return self._registry.availability(source, operation)
 
     async def dispatch(
-        self, call: OperationCall, effective_scope: EffectiveScope = "public"
+        self,
+        call: OperationCall,
+        effective_scope: EffectiveScope = "public",
+        *,
+        trace_id: str | None = None,
     ) -> RunnerResult | None:
         """Run a call through policy and bounds, or report an empty registry."""
 
-        authorized = self._policy.authorize(call, effective_scope)
+        authorized = self._policy.authorize(call, effective_scope, trace_id=trace_id)
         bindings = self._registry.candidates(authorized)
         if not bindings:
             return None

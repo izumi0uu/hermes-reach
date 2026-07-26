@@ -17,8 +17,13 @@ from hermes_reach.runtime.adapters import (
     AdapterRegistry,
     AdapterResult,
 )
+from hermes_reach.runtime.availability import AvailabilityRecord
 from hermes_reach.runtime.dispatcher import RuntimeDispatcher
-from hermes_reach.runtime.policy import ReadOnlyPolicy, RuntimePolicyError
+from hermes_reach.runtime.policy import (
+    AuthorizedCall,
+    ReadOnlyPolicy,
+    RuntimePolicyError,
+)
 
 
 async def _successful_adapter(_: object) -> AdapterResult:
@@ -62,6 +67,12 @@ def test_policy_authorizes_canonical_validated_operation() -> None:
     assert authorized.call is call
     assert authorized.policy_revision == "policy-1"
     assert authorized.effective_scope == "public"
+    assert authorized.trace_id is None
+
+    traced = ReadOnlyPolicy("policy-1").authorize(call, trace_id="a" * 32)
+    assert traced.trace_id == "a" * 32
+    with pytest.raises(RuntimePolicyError):
+        ReadOnlyPolicy().authorize(call, trace_id="not-a-trace")
 
 
 def test_policy_rejects_forged_or_cross_source_catalog_rows() -> None:
@@ -206,3 +217,53 @@ def test_dispatcher_authorizes_before_executing_registered_bindings() -> None:
     result = asyncio.run(dispatcher.dispatch(call))
     assert result is not None
     assert invocations == ["executed"]
+
+
+def test_dispatcher_propagates_trace_and_registry_projects_local_availability() -> None:
+    traces: list[str | None] = []
+    availability_calls: list[tuple[str, str]] = []
+
+    async def execute(authorized: AuthorizedCall) -> AdapterResult:
+        traces.append(authorized.trace_id)
+        return AdapterResult()
+
+    def availability(source: str, operation: str) -> AvailabilityRecord:
+        availability_calls.append((source, operation))
+        return AvailabilityRecord(
+            "degraded",
+            "The Connector snapshot is stale.",
+            cause_code="connector_offline",
+            snapshot_at=123,
+        )
+
+    registry = AdapterRegistry()
+    registry.register(
+        replace(
+            _binding("connector"),
+            execute=execute,
+            availability_resolver=availability,
+            retry_owner="binding",
+        )
+    )
+    dispatcher = RuntimeDispatcher(registry)
+    call = validate_search(
+        {
+            "requests": [
+                {
+                    "source": "github",
+                    "operation": "search.repositories",
+                    "query": "public",
+                }
+            ]
+        }
+    )[0]
+
+    projected = dispatcher.operation_availability("github", "search.repositories")
+    result = asyncio.run(dispatcher.dispatch(call, trace_id="b" * 32))
+
+    assert projected.state == "degraded"
+    assert projected.cause_code == "connector_offline"
+    assert projected.snapshot_at == 123
+    assert availability_calls == [("github", "search.repositories")]
+    assert result is not None
+    assert traces == ["b" * 32]
