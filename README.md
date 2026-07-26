@@ -39,6 +39,8 @@ Hermes Reach 假设 VPS 可能被完全攻破。安全设计的目标是限制�
 
 Connector 的身份、在线授权、固定 TLS、原终端解锁、VPS 配对、本地可用性快照、隔离 Bitwarden 取密和请求/结果 envelope 已有基础实现。**但前台 ConnectorService 仍只处理配对流量，没有生产执行器或真实 backend，VPS 客户端也没有接入普通 `reach_*` 请求，因此这条远程安全链路目前不能视为生产可用。**
 
+部署前需要理解的网络、授权、密钥恢复、审计和回滚边界见 [Connector 安全与运维指南](docs/connector-security.md)。该指南描述安全约束，不表示远程执行链路已经可用。
+
 <details>
 <summary>查看 Connector 已实现的安全基础</summary>
 

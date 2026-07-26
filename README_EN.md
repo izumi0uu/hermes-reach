@@ -39,6 +39,8 @@ The future Connector runs on your computer or another trusted device. Passwords,
 
 The codebase already contains foundations for identity, live authorization, pinned TLS, original-terminal unlock, VPS pairing, local availability snapshots, isolated Bitwarden resolution, and protected-request/result envelopes. **However, the foreground ConnectorService still handles pairing traffic only, no production executor or real backend is enabled, and the VPS client is not connected to normal `reach_*` requests, so this remote security path is not production-ready.**
 
+Before deployment, read the [Connector security and operations guide](docs/connector-security.md) for the network, grant, key-recovery, audit, and rollback boundaries. The guide documents constraints; it does not mean remote execution is available.
+
 <details>
 <summary>View the implemented Connector security foundations</summary>
 

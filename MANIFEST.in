@@ -1,0 +1,2 @@
+include docs/connector-security.md
+prune tests
