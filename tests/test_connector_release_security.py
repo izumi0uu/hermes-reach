@@ -84,6 +84,32 @@ _TELEMETRY_IMPORTS = frozenset(
 _URL = re.compile(r"https?://[^\s'\"<>]+", re.IGNORECASE)
 
 
+def _attribute_parts(node: ast.expr) -> tuple[str, ...]:
+    parts: list[str] = []
+    while isinstance(node, ast.Attribute):
+        parts.append(node.attr)
+        node = node.value
+    if not isinstance(node, ast.Name):
+        return ()
+    parts.append(node.id)
+    return tuple(reversed(parts))
+
+
+def _is_audit_export_call(node: ast.AST) -> bool:
+    if (
+        not isinstance(node, ast.Call)
+        or not isinstance(node.func, ast.Attribute)
+        or node.func.attr != "export"
+    ):
+        return False
+    return any(
+        part.lower().lstrip("_")
+        in {"ledger", "audit_ledger", "exporter", "audit_exporter"}
+        or part.lower().endswith(("_ledger", "_exporter"))
+        for part in _attribute_parts(node.func.value)
+    )
+
+
 @pytest.fixture(scope="module")
 def built_archives(
     tmp_path_factory: pytest.TempPathFactory,
@@ -218,6 +244,7 @@ def test_production_has_no_automatic_telemetry_or_background_service() -> None:
     root = Path(__file__).resolve().parents[1]
     production_files = tuple(sorted((root / "src" / "hermes_reach").rglob("*.py")))
     imported_roots: set[str] = set()
+    implicit_exports: list[tuple[Path, int]] = []
 
     for source_path in production_files:
         source = source_path.read_text(encoding="utf-8")
@@ -235,21 +262,15 @@ def test_production_has_no_automatic_telemetry_or_background_service() -> None:
                 )
             elif isinstance(node, ast.ImportFrom) and node.module:
                 imported_roots.add(node.module.partition(".")[0])
+            if _is_audit_export_call(node):
+                implicit_exports.append((source_path, node.lineno))
 
     assert imported_roots.isdisjoint(_TELEMETRY_IMPORTS)
+    assert implicit_exports == []
 
     ledger_path = root / "src" / "hermes_reach" / "audit" / "ledger.py"
     ledger_source = ledger_path.read_text(encoding="utf-8")
-    ledger_tree = ast.parse(ledger_source, filename=str(ledger_path))
-    export_calls = [
-        node
-        for node in ast.walk(ledger_tree)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and node.func.attr == "export"
-    ]
     assert "class ImmutableAuditExporter(Protocol):" in ledger_source
-    assert not export_calls
 
 
 def _add_forbidden_build_inputs(source: Path) -> None:

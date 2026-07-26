@@ -32,7 +32,7 @@ def test_lockfile_keeps_the_inspected_agent_reach_commit() -> None:
     assert "1494c2ab239e7355a77e7cceaf3271453a1f34b5" in lockfile
 
 
-def test_source_distribution_excludes_test_only_executor_implementations() -> None:
+def test_manifest_pins_security_guide_and_prunes_tests() -> None:
     root = Path(__file__).resolve().parents[1]
 
     assert (root / "MANIFEST.in").read_text(encoding="ascii") == (

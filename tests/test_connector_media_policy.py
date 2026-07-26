@@ -860,9 +860,7 @@ def test_deterministic_file_executor_runs_after_complete_authority_claim(
 
 
 def test_production_module_contains_no_fixture_or_live_backend_implementation() -> None:
-    module = Path("src/hermes_reach/connector/media_policy.py").read_text(
-        encoding="utf-8"
-    )
+    module = Path(media_policy_module.__file__).read_text(encoding="utf-8")
     forbidden_words = (
         "openai",
         "whisper",
@@ -879,6 +877,48 @@ def test_production_module_contains_no_fixture_or_live_backend_implementation() 
         for value in forbidden_words
     )
     assert "class ConnectorModelExecutor(Protocol)" in module
+
+
+def test_prepared_local_file_execution_can_be_abandoned_idempotently(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    connector = _identity(10)
+    execution = _execution(connector=connector)
+    media = tmp_path / "media.wav"
+    media.write_bytes(b"fixture media")
+    registry = ProcessLocalFileGrants(clock=_Clock(), id_factory=_Ids())
+    proposal = _approve(registry, media, execution, connector)
+    executor = _DeterministicExecutor()
+    closed_handles: list[VerifiedLocalFile] = []
+    original_close = VerifiedLocalFile.close
+
+    def track_close(handle: VerifiedLocalFile) -> None:
+        original_close(handle)
+        closed_handles.append(handle)
+
+    monkeypatch.setattr(VerifiedLocalFile, "close", track_close)
+    prepared = prepare_model_execution(
+        execution,
+        policy=_policy(),
+        media_source_class="connector_local_file",
+        workload=WORKLOAD,
+        bindings=(_binding(executor),),
+        file_grants=registry,
+        file_grant_id=proposal.file_grant_id,
+    )
+
+    with prepared as entered:
+        assert entered is prepared
+
+    assert len(closed_handles) == 1
+    assert closed_handles[0].closed
+    prepared.close()
+    assert len(closed_handles) == 1
+    with pytest.raises(ConnectorError) as abandoned:
+        asyncio.run(prepared.execute())
+    _assert_code(abandoned, ConnectorErrorCode.BACKEND_UNBOUND)
+    assert executor.calls == 0
 
 
 def test_malformed_executor_result_is_rejected_and_file_is_closed(

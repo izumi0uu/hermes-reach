@@ -160,8 +160,10 @@ def connector_command(
             print(
                 render_connector_error(
                     error, json_output=getattr(args, "json", False) is True
-                )
+                ),
+                file=sys.stderr,
             )
+            raise SystemExit(1) from None
         return
 
     reader: TtyPassphraseReader | None = None

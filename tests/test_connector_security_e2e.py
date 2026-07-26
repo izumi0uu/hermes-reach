@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import ast
 import asyncio
 import base64
 import hashlib
@@ -8,13 +7,15 @@ import os
 import shutil
 import socket
 import sqlite3
+from collections.abc import Callable
+from contextlib import closing
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
-from hermes_reach.audit import AuditEvent, AuditLedger, AuditRecord
+from hermes_reach.audit import AuditEvent, AuditLedger
 from hermes_reach.connector.audit import ReceiptEvidenceLedger, verify_response
 from hermes_reach.connector.authority import GrantAuthority
 from hermes_reach.connector.client import (
@@ -63,7 +64,7 @@ from hermes_reach.connector.secrets import BitwardenSecretBinding, CapabilityId
 from hermes_reach.connector.store import AuthorityStore, StoreWriterLease
 from hermes_reach.connector.tls import ConnectorTLSStore, verify_connector_ca_der
 from hermes_reach.connector.transport import WssEndpoint
-from hermes_reach.contracts import ReachValidationError, validate_read
+from hermes_reach.contracts import OperationCall, ReachValidationError, validate_read
 from hermes_reach.sources.registry import build_alpha1_registry
 
 NOW = 1_750_000_000
@@ -182,8 +183,9 @@ class _TrustedPairingTransport:
 
 
 class _AuthorityTransport:
-    def __init__(self, authority: GrantAuthority) -> None:
+    def __init__(self, authority: GrantAuthority, clock: Callable[[], int]) -> None:
         self._authority = authority
+        self._clock = clock
         self.invocations: list[OperationInvocationV1] = []
         self.responses: list[OperationResponseV1] = []
         self.execution_calls = 0
@@ -200,11 +202,12 @@ class _AuthorityTransport:
 
         request = invocation.signed_request
         required_scope = GrantScope(request.source, request.operation, "public")
+        now = max(request.issued_at, self._clock())
         decision = self._authority.authorize_and_handoff(
             request,
             invocation.protected_payload,
             required_scope,
-            now=request.issued_at,
+            now=now,
             handoff=handoff,
         )
         assert decision.receipt_issuer is not None
@@ -262,6 +265,8 @@ def _deny_real_network(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(socket, "create_connection", denied)
     monkeypatch.setattr(socket, "getaddrinfo", denied)
     monkeypatch.setattr(asyncio, "open_connection", denied)
+    monkeypatch.setattr(socket.socket, "connect", denied)
+    monkeypatch.setattr(socket.socket, "connect_ex", denied)
 
 
 @pytest.fixture
@@ -310,7 +315,11 @@ def security_harness(tmp_path: Path) -> _SecurityHarness:
         )
     )
     assert displays[0].scopes == (("web", "read.url", "public"),)
-    authority = GrantAuthority(store, id_factory=ids, clock=lambda: NOW + 10)
+
+    def authority_clock() -> int:
+        return NOW + 10
+
+    authority = GrantAuthority(store, id_factory=ids, clock=authority_clock)
     authority._activate_from_service(connector)
     value = _SecurityHarness(
         trusted_state,
@@ -320,7 +329,7 @@ def security_harness(tmp_path: Path) -> _SecurityHarness:
         lease,
         store,
         authority,
-        _AuthorityTransport(authority),
+        _AuthorityTransport(authority, authority_clock),
         ids,
     )
     try:
@@ -350,7 +359,7 @@ def _client(
     )
 
 
-def _read_call(canary: str = "article") -> object:
+def _read_call(canary: str = "article") -> OperationCall:
     return validate_read(
         {
             "source": "web",
@@ -413,19 +422,6 @@ def test_compromised_vps_copy_is_bounded_then_revocation_denies_next_request(
     assert residual.receipt.usage is not None
     assert residual.receipt.usage.sequence == 2
     assert harness.transport.execution_calls == 2
-
-    widened_claims = replace(
-        stolen_profile.signed_grant.claims,
-        scopes=(GrantScope("github", "read.repository", "public"), SCOPE),
-    )
-    forged_grant = replace(stolen_profile.signed_grant, claims=widened_claims)
-    with pytest.raises(ProtocolValidationError):
-        verify_signed_grant(
-            forged_grant,
-            pinned_connector=harness.connector.public_identity,
-            expected_subject_key_id=stolen_identity.public_identity.key_id,
-            now=NOW + 10,
-        )
 
     widened_call = validate_read(
         {
@@ -497,23 +493,6 @@ def test_compromised_vps_copy_is_bounded_then_revocation_denies_next_request(
     _assert_connector_error(substitution, ConnectorErrorCode.RECEIPT_CONTEXT_MISMATCH)
     assert len(evidence.records()) == evidence_count
 
-    rejected_inputs = (
-        {
-            "source": "web",
-            "operation": "read.url",
-            "provider": "bitwarden:BSM_PROJECT_CANARY:SELECTOR_CANARY",
-            "target": {"url": "https://example.com/article"},
-        },
-        {
-            "source": "web",
-            "operation": "read.url",
-            "target": {"path": "/trusted/TRUSTED_PATH_CANARY/media.wav"},
-        },
-    )
-    for payload in rejected_inputs:
-        with pytest.raises(ReachValidationError):
-            validate_read(payload)
-
     harness.authority.revoke_grant(
         stolen_profile.signed_grant.claims.grant_id, now=NOW + 11
     )
@@ -524,11 +503,6 @@ def test_compromised_vps_copy_is_bounded_then_revocation_denies_next_request(
     _assert_connector_error(revoked, ConnectorErrorCode.GRANT_REVOKED)
     assert harness.transport.execution_calls == 2
     assert harness.store.inspect_grants()[0].used_count == 2
-
-    local_registry = build_alpha1_registry()
-    local_web = local_registry.availability("web", "read.url")
-    assert local_web.state == "available"
-    assert local_web.backend_id == "web-public-http-v1"
 
     copied = _state_bytes(stolen_state)
     forbidden = (
@@ -542,6 +516,54 @@ def test_compromised_vps_copy_is_bounded_then_revocation_denies_next_request(
     assert all(value not in copied for value in forbidden)
 
 
+def test_forged_widened_grant_is_rejected(
+    security_harness: _SecurityHarness,
+) -> None:
+    harness = security_harness
+    stolen_identity = VpsKeyStore(harness.vps_state, _platform="linux").load()
+    widened_claims = replace(
+        harness.profile.signed_grant.claims,
+        scopes=(GrantScope("github", "read.repository", "public"), SCOPE),
+    )
+    forged_grant = replace(harness.profile.signed_grant, claims=widened_claims)
+
+    with pytest.raises(ProtocolValidationError):
+        verify_signed_grant(
+            forged_grant,
+            pinned_connector=harness.connector.public_identity,
+            expected_subject_key_id=stolen_identity.public_identity.key_id,
+            now=NOW + 10,
+        )
+
+
+def test_secret_provider_and_local_path_fields_are_rejected() -> None:
+    rejected_inputs = (
+        {
+            "source": "web",
+            "operation": "read.url",
+            "provider": "bitwarden:BSM_PROJECT_CANARY:SELECTOR_CANARY",
+            "target": {"url": "https://example.com/article"},
+        },
+        {
+            "source": "web",
+            "operation": "read.url",
+            "target": {"path": "/trusted/TRUSTED_PATH_CANARY/media.wav"},
+        },
+    )
+
+    for payload in rejected_inputs:
+        with pytest.raises(ReachValidationError):
+            validate_read(payload)
+
+
+def test_local_public_registry_remains_available() -> None:
+    local_registry = build_alpha1_registry()
+    local_web = local_registry.availability("web", "read.url")
+
+    assert local_web.state == "available"
+    assert local_web.backend_id == "web-public-http-v1"
+
+
 def test_unknown_protocol_schema_key_and_provider_versions_fail_closed(
     security_harness: _SecurityHarness, tmp_path: Path
 ) -> None:
@@ -552,7 +574,7 @@ def test_unknown_protocol_schema_key_and_provider_versions_fail_closed(
     with pytest.raises(ProtocolValidationError):
         parse_record(canonical_json_bytes(encoded))
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="public identity encoding"):
         DevicePublicIdentity.from_wire(
             "v2:" + harness.connector.public_identity.wire_public_key
         )
@@ -569,7 +591,7 @@ def test_unknown_protocol_schema_key_and_provider_versions_fail_closed(
         VpsProfileStore(drifted_state).load()
     _assert_connector_error(schema, ConnectorErrorCode.CONNECTOR_SCHEMA_INCOMPATIBLE)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="secret provider binding"):
         BitwardenSecretBinding(
             capability_id=CapabilityId.new(lambda size: b"\x01" * size),
             source="web",
@@ -583,7 +605,7 @@ def test_unknown_protocol_schema_key_and_provider_versions_fail_closed(
         )
 
 
-def test_acceptance_has_no_implicit_telemetry_or_audit_export(
+def test_audit_ledger_append_has_no_implicit_export(
     tmp_path: Path,
 ) -> None:
     ledger = AuditLedger(tmp_path / "audit" / "ledger.jsonl")
@@ -608,43 +630,9 @@ def test_acceptance_has_no_implicit_telemetry_or_audit_export(
         )
     )
 
-    class OperatorSink:
-        def __init__(self) -> None:
-            self.calls: list[tuple[AuditRecord, ...]] = []
-
-        def export(self, records: tuple[AuditRecord, ...]) -> None:
-            self.calls.append(records)
-
-    sink = OperatorSink()
     records = ledger.records()
     assert len(records) == 1
-    assert sink.calls == []
-    sink.export(records)
-    assert sink.calls == [records]
-
-    source_root = Path(__file__).parents[1] / "src" / "hermes_reach"
-    endpoint_literals: list[tuple[Path, str]] = []
-    implicit_exports: list[tuple[Path, int]] = []
-    for path in source_root.rglob("*.py"):
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Constant) and isinstance(node.value, str):
-                lowered = node.value.lower()
-                if "hermes-reach" in lowered and (
-                    "http://" in lowered or "https://" in lowered
-                ):
-                    endpoint_literals.append((path, node.value))
-            if (
-                isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Attribute)
-                and node.func.attr == "export"
-            ):
-                implicit_exports.append((path, node.lineno))
-    assert endpoint_literals == []
-    assert implicit_exports == []
-
-    registry = build_alpha1_registry()
-    assert registry.availability("web", "read.url").state == "available"
+    assert records[0].event.trace_id == "6" * 32
 
 
 def test_live_revocation_and_supersession_survive_backup_and_rollback_simulation(
@@ -653,8 +641,12 @@ def test_live_revocation_and_supersession_survive_backup_and_rollback_simulation
     harness = security_harness
     database = harness.trusted_state / "connector-authority.sqlite3"
     backup = harness.trusted_state / "connector-authority.sqlite3.rollback"
-    with sqlite3.connect(database) as source, sqlite3.connect(backup) as target:
+    with (
+        closing(sqlite3.connect(database)) as source,
+        closing(sqlite3.connect(backup)) as target,
+    ):
         source.backup(target)
+        target.commit()
     os.chmod(backup, 0o600)
 
     claims = harness.profile.signed_grant.claims
@@ -672,7 +664,7 @@ def test_live_revocation_and_supersession_survive_backup_and_rollback_simulation
     harness.authority.revoke_grant(claims.grant_id, now=NOW + 11)
     harness.lease.close()
 
-    with sqlite3.connect(backup) as stale:
+    with closing(sqlite3.connect(backup)) as stale:
         row = stale.execute(
             "SELECT revoked_at FROM grant_lineages WHERE grant_id=?",
             (claims.grant_id,),
@@ -716,10 +708,11 @@ def test_live_revocation_and_supersession_survive_backup_and_rollback_simulation
     future_state = tmp_path / "future-authority"
     shutil.copytree(harness.trusted_state, future_state)
     future_database = future_state / "connector-authority.sqlite3"
-    with sqlite3.connect(future_database) as connection:
+    with closing(sqlite3.connect(future_database)) as connection:
         connection.execute(
             f"PRAGMA user_version={CONNECTOR_STORAGE_SCHEMA_VERSION + 1}"
         )
+        connection.commit()
     content_before = future_database.read_bytes()
     modified_before = future_database.stat().st_mtime_ns
     future_lease = StoreWriterLease(future_state)

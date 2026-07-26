@@ -723,14 +723,27 @@ def _read_profile_file(profile_home: Path, filename: str, maximum: int) -> bytes
 
 
 def _reject_legacy_caches(profile_home: Path) -> None:
-    for filename in _BWS_CACHE_FILENAMES:
+    directory_descriptor = -1
+    try:
         try:
-            os.lstat(profile_home / "cache" / filename)
+            directory_descriptor = _open_state_directory(
+                profile_home / "cache", create=False
+            )
         except FileNotFoundError:
-            continue
-        except OSError:
-            raise ConnectorError(ConnectorErrorCode.SECRET_UNAVAILABLE) from None
-        raise ConnectorError(ConnectorErrorCode.SECRET_UNAVAILABLE)
+            return
+        for filename in _BWS_CACHE_FILENAMES:
+            try:
+                os.lstat(filename, dir_fd=directory_descriptor)
+            except FileNotFoundError:
+                continue
+            raise ConnectorError(ConnectorErrorCode.SECRET_UNAVAILABLE)
+    except ConnectorError:
+        raise
+    except (OSError, ValueError):
+        raise ConnectorError(ConnectorErrorCode.SECRET_UNAVAILABLE) from None
+    finally:
+        if directory_descriptor >= 0:
+            os.close(directory_descriptor)
 
 
 def _validate_bws_binary(binding: BitwardenSecretBinding) -> None:
@@ -875,6 +888,8 @@ async def _communicate_bounded(
 
 
 async def _kill_process_group(process: asyncio.subprocess.Process) -> None:
+    if process.returncode is not None:
+        return
     try:
         os.killpg(process.pid, signal.SIGKILL)
     except ProcessLookupError:

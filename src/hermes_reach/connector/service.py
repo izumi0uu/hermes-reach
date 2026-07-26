@@ -21,6 +21,7 @@ from .identity import (
     _require_test_tty_reader,
     _require_tty_reader,
 )
+from .limits import MAX_DEVICE_LABEL_LENGTH
 from .media_policy import FileGrantProposal, ModelPolicy, ProcessLocalFileGrants
 from .protocol import (
     ErrorFrame,
@@ -39,6 +40,7 @@ from .protocol import (
     pairing_sas,
     pairing_transcript_hash,
     record_digest,
+    require_printable_metadata,
 )
 from .store import AuthorityStore, PairingState, StoreWriterLease
 from .tls import ConnectorCACertificate, ConnectorTLSStore, EphemeralTLSMaterial
@@ -196,6 +198,9 @@ class ConnectorService:
         ):
             raise TypeError("The Connector service dependencies are invalid.")
         current_policy_revision = store.current_policy_revision()
+        # CLI composition injects no model policy. If an owner advances the stored
+        # digest, reopening therefore fails closed until that owner supplies the
+        # matching policy instead of serving under an unrelated default policy.
         effective_model_policy = (
             ModelPolicy.default_deny(current_policy_revision)
             if model_policy is None
@@ -646,11 +651,17 @@ class ConnectorService:
             expires_at=expires_at,
             maximum_bytes=row.maximum_source_bytes,
         )
-        prompt = _file_approval_prompt(context.device_label, proposal)
-        if not self._tty_reader._confirm(prompt, "approve"):
-            self._file_grants.discard(proposal)
-            raise ConnectorError(ConnectorErrorCode.INTERACTIVE_UNLOCK_REQUIRED)
+
+        def discard_quietly() -> None:
+            try:
+                self._file_grants.discard(proposal)
+            except (ConnectorError, TypeError):
+                pass
+
         try:
+            prompt = _file_approval_prompt(context.device_label, proposal)
+            if not self._tty_reader._confirm(prompt, "approve"):
+                raise ConnectorError(ConnectorErrorCode.INTERACTIVE_UNLOCK_REQUIRED)
             current = self._file_grant_context(
                 grant_id=grant_id,
                 source=source,
@@ -659,10 +670,10 @@ class ConnectorService:
             )
             signer_is_current = self._require_unlocked_signer() is signer
         except BaseException:
-            self._file_grants.discard(proposal)
+            discard_quietly()
             raise
         if current != context or not signer_is_current:
-            self._file_grants.discard(proposal)
+            discard_quietly()
             raise ConnectorError(ConnectorErrorCode.FILE_GRANT_INVALID)
         return self._file_grants.approve(
             proposal,
@@ -823,6 +834,7 @@ def _approval_prompt(display: PairingDisplay) -> str:
 
 
 def _file_approval_prompt(device_label: str, proposal: FileGrantProposal) -> str:
+    require_printable_metadata(device_label, MAX_DEVICE_LABEL_LENGTH)
     return (
         "Approve Connector-local transcription file\n"
         f"device: {device_label}\n"

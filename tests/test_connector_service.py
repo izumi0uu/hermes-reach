@@ -475,6 +475,7 @@ def test_foreground_loop_uses_only_its_captured_tty_and_closes_on_exit(
 
 def test_original_tty_approves_path_free_process_local_file_grant(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def exercise() -> None:
         state = tmp_path / "connector"
@@ -496,7 +497,7 @@ def test_original_tty_approves_path_free_process_local_file_grant(
         )
         authority = GrantAuthority(store, clock=lambda: NOW)
         starter = _ServerStarter()
-        reader = _reader(PASSPHRASE, confirmation="approve\napprove\n")
+        reader = _reader(PASSPHRASE, confirmation="approve\napprove\napprove\ndeny\n")
         file_grants = ProcessLocalFileGrants(clock=lambda: NOW, id_factory=_IdFactory())
         service = ConnectorService._from_test_dependencies(
             key_store=key_store,
@@ -550,6 +551,49 @@ def test_original_tty_approves_path_free_process_local_file_grant(
             assert "SECRET_PARENT_PATH_CANARY" not in output
             assert b"SECRET_PARENT_PATH_CANARY" not in encode_record(file_grant)
             assert b"episode.wav" not in encode_record(file_grant)
+
+            def fail_discard(_: object) -> None:
+                raise ConnectorError(ConnectorErrorCode.FILE_GRANT_INVALID)
+
+            original_context = service._file_grant_context
+            context_calls = 0
+
+            def cancel_recheck(
+                *, grant_id: str, source: str, operation: str, now: int
+            ) -> object:
+                nonlocal context_calls
+                context_calls += 1
+                if context_calls == 2:
+                    raise asyncio.CancelledError
+                return original_context(
+                    grant_id=grant_id,
+                    source=source,
+                    operation=operation,
+                    now=now,
+                )
+
+            with monkeypatch.context() as cleanup:
+                cleanup.setattr(service, "_file_grant_context", cancel_recheck)
+                cleanup.setattr(file_grants, "discard", fail_discard)
+                with pytest.raises(asyncio.CancelledError):
+                    service.approve_local_file(
+                        media,
+                        grant_id=grant_inspection.grant_id,
+                        source="youtube",
+                        operation="transcribe.video",
+                    )
+
+            with monkeypatch.context() as cleanup:
+                cleanup.setattr(file_grants, "discard", fail_discard)
+                with pytest.raises(ConnectorError) as declined:
+                    service.approve_local_file(
+                        media,
+                        grant_id=grant_inspection.grant_id,
+                        source="youtube",
+                        operation="transcribe.video",
+                    )
+                _assert_code(declined, ConnectorErrorCode.INTERACTIVE_UNLOCK_REQUIRED)
+
             database = state / "connector-authority.sqlite3"
             assert b"SECRET_PARENT_PATH_CANARY" not in database.read_bytes()
         finally:

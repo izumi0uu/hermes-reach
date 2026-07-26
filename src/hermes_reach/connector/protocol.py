@@ -275,7 +275,7 @@ class PairingInit:
         _require_key_id(self.vps_key_id)
         if public_identity.key_id != self.vps_key_id:
             raise ProtocolValidationError("The pairing device identity is invalid.")
-        _require_printable(self.device_label, MAX_DEVICE_LABEL_LENGTH)
+        require_printable_metadata(self.device_label, MAX_DEVICE_LABEL_LENGTH)
         _require_nonce(self.vps_nonce)
         _require_digest(self.endpoint_digest)
         _require_scopes(self.requested_scopes)
@@ -873,7 +873,9 @@ def _require_positive_int(value: object, name: str) -> None:
         raise ProtocolValidationError("A positive Connector counter is invalid.")
 
 
-def _require_printable(value: object, maximum: int) -> None:
+def require_printable_metadata(value: object, maximum: int) -> None:
+    """Require bounded printable ASCII before metadata reaches a terminal."""
+
     if (
         type(value) is not str
         or not 0 < len(value) <= maximum
@@ -994,8 +996,7 @@ def _require_result_url(value: object) -> None:
         or not parsed.hostname
         or parsed.username is not None
         or parsed.password is not None
-        or port is not None
-        and not 1 <= port <= 65535
+        or (port is not None and not 1 <= port <= 65535)
     ):
         raise ProtocolValidationError("The operation result URL is invalid.")
 
@@ -2174,6 +2175,7 @@ def _parse_operation_response(frame: dict[str, object]) -> OperationResponseV1:
     raw_result = body.get("result")
     result = None if raw_result is None else _parse_operation_result(raw_result)
     if result is not None:
+        # Enforce MAX_OPERATION_RESULT_BYTES while parsing; bytes are not reused.
         canonical_operation_result_bytes(result)
     return OperationResponseV1(
         message_id=_string(frame, "message_id"),
