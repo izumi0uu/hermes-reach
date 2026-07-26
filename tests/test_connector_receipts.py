@@ -43,6 +43,7 @@ PROTECTED = protect_operation_call(
         }
     )
 )
+POLICY_DIGEST = "0" * 64
 
 
 def _canonical_id(value: int) -> str:
@@ -99,7 +100,7 @@ def _success_receipt(
     issuer = BoundReceiptIssuer(
         connector,
         request,
-        ClaimResult(True, None, sequence, remaining),
+        ClaimResult(True, None, sequence, remaining, POLICY_DIGEST),
         started_at=request.issued_at + 1,
         id_factory=_IdFactory() if factory is None else factory,
     )
@@ -117,6 +118,11 @@ def _assert_connector_error(
     assert error.value.code == code.value
 
 
+def test_accepted_claim_requires_live_policy_digest() -> None:
+    with pytest.raises(ValueError, match="live policy digest"):
+        ClaimResult(True, None, 1, 9)
+
+
 def test_bound_receipt_issuer_signs_exact_success_once() -> None:
     connector = _identity(20)
     vps = _identity(21)
@@ -124,7 +130,7 @@ def test_bound_receipt_issuer_signs_exact_success_once() -> None:
     issuer = BoundReceiptIssuer(
         connector,
         request,
-        ClaimResult(True, None, 1, 9),
+        ClaimResult(True, None, 1, 9, POLICY_DIGEST),
         started_at=NOW + 1,
         id_factory=_IdFactory(),
     )
@@ -192,7 +198,7 @@ def test_accepted_execution_failure_keeps_spent_usage_in_receipt() -> None:
     issuer = BoundReceiptIssuer(
         connector,
         request,
-        ClaimResult(True, None, 4, 6),
+        ClaimResult(True, None, 4, 6, POLICY_DIGEST),
         started_at=NOW + 1,
         id_factory=_IdFactory(),
     )

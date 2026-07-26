@@ -234,6 +234,22 @@ def test_status_dto_rejects_unverified_identity_version_and_state_fields() -> No
             ConnectorStatusInspection(**candidate)  # type: ignore[arg-type]
 
 
+@pytest.mark.parametrize(
+    "label",
+    ["unsafe\nlabel", "terminal\x1b[31m", "cafe\N{LATIN SMALL LETTER E WITH ACUTE}"],
+)
+def test_device_inspection_rejects_labels_unsafe_for_rendering(label: str) -> None:
+    with pytest.raises(ValueError, match="device inspection is invalid"):
+        DeviceInspection(
+            device_id="d" * 26,
+            label=label,
+            key_id="v" * 32,
+            fingerprint=FINGERPRINT,
+            paired_at=1_900_000_000,
+            revoked_at=None,
+        )
+
+
 def test_offline_inspector_reads_verified_state_and_reports_lease_contention(
     tmp_path: Path,
 ) -> None:
@@ -408,6 +424,31 @@ def test_services_are_called_only_during_command_execution(
     connector_command(status_args, inspection_service=inspections)  # type: ignore[arg-type]
     assert inspections.calls == [("status", STATE_DIRECTORY)]
     assert "Connector service: stopped" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("json_output", [False, True])
+def test_inspection_failures_write_stderr_and_exit_nonzero(
+    capsys: pytest.CaptureFixture[str], json_output: bool
+) -> None:
+    error = ConnectorError(ConnectorErrorCode.CONNECTOR_SERVICE_RUNNING)
+
+    class FailingInspector:
+        def inspect_status(self, state_directory: Path) -> ConnectorStatusInspection:
+            assert state_directory == STATE_DIRECTORY
+            raise error
+
+    arguments = ["connector", "status", "--state-directory", str(STATE_DIRECTORY)]
+    if json_output:
+        arguments.append("--json")
+    args = _parser().parse_args(arguments)
+
+    with pytest.raises(SystemExit) as exited:
+        connector_command(args, inspection_service=FailingInspector())  # type: ignore[arg-type]
+
+    captured = capsys.readouterr()
+    assert exited.value.code == 1
+    assert captured.out == ""
+    assert captured.err == render_connector_error(error, json_output=json_output) + "\n"
 
 
 def test_public_agent_tool_registration_remains_exactly_five(

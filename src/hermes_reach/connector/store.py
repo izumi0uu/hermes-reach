@@ -22,6 +22,7 @@ from .limits import (
     AUDIT_RETENTION_SECONDS,
     CONNECTOR_STORAGE_SCHEMA_VERSION,
     MAX_CLOCK_SKEW_SECONDS,
+    MAX_DEVICE_LABEL_LENGTH,
     SUPPORTED_CONNECTOR_PLATFORMS,
 )
 from .protocol import (
@@ -35,6 +36,7 @@ from .protocol import (
     pairing_transcript_hash,
     parse_record,
     record_digest,
+    require_printable_metadata,
     verify_pairing_challenge,
     verify_pairing_init,
     verify_record,
@@ -62,6 +64,10 @@ class ClaimResult:
     remaining_uses: int | None
     policy_digest: str | None = None
 
+    def __post_init__(self) -> None:
+        if self.accepted and self.policy_digest is None:
+            raise ValueError("Accepted claims require the live policy digest.")
+
 
 @dataclass(frozen=True, slots=True)
 class DeviceInspection:
@@ -73,6 +79,12 @@ class DeviceInspection:
     fingerprint: str
     paired_at: int
     revoked_at: int | None
+
+    def __post_init__(self) -> None:
+        try:
+            require_printable_metadata(self.label, MAX_DEVICE_LABEL_LENGTH)
+        except ProtocolValidationError:
+            raise ValueError("The Connector device inspection is invalid.") from None
 
 
 @dataclass(frozen=True, slots=True)

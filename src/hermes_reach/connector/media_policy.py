@@ -744,6 +744,23 @@ class PreparedModelExecution:
     def provenance(self) -> ModelProvenance:
         return self._request.plan.provenance
 
+    def close(self) -> None:
+        """Abandon this one-use execution and release its optional local file."""
+
+        with self._mutex:
+            if self._executed:
+                return
+            self._executed = True
+        local_file = self._request.local_file
+        if local_file is not None:
+            local_file.close()
+
+    def __enter__(self) -> PreparedModelExecution:
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        self.close()
+
     async def execute(self) -> OperationResultV1:
         with self._mutex:
             if self._executed:

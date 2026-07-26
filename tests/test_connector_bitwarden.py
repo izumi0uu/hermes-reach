@@ -379,4 +379,6 @@ def test_helper_source_never_imports_registry_application() -> None:
 
 
 def test_fetch_result_fixture_type_is_exact() -> None:
-    assert cast(object, FetchResult()) is not None
+    runtime = bitwarden_helper._load_hermes_runtime()
+    assert runtime.fetch_result_type is FetchResult
+    assert type(cast(object, FetchResult())) is FetchResult

@@ -420,6 +420,18 @@ def test_profile_cache_plaintext_env_and_binary_drift_fail_before_fetch(
     assert launcher.calls == 0
 
 
+def test_profile_cache_directory_symlink_fails_closed(tmp_path: Path) -> None:
+    binding = _binding(tmp_path)
+    actual_cache = binding.profile_home / "actual-cache"
+    actual_cache.mkdir(mode=0o700)
+    (binding.profile_home / "cache").symlink_to(actual_cache, target_is_directory=True)
+
+    with pytest.raises(ConnectorError) as unsafe:
+        _provider(SecretBindingCatalog((binding,)), _Launcher())
+
+    _assert_code(unsafe, ConnectorErrorCode.SECRET_UNAVAILABLE.value)
+
+
 def test_bws_binary_parent_symlink_fails_closed(tmp_path: Path) -> None:
     binding = _binding(tmp_path)
     binary_directory = binding.bws_executable.parent
@@ -561,7 +573,8 @@ def test_concurrent_scoped_executions_never_share_mappings(
 class _FakeProcess:
     def __init__(self, response: bytes, *, returncode: int = 0) -> None:
         self.response = response
-        self.returncode = returncode
+        self.returncode: int | None = None
+        self._wait_returncode = returncode
         self.pid = 9876
         self.input: bytes | None = None
         self.stdin = _FakeWriter(self)
@@ -572,6 +585,8 @@ class _FakeProcess:
         return self.response, b""
 
     async def wait(self) -> int:
+        if self.returncode is None:
+            self.returncode = self._wait_returncode
         return self.returncode
 
 
@@ -658,21 +673,22 @@ def test_helper_launcher_uses_fixed_argv_and_minimal_environment(
     assert environment["BWS_ACCESS_TOKEN"] == "BOOTSTRAP_CANARY"
     assert "AWS_SECRET_ACCESS_KEY" not in environment
     assert "HTTPS_PROXY" not in environment
-    assert binding.project_id not in captured["args"]
-    assert binding.selector not in captured["args"]
+    argv = " ".join(captured["args"])
+    assert binding.project_id not in argv
+    assert binding.selector not in argv
     assert kwargs["stderr"] is asyncio.subprocess.DEVNULL
     assert kwargs["close_fds"] is True
     assert kwargs["start_new_session"] is True
     assert process.input is not None
     assert b"BOOTSTRAP_CANARY" not in process.input
-    assert killed == [(process.pid, signal.SIGKILL)]
+    assert killed == []
 
 
 @pytest.mark.parametrize(
     "terminal",
     ["timeout", "cancel", "oversize", "nonzero", "malformed", "success"],
 )
-def test_helper_launcher_kills_process_group_on_every_terminal_path(
+def test_helper_launcher_signals_only_running_process_groups(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     terminal: str,
@@ -729,7 +745,12 @@ def test_helper_launcher_kills_process_group_on_every_terminal_path(
         _assert_code(unavailable, ConnectorErrorCode.SECRET_UNAVAILABLE.value)
 
     asyncio.run(exercise())
-    assert killed == [(process.pid, signal.SIGKILL)]
+    expected = (
+        [(process.pid, signal.SIGKILL)]
+        if terminal in {"timeout", "cancel", "oversize"}
+        else []
+    )
+    assert killed == expected
 
 
 def test_secret_module_has_no_public_live_backend_registration() -> None:
