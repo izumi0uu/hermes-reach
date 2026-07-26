@@ -137,9 +137,7 @@ def test_upstream_health_never_probes_session_or_credential_channels() -> None:
         for source in SOURCE_CATALOG
     ]
 
-    report = collect_agent_reach_health(
-        ReadOnlyAgentReachConfig(), lambda: channels
-    )
+    report = collect_agent_reach_health(ReadOnlyAgentReachConfig(), lambda: channels)
 
     assert calls == SAFE_AGENT_REACH_DOCTOR_CHANNELS
     assert "xiaoyuzhou" not in SAFE_AGENT_REACH_DOCTOR_CHANNELS

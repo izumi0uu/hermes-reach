@@ -11,9 +11,16 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from types import MappingProxyType
 from typing import Final, Never, TypeAlias, cast
+from urllib.parse import urlsplit
 
 from ..catalog import DataScope, OperationSpec, get_operation, get_source
 from ..contracts import OperationCall, operation_call_is_valid
+from ..normalized import (
+    MAX_NORMALIZED_INTEGER,
+    NORMALIZED_MEDIA_VERSION,
+    media_metadata_characters,
+    normalized_item_characters,
+)
 from .errors import (
     ConnectorErrorCategory,
     ConnectorErrorCode,
@@ -40,6 +47,8 @@ from .limits import (
     MAX_GRANT_USES,
     MAX_JSON_CONTAINER_ITEMS,
     MAX_JSON_DEPTH,
+    MAX_OPERATION_RESULT_BYTES,
+    MAX_PROTECTED_OPERATION_BYTES,
     MAX_RECEIPT_TTL_SECONDS,
     MAX_REQUEST_TTL_SECONDS,
     MAX_TIMESTAMP_SECONDS,
@@ -55,6 +64,7 @@ JSONValue: TypeAlias = JSONScalar | list["JSONValue"] | dict[str, "JSONValue"]
 _SIGNATURE_ALGORITHM: Final = "ed25519-v1"
 _PAYLOAD_DIGEST_ALGORITHM: Final = "sha256-v1"
 _OPERATION_PAYLOAD_DOMAIN: Final = b"hermes-reach:connector:v1:operation-call\x00"
+_OPERATION_RESULT_DOMAIN: Final = b"hermes-reach:connector:v1:operation-result\x00"
 _RECORD_DIGEST_DOMAIN: Final = b"hermes-reach:connector:v1:record-digest\x00"
 _TRANSCRIPT_DOMAIN: Final = b"hermes-reach:connector:v1:pairing-transcript\x00"
 _CROCKFORD_ALPHABET: Final = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
@@ -67,6 +77,12 @@ _FAILURE_CLASSES: Final = frozenset(
 _DECISIONS: Final = frozenset({"allow", "deny"})
 _OUTCOMES: Final = frozenset({"ok", "error"})
 _SAFE_BACKENDS: Final = frozenset({("reach-bounded-executor-v1", "1")})
+_ITEM_KINDS: Final = frozenset(
+    {"content", "entry", "topic", "reply", "profile", "result"}
+)
+_MEDIA_COVERAGE: Final = frozenset({"complete", "partial", "unknown"})
+_SUBTITLE_ORIGINS: Final = frozenset({"manual", "automatic"})
+_LANGUAGE_TAG: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,31}\Z")
 
 
 class ProtocolValidationError(ValueError):
@@ -504,10 +520,12 @@ class SignedReceipt:
     expires_at: int
     result_count: int
     truncated: bool
+    result_digest: str | None
     outcome: str
     payload_digest: str
     signature: bytes
     payload_digest_algorithm: str = _PAYLOAD_DIGEST_ALGORITHM
+    result_digest_algorithm: str = _PAYLOAD_DIGEST_ALGORITHM
     signature_algorithm: str = _SIGNATURE_ALGORITHM
 
     def __post_init__(self) -> None:
@@ -526,10 +544,13 @@ class SignedReceipt:
         _require_timestamp(self.ended_at)
         _require_timestamp(self.expires_at)
         _require_digest(self.payload_digest)
+        if self.result_digest is not None:
+            _require_digest(self.result_digest)
         if (
             self.decision not in _DECISIONS
             or self.outcome not in _OUTCOMES
             or self.payload_digest_algorithm != _PAYLOAD_DIGEST_ALGORITHM
+            or self.result_digest_algorithm != _PAYLOAD_DIGEST_ALGORITHM
             or self.signature_algorithm != _SIGNATURE_ALGORITHM
             or self.issuer_key_id == self.subject_key_id
             or not self.started_at <= self.ended_at < self.expires_at
@@ -551,6 +572,7 @@ class SignedReceipt:
         if self.decision == "deny" and (
             self.outcome != "error"
             or self.failure is None
+            or self.usage is not None
             or self.backend is not None
             or self.result_count != 0
             or self.truncated
@@ -564,6 +586,12 @@ class SignedReceipt:
             )
         if (self.outcome == "ok") != (self.failure is None):
             raise ProtocolValidationError("The receipt outcome and failure disagree.")
+        if (self.outcome == "ok") != (self.result_digest is not None):
+            raise ProtocolValidationError(
+                "The receipt outcome and result digest disagree."
+            )
+        if self.outcome == "error" and (self.result_count != 0 or self.truncated):
+            raise ProtocolValidationError("A failed receipt cannot describe a result.")
         if self.outcome == "ok" and self.backend is None:
             raise ProtocolValidationError(
                 "A successful receipt requires an approved backend identity."
@@ -626,16 +654,110 @@ class ErrorFrame:
             raise ProtocolValidationError("The Connector error frame is invalid.")
 
 
-SignedRecord: TypeAlias = (
-    PairingInit
-    | PairingChallenge
-    | PairingComplete
-    | SignedGrant
-    | SignedRequest
-    | SignedReceipt
-    | FileGrant
-)
-WireRecord: TypeAlias = SignedRecord | PairingResolution | ErrorFrame
+@dataclass(frozen=True, slots=True)
+class OperationResultMediaV1:
+    coverage: str
+    duration_seconds: int | None = None
+    view_count: int | None = None
+    comment_count: int | None = None
+    subtitle_language: str | None = None
+    subtitle_origin: str | None = None
+    version: str = NORMALIZED_MEDIA_VERSION
+
+    def __post_init__(self) -> None:
+        if (
+            self.version != NORMALIZED_MEDIA_VERSION
+            or self.coverage not in _MEDIA_COVERAGE
+            or (
+                self.subtitle_language is not None
+                and (
+                    type(self.subtitle_language) is not str
+                    or _LANGUAGE_TAG.fullmatch(self.subtitle_language) is None
+                )
+            )
+            or (
+                self.subtitle_origin is not None
+                and self.subtitle_origin not in _SUBTITLE_ORIGINS
+            )
+        ):
+            raise ProtocolValidationError("The operation result media is invalid.")
+        for value in (self.duration_seconds, self.view_count, self.comment_count):
+            if value is not None and (
+                type(value) is not int or not 0 <= value <= MAX_NORMALIZED_INTEGER
+            ):
+                raise ProtocolValidationError(
+                    "The operation result media count is invalid."
+                )
+
+    def character_count(self) -> int:
+        return media_metadata_characters(
+            coverage=self.coverage,
+            duration_seconds=self.duration_seconds,
+            view_count=self.view_count,
+            comment_count=self.comment_count,
+            subtitle_language=self.subtitle_language,
+            subtitle_origin=self.subtitle_origin,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class OperationResultItemV1:
+    kind: str
+    text: str
+    native_id: str | None = None
+    title: str | None = None
+    url: str | None = None
+    author: str | None = None
+    published_at: str | None = None
+    media: OperationResultMediaV1 | None = None
+
+    def __post_init__(self) -> None:
+        if self.kind not in _ITEM_KINDS:
+            raise ProtocolValidationError("The operation result item kind is invalid.")
+        _require_result_string(self.text, maximum=None, nullable=False)
+        _require_result_string(self.native_id, maximum=512, nullable=True)
+        _require_result_string(self.title, maximum=512, nullable=True)
+        _require_result_string(self.author, maximum=256, nullable=True)
+        _require_result_string(self.published_at, maximum=128, nullable=True)
+        _require_result_url(self.url)
+        if self.media is not None and not isinstance(
+            self.media, OperationResultMediaV1
+        ):
+            raise ProtocolValidationError("The operation result media is invalid.")
+
+    def character_count(self) -> int:
+        return normalized_item_characters(
+            kind=self.kind,
+            text=self.text,
+            native_id=self.native_id,
+            title=self.title,
+            url=self.url,
+            author=self.author,
+            published_at=self.published_at,
+            media_characters=(
+                0 if self.media is None else self.media.character_count()
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class OperationResultV1:
+    items: tuple[OperationResultItemV1, ...]
+    truncated: bool
+    version: str = "v1"
+
+    def __post_init__(self) -> None:
+        if (
+            self.version != "v1"
+            or type(self.items) is not tuple
+            or len(self.items) > MAX_JSON_CONTAINER_ITEMS
+            or not all(isinstance(item, OperationResultItemV1) for item in self.items)
+            or type(self.truncated) is not bool
+        ):
+            raise ProtocolValidationError("The operation result is invalid.")
+
+    def character_count(self) -> int:
+        return sum(item.character_count() for item in self.items)
 
 
 class ProtectedOperationPayload:
@@ -661,6 +783,70 @@ class ProtectedOperationPayload:
         return "ProtectedOperationPayload(<redacted>)"
 
     __str__ = __repr__
+
+
+@dataclass(frozen=True, slots=True)
+class OperationInvocationV1:
+    message_id: str
+    signed_request: SignedRequest
+    protected_payload: ProtectedOperationPayload
+
+    def __post_init__(self) -> None:
+        _require_id(self.message_id)
+        if not isinstance(self.signed_request, SignedRequest) or not isinstance(
+            self.protected_payload, ProtectedOperationPayload
+        ):
+            raise ProtocolValidationError("The operation invocation is invalid.")
+        call = self.protected_payload.to_operation_call()
+        if (
+            self.message_id != self.signed_request.message_id
+            or len(self.protected_payload.transport_bytes())
+            > MAX_PROTECTED_OPERATION_BYTES
+            or self.signed_request.payload_digest
+            != operation_payload_digest(self.protected_payload)
+            or self.signed_request.source != call.source.name
+            or self.signed_request.operation != call.operation.name
+        ):
+            raise ProtocolValidationError(
+                "The operation invocation context does not match."
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class OperationResponseV1:
+    message_id: str
+    receipt: SignedReceipt
+    result: OperationResultV1 | None
+
+    def __post_init__(self) -> None:
+        _require_id(self.message_id)
+        if not isinstance(self.receipt, SignedReceipt) or (
+            self.result is not None and not isinstance(self.result, OperationResultV1)
+        ):
+            raise ProtocolValidationError("The operation response is invalid.")
+        if self.message_id != self.receipt.message_id:
+            raise ProtocolValidationError(
+                "The operation response context does not match."
+            )
+        _validate_response_result(self.receipt, self.result)
+
+
+SignedRecord: TypeAlias = (
+    PairingInit
+    | PairingChallenge
+    | PairingComplete
+    | SignedGrant
+    | SignedRequest
+    | SignedReceipt
+    | FileGrant
+)
+WireRecord: TypeAlias = (
+    SignedRecord
+    | PairingResolution
+    | OperationInvocationV1
+    | OperationResponseV1
+    | ErrorFrame
+)
 
 
 def _catalog_operation(source_name: object, operation_name: object) -> OperationSpec:
@@ -784,6 +970,36 @@ def _require_digest(value: object) -> None:
         raise ProtocolValidationError("A Connector digest is invalid.")
 
 
+def _require_result_string(
+    value: object, *, maximum: int | None, nullable: bool
+) -> None:
+    if value is None and nullable:
+        return
+    if type(value) is not str or (maximum is not None and len(value) > maximum):
+        raise ProtocolValidationError("An operation result string is invalid.")
+    _validate_json_value(value)
+
+
+def _require_result_url(value: object) -> None:
+    if value is None:
+        return
+    _require_result_string(value, maximum=4096, nullable=False)
+    try:
+        parsed = urlsplit(cast(str, value))
+        port = parsed.port
+    except ValueError:
+        raise ProtocolValidationError("The operation result URL is invalid.") from None
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or port is not None
+        and not 1 <= port <= 65535
+    ):
+        raise ProtocolValidationError("The operation result URL is invalid.")
+
+
 def _require_signature(value: object) -> None:
     if type(value) is not bytes or len(value) != 64:
         raise ProtocolValidationError("The Connector signature is invalid.")
@@ -831,6 +1047,82 @@ def _grant_claims_mapping(claims: GrantClaims) -> dict[str, JSONValue]:
         "signature_algorithm": claims.signature_algorithm,
         "subject_key_id": claims.subject_key_id,
     }
+
+
+def _result_media_mapping(media: OperationResultMediaV1) -> dict[str, JSONValue]:
+    return {
+        "comment_count": media.comment_count,
+        "coverage": media.coverage,
+        "duration_seconds": media.duration_seconds,
+        "subtitle_language": media.subtitle_language,
+        "subtitle_origin": media.subtitle_origin,
+        "version": media.version,
+        "view_count": media.view_count,
+    }
+
+
+def _result_item_mapping(item: OperationResultItemV1) -> dict[str, JSONValue]:
+    return {
+        "author": item.author,
+        "kind": item.kind,
+        "media": None if item.media is None else _result_media_mapping(item.media),
+        "native_id": item.native_id,
+        "published_at": item.published_at,
+        "text": item.text,
+        "title": item.title,
+        "url": item.url,
+    }
+
+
+def operation_result_mapping(result: OperationResultV1) -> dict[str, JSONValue]:
+    """Return the complete nullable v1 result projection used on the wire."""
+
+    if not isinstance(result, OperationResultV1):
+        raise TypeError("Operation result mapping requires a v1 result.")
+    return {
+        "items": [_result_item_mapping(item) for item in result.items],
+        "truncated": result.truncated,
+        "version": result.version,
+    }
+
+
+def canonical_operation_result_bytes(result: OperationResultV1) -> bytes:
+    """Encode one result within its stricter response-body budget."""
+
+    encoded = canonical_json_bytes(operation_result_mapping(result))
+    if len(encoded) > MAX_OPERATION_RESULT_BYTES:
+        raise ProtocolValidationError("The operation result exceeds its byte limit.")
+    return encoded
+
+
+def operation_result_digest(result: OperationResultV1) -> str:
+    """Bind canonical result bytes into the signed receipt."""
+
+    return hashlib.sha256(
+        _OPERATION_RESULT_DOMAIN + canonical_operation_result_bytes(result)
+    ).hexdigest()
+
+
+def _validate_response_result(
+    receipt: SignedReceipt, result: OperationResultV1 | None
+) -> None:
+    if receipt.outcome == "error":
+        if result is not None or receipt.result_digest is not None:
+            raise ProtocolValidationError("A failed response cannot carry a result.")
+        return
+    if result is None or receipt.result_digest is None:
+        raise ProtocolValidationError("A successful response requires a result.")
+    operation = _catalog_operation(receipt.source, receipt.operation)
+    if (
+        len(result.items) > operation.runtime.maximum_items
+        or result.character_count() > operation.runtime.maximum_characters
+        or receipt.result_count != len(result.items)
+        or receipt.truncated is not result.truncated
+        or receipt.result_digest != operation_result_digest(result)
+    ):
+        raise ProtocolValidationError(
+            "The operation result does not match its signed receipt."
+        )
 
 
 def _claims_mapping(record: SignedRecord) -> dict[str, JSONValue]:
@@ -931,6 +1223,8 @@ def _claims_mapping(record: SignedRecord) -> dict[str, JSONValue]:
             "receipt_id": record.receipt_id,
             "request_id": record.request_id,
             "result_count": record.result_count,
+            "result_digest": record.result_digest,
+            "result_digest_algorithm": record.result_digest_algorithm,
             "signature_algorithm": record.signature_algorithm,
             "source": record.source,
             "started_at": record.started_at,
@@ -973,6 +1267,10 @@ def _record_type(record: WireRecord) -> str:
         return "operation-request"
     if isinstance(record, SignedReceipt):
         return "operation-receipt"
+    if isinstance(record, OperationInvocationV1):
+        return "operation-invocation"
+    if isinstance(record, OperationResponseV1):
+        return "operation-response"
     if isinstance(record, FileGrant):
         return "file-grant"
     if isinstance(record, ErrorFrame):
@@ -1030,6 +1328,38 @@ def encode_record(record: WireRecord) -> bytes:
                     encode_record(record.pairing_complete)
                 ),
                 "signed_grant": _encode_base64url(encode_record(record.signed_grant)),
+            },
+            "message_id": record.message_id,
+            "protocol": CONNECTOR_PROTOCOL_VERSION,
+            "type": _record_type(record),
+        }
+    elif isinstance(record, OperationInvocationV1):
+        protected_mapping = _mapping(
+            load_canonical_json(
+                record.protected_payload.transport_bytes(),
+                max_bytes=MAX_PROTECTED_OPERATION_BYTES,
+            )
+        )
+        frame = {
+            "body": {
+                "protected_payload": cast(dict[str, JSONValue], protected_mapping),
+                "signed_request": _encode_base64url(
+                    encode_record(record.signed_request)
+                ),
+            },
+            "message_id": record.message_id,
+            "protocol": CONNECTOR_PROTOCOL_VERSION,
+            "type": _record_type(record),
+        }
+    elif isinstance(record, OperationResponseV1):
+        frame = {
+            "body": {
+                "receipt": _encode_base64url(encode_record(record.receipt)),
+                "result": (
+                    None
+                    if record.result is None
+                    else operation_result_mapping(record.result)
+                ),
             },
             "message_id": record.message_id,
             "protocol": CONNECTOR_PROTOCOL_VERSION,
@@ -1224,8 +1554,7 @@ def create_signed_receipt(
     started_at: int,
     ended_at: int,
     expires_at: int,
-    result_count: int,
-    truncated: bool,
+    result: OperationResultV1 | None,
     outcome: str,
 ) -> SignedReceipt:
     if not isinstance(request, SignedRequest):
@@ -1234,6 +1563,8 @@ def create_signed_receipt(
         raise ProtocolValidationError(
             "The receipt signer does not match the request audience."
         )
+    if result is not None and not isinstance(result, OperationResultV1):
+        raise TypeError("A receipt result must use the v1 result contract.")
     unsigned = SignedReceipt(
         message_id=message_id,
         receipt_id=receipt_id,
@@ -1253,8 +1584,9 @@ def create_signed_receipt(
         started_at=started_at,
         ended_at=ended_at,
         expires_at=expires_at,
-        result_count=result_count,
-        truncated=truncated,
+        result_count=0 if result is None else len(result.items),
+        truncated=False if result is None else result.truncated,
+        result_digest=None if result is None else operation_result_digest(result),
         outcome=outcome,
         payload_digest=request.payload_digest,
         signature=b"\x00" * 64,
@@ -1570,6 +1902,8 @@ def parse_record(raw: bytes) -> WireRecord:
         "pairing-resolution": _parse_pairing_resolution,
         "operation-request": _parse_signed_request,
         "operation-receipt": _parse_signed_receipt,
+        "operation-invocation": _parse_operation_invocation,
+        "operation-response": _parse_operation_response,
         "file-grant": _parse_file_grant,
     }
     parser = parsers.get(record_type)
@@ -1715,6 +2049,139 @@ def _parse_pairing_resolution(frame: dict[str, object]) -> PairingResolution:
     )
 
 
+def _parse_operation_invocation(frame: dict[str, object]) -> OperationInvocationV1:
+    _closed(frame, {"body", "message_id", "protocol", "type"})
+    if (
+        _string(frame, "protocol") != CONNECTOR_PROTOCOL_VERSION
+        or _string(frame, "type") != "operation-invocation"
+    ):
+        raise ProtocolValidationError("The Connector protocol is invalid.")
+    body = _mapping(frame.get("body"))
+    _closed(body, {"protected_payload", "signed_request"})
+    request = parse_record(
+        _decode_bounded_base64url(
+            _string(body, "signed_request"), maximum=MAX_FRAME_BYTES
+        )
+    )
+    if not isinstance(request, SignedRequest):
+        raise ProtocolValidationError("The operation invocation request is invalid.")
+    protected_bytes = canonical_json_bytes(_mapping(body.get("protected_payload")))
+    if len(protected_bytes) > MAX_PROTECTED_OPERATION_BYTES:
+        raise ProtocolValidationError("The protected operation is oversized.")
+    return OperationInvocationV1(
+        message_id=_string(frame, "message_id"),
+        signed_request=request,
+        protected_payload=parse_protected_operation(protected_bytes),
+    )
+
+
+def _parse_result_media(value: object) -> OperationResultMediaV1 | None:
+    if value is None:
+        return None
+    mapping = _mapping(value)
+    _closed(
+        mapping,
+        {
+            "comment_count",
+            "coverage",
+            "duration_seconds",
+            "subtitle_language",
+            "subtitle_origin",
+            "version",
+            "view_count",
+        },
+    )
+
+    def optional_integer(field: str) -> int | None:
+        item = mapping.get(field)
+        return None if item is None else _integer(mapping, field)
+
+    def optional_string(field: str) -> str | None:
+        item = mapping.get(field)
+        return None if item is None else _string(mapping, field)
+
+    return OperationResultMediaV1(
+        coverage=_string(mapping, "coverage"),
+        duration_seconds=optional_integer("duration_seconds"),
+        view_count=optional_integer("view_count"),
+        comment_count=optional_integer("comment_count"),
+        subtitle_language=optional_string("subtitle_language"),
+        subtitle_origin=optional_string("subtitle_origin"),
+        version=_string(mapping, "version"),
+    )
+
+
+def _parse_result_item(value: object) -> OperationResultItemV1:
+    mapping = _mapping(value)
+    _closed(
+        mapping,
+        {
+            "author",
+            "kind",
+            "media",
+            "native_id",
+            "published_at",
+            "text",
+            "title",
+            "url",
+        },
+    )
+
+    def optional_string(field: str) -> str | None:
+        item = mapping.get(field)
+        return None if item is None else _string(mapping, field)
+
+    return OperationResultItemV1(
+        kind=_string(mapping, "kind"),
+        text=_string(mapping, "text"),
+        native_id=optional_string("native_id"),
+        title=optional_string("title"),
+        url=optional_string("url"),
+        author=optional_string("author"),
+        published_at=optional_string("published_at"),
+        media=_parse_result_media(mapping.get("media")),
+    )
+
+
+def _parse_operation_result(value: object) -> OperationResultV1:
+    mapping = _mapping(value)
+    _closed(mapping, {"items", "truncated", "version"})
+    raw_items = mapping.get("items")
+    if type(raw_items) is not list:
+        raise ProtocolValidationError("The operation result items are invalid.")
+    items = cast(list[object], raw_items)
+    return OperationResultV1(
+        items=tuple(_parse_result_item(item) for item in items),
+        truncated=_boolean(mapping, "truncated"),
+        version=_string(mapping, "version"),
+    )
+
+
+def _parse_operation_response(frame: dict[str, object]) -> OperationResponseV1:
+    _closed(frame, {"body", "message_id", "protocol", "type"})
+    if (
+        _string(frame, "protocol") != CONNECTOR_PROTOCOL_VERSION
+        or _string(frame, "type") != "operation-response"
+    ):
+        raise ProtocolValidationError("The Connector protocol is invalid.")
+    body = _mapping(frame.get("body"))
+    _closed(body, {"receipt", "result"})
+    receipt = parse_record(
+        _decode_bounded_base64url(_string(body, "receipt"), maximum=MAX_FRAME_BYTES)
+    )
+    if not isinstance(receipt, SignedReceipt):
+        raise ProtocolValidationError("The operation response receipt is invalid.")
+    raw_result = body.get("result")
+    result = None if raw_result is None else _parse_operation_result(raw_result)
+    if result is not None:
+        canonical_operation_result_bytes(result)
+    return OperationResponseV1(
+        message_id=_string(frame, "message_id"),
+        receipt=receipt,
+        result=result,
+    )
+
+
 def _parse_signed_request(frame: dict[str, object]) -> SignedRequest:
     message_id, claims, signature = _signed_parts(frame, "operation-request")
     _closed(
@@ -1810,6 +2277,8 @@ def _parse_signed_receipt(frame: dict[str, object]) -> SignedReceipt:
             "receipt_id",
             "request_id",
             "result_count",
+            "result_digest",
+            "result_digest_algorithm",
             "signature_algorithm",
             "source",
             "started_at",
@@ -1840,10 +2309,16 @@ def _parse_signed_receipt(frame: dict[str, object]) -> SignedReceipt:
         expires_at=_integer(claims, "expires_at"),
         result_count=_integer(claims, "result_count"),
         truncated=_boolean(claims, "truncated"),
+        result_digest=(
+            None
+            if claims.get("result_digest") is None
+            else _string(claims, "result_digest")
+        ),
         outcome=_string(claims, "outcome"),
         payload_digest=_string(claims, "payload_digest"),
         signature=signature,
         payload_digest_algorithm=_string(claims, "payload_digest_algorithm"),
+        result_digest_algorithm=_string(claims, "result_digest_algorithm"),
         signature_algorithm=_string(claims, "signature_algorithm"),
     )
 
@@ -2154,6 +2629,26 @@ def verify_signed_receipt(
         raise ReceiptExpiredError(
             "The Connector receipt is outside its time window."
         ) from None
+
+
+def verify_operation_response(
+    response: OperationResponseV1,
+    *,
+    pinned_connector: DevicePublicIdentity,
+    request: SignedRequest,
+    now: int,
+) -> None:
+    """Verify the complete receipt-bound response before evidence or projection."""
+
+    if not isinstance(response, OperationResponseV1):
+        raise ProtocolValidationError("The operation response type is invalid.")
+    verify_signed_receipt(
+        response.receipt,
+        pinned_connector=pinned_connector,
+        request=request,
+        now=now,
+    )
+    _validate_response_result(response.receipt, response.result)
 
 
 def verify_file_grant(

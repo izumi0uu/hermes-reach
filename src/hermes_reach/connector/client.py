@@ -18,7 +18,7 @@ from typing import Final, Literal, Protocol, TypeVar, cast
 from ..catalog import get_operation, get_source
 from ..contracts import OperationCall
 from ..runtime.availability import AvailabilityRecord
-from .audit import ReceiptEvidenceError, ReceiptEvidenceLedger, verify_receipt
+from .audit import ReceiptEvidenceError, ReceiptEvidenceLedger, verify_response
 from .errors import ConnectorError, ConnectorErrorCode
 from .identity import (
     DevicePrivateIdentity,
@@ -39,6 +39,8 @@ from .limits import (
 from .protocol import (
     ErrorFrame,
     GrantScope,
+    OperationInvocationV1,
+    OperationResponseV1,
     PairingChallenge,
     PairingComplete,
     PairingInit,
@@ -623,7 +625,9 @@ class ConnectorClient:
         )
         self._id_factory = _random_protocol_id if id_factory is None else id_factory
 
-    async def execute(self, call: OperationCall, *, trace_id: str) -> SignedReceipt:
+    async def execute(
+        self, call: OperationCall, *, trace_id: str
+    ) -> OperationResponseV1:
         if not isinstance(call, OperationCall):
             raise TypeError("Connector requests require a validated operation call.")
         now = _clock_value(self._wall_clock)
@@ -654,9 +658,10 @@ class ConnectorClient:
             deadline=deadline,
             protected_payload=protected,
         )
+        invocation = OperationInvocationV1(request.message_id, request, protected)
         try:
             response = await self._transport.exchange(
-                request,
+                invocation,
                 deadline=float(self._monotonic_clock()) + (deadline - now),
             )
         except ConnectorError as error:
@@ -694,7 +699,7 @@ class ConnectorClient:
                 ),
             )
             raise ConnectorError(ConnectorErrorCode.CONNECTOR_PROTOCOL_MISMATCH)
-        if not isinstance(response, SignedReceipt):
+        if not isinstance(response, OperationResponseV1):
             _save_snapshot_after_error(
                 self._snapshot_store,
                 _snapshot(
@@ -707,27 +712,18 @@ class ConnectorClient:
             raise ConnectorError(ConnectorErrorCode.CONNECTOR_PROTOCOL_MISMATCH)
         observed_at = _clock_value(self._wall_clock)
         try:
-            verify_receipt(
+            verify_response(
                 response,
                 pinned_connector=self._profile.connector_identity,
                 request=request,
                 now=observed_at,
             )
             self._evidence_ledger.append_verified(
-                response,
+                response.receipt,
                 request=request,
                 now=observed_at,
             )
-        except ConnectorError as error:
-            _save_snapshot_after_error(
-                self._snapshot_store,
-                _snapshot(
-                    self._profile,
-                    _clock_value(self._wall_clock),
-                    "unavailable",
-                    ConnectorErrorCode(error.code),
-                ),
-            )
+        except ConnectorError:
             raise
         except ReceiptEvidenceError:
             _save_snapshot_after_error(
@@ -740,10 +736,11 @@ class ConnectorClient:
                 ),
             )
             raise ConnectorError(ConnectorErrorCode.CONNECTOR_STATE_INVALID) from None
-        snapshot = _snapshot_from_receipt(self._profile, response, observed_at)
+        receipt = response.receipt
+        snapshot = _snapshot_from_receipt(self._profile, receipt, observed_at)
         self._snapshot_store.save(snapshot)
-        if response.failure is not None:
-            raise ConnectorError(response.failure.cause_code)
+        if receipt.failure is not None:
+            raise ConnectorError(receipt.failure.cause_code)
         return response
 
 

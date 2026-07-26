@@ -19,6 +19,8 @@ from hermes_reach.connector.errors import ConnectorError, ConnectorErrorCode
 from hermes_reach.connector.identity import DevicePrivateIdentity
 from hermes_reach.connector.limits import AUDIT_RETENTION_SECONDS
 from hermes_reach.connector.protocol import (
+    OperationResultItemV1,
+    OperationResultV1,
     PublicBackendIdentity,
     SignedReceipt,
     SignedRequest,
@@ -31,6 +33,7 @@ from hermes_reach.contracts import validate_read
 NOW = 1_800_000_000
 CANARY = "QUERY_CANARY=TOKEN_CANARY"
 BACKEND = PublicBackendIdentity("reach-bounded-executor-v1", "1")
+RESULT = OperationResultV1((OperationResultItemV1("content", "result"),), False)
 PROTECTED = protect_operation_call(
     validate_read(
         {
@@ -104,7 +107,7 @@ def _success_receipt(
         ended_at=effective_end,
         expires_at=effective_end + 120,
         backend=BACKEND,
-        result_count=1,
+        result=RESULT,
     )
 
 
@@ -130,7 +133,7 @@ def test_bound_receipt_issuer_signs_exact_success_once() -> None:
         ended_at=NOW + 2,
         expires_at=NOW + 120,
         backend=BACKEND,
-        result_count=1,
+        result=RESULT,
     )
 
     assert receipt.decision == "allow"
@@ -152,7 +155,7 @@ def test_bound_receipt_issuer_signs_exact_success_once() -> None:
             ended_at=NOW + 3,
             expires_at=NOW + 120,
             backend=BACKEND,
-            result_count=1,
+            result=RESULT,
         )
 
 

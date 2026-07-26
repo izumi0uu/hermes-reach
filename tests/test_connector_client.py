@@ -31,11 +31,14 @@ from hermes_reach.connector.protocol import (
     ErrorFrame,
     GrantClaims,
     GrantScope,
+    OperationInvocationV1,
+    OperationResponseV1,
+    OperationResultItemV1,
+    OperationResultV1,
     PairingInit,
     PairingResolution,
     PublicBackendIdentity,
     ReceiptUsage,
-    SignedReceipt,
     canonical_json_bytes,
     create_pairing_challenge,
     create_pairing_complete,
@@ -178,12 +181,17 @@ class _ReceiptTransport:
         self._tamper = tamper
         self.requests = []
 
-    async def exchange(self, request: object, *, deadline: float) -> SignedReceipt:
-        from hermes_reach.connector.protocol import SignedRequest
-
-        assert isinstance(request, SignedRequest)
+    async def exchange(
+        self, invocation: object, *, deadline: float
+    ) -> OperationResponseV1:
+        assert isinstance(invocation, OperationInvocationV1)
         assert deadline > 0
-        self.requests.append(request)
+        self.requests.append(invocation)
+        request = invocation.signed_request
+        result = OperationResultV1(
+            (OperationResultItemV1("content", "normalized result"),),
+            False,
+        )
         receipt = create_signed_receipt(
             self._connector,
             message_id=self._ids(),
@@ -196,8 +204,7 @@ class _ReceiptTransport:
             started_at=request.issued_at,
             ended_at=request.issued_at + 1,
             expires_at=request.issued_at + 120,
-            result_count=1,
-            truncated=False,
+            result=result,
             outcome="ok",
         )
         if self._tamper:
@@ -205,14 +212,29 @@ class _ReceiptTransport:
                 receipt,
                 signature=bytes([receipt.signature[0] ^ 1]) + receipt.signature[1:],
             )
-        return receipt
+        return OperationResponseV1(receipt.message_id, receipt, result)
+
+
+class _ResultTamperingTransport(_ReceiptTransport):
+    async def exchange(
+        self, invocation: object, *, deadline: float
+    ) -> OperationResponseV1:
+        response = await super().exchange(invocation, deadline=deadline)
+        tampered = OperationResultV1(
+            (OperationResultItemV1("content", "tampered after receipt creation"),),
+            False,
+        )
+        object.__setattr__(response, "result", tampered)
+        return response
 
 
 class _OfflineTransport:
     def __init__(self) -> None:
         self.calls = 0
 
-    async def exchange(self, request: object, *, deadline: float) -> SignedReceipt:
+    async def exchange(
+        self, request: object, *, deadline: float
+    ) -> OperationResponseV1:
         del request, deadline
         self.calls += 1
         raise ConnectorError(ConnectorErrorCode.CONNECTOR_OFFLINE)
@@ -565,9 +587,10 @@ def test_connector_client_verifies_before_evidence_and_updates_snapshot(
         }
     )
 
-    receipt = asyncio.run(client.execute(call, trace_id=TRACE_ID))
+    response = asyncio.run(client.execute(call, trace_id=TRACE_ID))
 
-    assert receipt.outcome == "ok"
+    assert response.receipt.outcome == "ok"
+    assert response.result is not None
     assert len(transport.requests) == 1
     assert len(ledger.records()) == 1
     snapshot = snapshots.load()
@@ -619,10 +642,42 @@ def test_tampered_receipt_creates_no_evidence_or_snapshot(tmp_path: Path) -> Non
         )
     _assert_code(caught, ConnectorErrorCode.RECEIPT_INVALID.value)
     assert ledger.records() == ()
-    snapshot = snapshots.load()
-    assert snapshot is not None
-    assert snapshot.state == "unavailable"
-    assert snapshot.cause_code is ConnectorErrorCode.RECEIPT_INVALID
+    assert snapshots.load() is None
+
+
+def test_tampered_result_creates_no_evidence_or_snapshot(
+    tmp_path: Path,
+) -> None:
+    profile, vps, connector, _, _, _ = _paired_fixture(tmp_path)
+    ledger = ReceiptEvidenceLedger(
+        tmp_path / "vps" / "receipts.jsonl",
+        connector.public_identity,
+        role="vps",
+    )
+    snapshots = ConnectorSnapshotStore(tmp_path / "vps")
+    client = ConnectorClient(
+        profile,
+        vps,
+        _ResultTamperingTransport(connector, _IdFactory(920)),
+        ledger,
+        snapshots,
+        wall_clock=lambda: NOW + 2,
+        id_factory=_IdFactory(1020),
+    )
+    call = validate_read(
+        {
+            "source": "web",
+            "operation": "read.url",
+            "target": {"url": "https://example.com/article"},
+        }
+    )
+
+    with pytest.raises(ConnectorError) as caught:
+        asyncio.run(client.execute(call, trace_id=TRACE_ID))
+
+    _assert_code(caught, ConnectorErrorCode.RECEIPT_INVALID.value)
+    assert ledger.records() == ()
+    assert snapshots.load() is None
 
 
 def test_evidence_failure_and_snapshot_failure_stay_closed(tmp_path: Path) -> None:

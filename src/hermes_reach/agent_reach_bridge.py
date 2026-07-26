@@ -137,9 +137,7 @@ def upstream_doctor_data(
 
     catalog = catalog_provider()
     provider = (
-        doctor_provider
-        if doctor_provider is not None
-        else _default_doctor_provider
+        doctor_provider if doctor_provider is not None else _default_doctor_provider
     )
     raw_report = provider(ReadOnlyAgentReachConfig())
     expected = {channel.upstream_name for channel in catalog.channels}

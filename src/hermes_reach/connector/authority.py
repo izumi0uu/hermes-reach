@@ -15,6 +15,7 @@ from .errors import ConnectorErrorCode, category_for_code
 from .identity import DevicePrivateIdentity
 from .protocol import (
     GrantScope,
+    OperationResultV1,
     ProtectedOperationPayload,
     ProtocolValidationError,
     PublicBackendIdentity,
@@ -132,8 +133,7 @@ class BoundReceiptIssuer:
         expires_at: int,
         failure_code: ConnectorErrorCode | None = None,
         backend: PublicBackendIdentity | None = None,
-        result_count: int = 0,
-        truncated: bool = False,
+        result: OperationResultV1 | None = None,
     ) -> SignedReceipt:
         """Sign one closed receipt matching the already committed decision."""
 
@@ -157,14 +157,17 @@ class BoundReceiptIssuer:
                 usage = None
                 decision = "deny"
                 backend = None
-                result_count = 0
-                truncated = False
+                result = None
             if failure_code is None:
                 if backend is None:
                     raise ValueError("Successful receipts require an approved backend.")
+                if result is None:
+                    raise ValueError("Successful receipts require a bounded result.")
                 failure = None
                 outcome = "ok"
             else:
+                if result is not None:
+                    raise ValueError("Failed receipts cannot contain a result.")
                 failure = ReceiptFailure(
                     category_for_code(failure_code).value, failure_code
                 )
@@ -181,8 +184,7 @@ class BoundReceiptIssuer:
                 started_at=self._started_at,
                 ended_at=ended_at,
                 expires_at=expires_at,
-                result_count=result_count,
-                truncated=truncated,
+                result=result,
                 outcome=outcome,
             )
             verify_signed_receipt(
