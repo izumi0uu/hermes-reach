@@ -34,17 +34,20 @@ def source_status(
     for operation in selected:
         record = resolver(source.name, operation.name)
         records.append(record)
-        operations.append(
-            {
-                "name": operation.name,
-                "tool": operation.tool,
-                "alpha_wave": operation.alpha_wave,
-                "access_class": operation.access_class,
-                "release_state": operation.implementation_state,
-                "availability": record.state,
-                "reason": record.reason,
-            }
-        )
+        operation_status: dict[str, object] = {
+            "name": operation.name,
+            "tool": operation.tool,
+            "alpha_wave": operation.alpha_wave,
+            "access_class": operation.access_class,
+            "release_state": operation.implementation_state,
+            "availability": record.state,
+            "reason": record.reason,
+        }
+        if record.cause_code is not None:
+            operation_status["cause_code"] = record.cause_code
+        if record.snapshot_at is not None:
+            operation_status["snapshot_at"] = record.snapshot_at
+        operations.append(operation_status)
     source_availability = _aggregate_availability(records)
     return {
         "source": source.name,

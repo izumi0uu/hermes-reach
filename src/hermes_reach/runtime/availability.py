@@ -16,3 +16,5 @@ class AvailabilityRecord:
     reason: str
     backend_id: str | None = None
     backend_version: str | None = None
+    cause_code: str | None = None
+    snapshot_at: int | None = None
