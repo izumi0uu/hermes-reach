@@ -17,6 +17,8 @@ from hermes_reach.connector.limits import (
     MAX_FRAME_BYTES,
     MAX_GRANT_TTL_SECONDS,
     MAX_GRANT_USES,
+    MAX_OPERATION_RESULT_BYTES,
+    MAX_PROTECTED_OPERATION_BYTES,
     MAX_TIMESTAMP_SECONDS,
     PAIRING_TTL_SECONDS,
 )
@@ -25,6 +27,11 @@ from hermes_reach.connector.protocol import (
     FileGrant,
     GrantClaims,
     GrantScope,
+    OperationInvocationV1,
+    OperationResponseV1,
+    OperationResultItemV1,
+    OperationResultMediaV1,
+    OperationResultV1,
     PairingChallenge,
     PairingComplete,
     PairingInit,
@@ -38,6 +45,7 @@ from hermes_reach.connector.protocol import (
     SignedReceipt,
     SignedRequest,
     canonical_json_bytes,
+    canonical_operation_result_bytes,
     create_file_grant,
     create_pairing_challenge,
     create_pairing_complete,
@@ -49,6 +57,7 @@ from hermes_reach.connector.protocol import (
     encode_record,
     load_canonical_json,
     operation_payload_digest,
+    operation_result_digest,
     pairing_ca_der,
     pairing_sas,
     pairing_transcript_hash,
@@ -58,6 +67,7 @@ from hermes_reach.connector.protocol import (
     record_digest,
     record_signing_bytes,
     verify_file_grant,
+    verify_operation_response,
     verify_pairing_challenge,
     verify_pairing_complete,
     verify_pairing_init,
@@ -68,6 +78,7 @@ from hermes_reach.connector.protocol import (
     verify_signed_request,
 )
 from hermes_reach.contracts import validate_read, validate_transcribe
+from hermes_reach.normalized import MAX_NORMALIZED_INTEGER
 
 VPS_SEED = bytes.fromhex(
     "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60"
@@ -88,6 +99,7 @@ RECEIPT_ID = "qgi2dmob2hq7e3tqoj2hm5dyp4"
 RECEIPT_MESSAGE_ID = "syljpf4x2zlypb4x2zlypcmlq4"
 FILE_GRANT_ID = "vk54zxpo74aacaqdaqcqmbyha4"
 FILE_MESSAGE_ID = "x3ahb4hq6dypb4hq6dypb4irce"
+CAPABILITY_ID = "aaaaaaaaaaaaaaaaaaaaaaaafi"
 
 VPS_NONCE = bytes(range(32))
 CONNECTOR_NONCE = bytes(range(32, 64))
@@ -115,6 +127,31 @@ def _vector_bytes(record_type: str, field: str) -> bytes:
 
 def _identity(seed: bytes) -> DevicePrivateIdentity:
     return DevicePrivateIdentity._from_seed_for_testing(seed)
+
+
+def _result(*, text: str = "result text", truncated: bool = False) -> OperationResultV1:
+    return OperationResultV1(
+        items=(
+            OperationResultItemV1(
+                kind="content",
+                text=text,
+                native_id="article-1",
+                title="Result title",
+                url="https://example.invalid/result",
+                author="Hermes Reach",
+                published_at="2026-07-26T00:00:00Z",
+                media=OperationResultMediaV1(
+                    coverage="complete",
+                    duration_seconds=42,
+                    view_count=7,
+                    comment_count=2,
+                    subtitle_language="en",
+                    subtitle_origin="manual",
+                ),
+            ),
+        ),
+        truncated=truncated,
+    )
 
 
 @pytest.fixture
@@ -280,9 +317,29 @@ def signed_receipt(
         started_at=NOW + 5,
         ended_at=NOW + 6,
         expires_at=NOW + 306,
-        result_count=1,
-        truncated=False,
+        result=_result(),
         outcome="ok",
+    )
+
+
+@pytest.fixture
+def operation_invocation(
+    signed_request: SignedRequest,
+    protected: ProtectedOperationPayload,
+) -> OperationInvocationV1:
+    return OperationInvocationV1(
+        signed_request.message_id,
+        signed_request,
+        protected,
+    )
+
+
+@pytest.fixture
+def operation_response(signed_receipt: SignedReceipt) -> OperationResponseV1:
+    return OperationResponseV1(
+        signed_receipt.message_id,
+        signed_receipt,
+        _result(),
     )
 
 
@@ -315,6 +372,8 @@ def all_records(
     signed_grant: SignedGrant,
     signed_request: SignedRequest,
     signed_receipt: SignedReceipt,
+    operation_invocation: OperationInvocationV1,
+    operation_response: OperationResponseV1,
     file_grant: FileGrant,
 ) -> tuple[object, ...]:
     return (
@@ -324,6 +383,8 @@ def all_records(
         signed_grant,
         signed_request,
         signed_receipt,
+        operation_invocation,
+        operation_response,
         file_grant,
         ErrorFrame(
             message_id=REQUEST_MESSAGE_ID,
@@ -346,6 +407,13 @@ def _raw(value: object) -> bytes:
         sort_keys=True,
         separators=(",", ":"),
     ).encode("ascii")
+
+
+def _exact_json_object(size: int) -> bytes:
+    prefix = b'{"padding":"'
+    suffix = b'"}'
+    assert size >= len(prefix) + len(suffix)
+    return prefix + b"x" * (size - len(prefix) - len(suffix)) + suffix
 
 
 def test_canonical_json_pins_exact_supported_scalar_encoding() -> None:
@@ -501,6 +569,36 @@ def test_every_signed_record_matches_an_independent_complete_vector(
         assert signer.public_identity.verify(domain, signing_bytes, signature)
 
 
+def test_operation_envelopes_and_result_match_frozen_vectors(
+    operation_invocation: OperationInvocationV1,
+    operation_response: OperationResponseV1,
+) -> None:
+    result = operation_response.result
+    assert result is not None
+
+    assert encode_record(operation_invocation) == _vector_bytes(
+        "operation_invocation", "frame_b64"
+    )
+    assert (
+        record_digest(operation_invocation)
+        == FROZEN_PROTOCOL_VECTORS["operation_invocation"]["digest"]
+    )
+    assert canonical_operation_result_bytes(result) == _vector_bytes(
+        "operation_result", "canonical_b64"
+    )
+    assert (
+        operation_result_digest(result)
+        == FROZEN_PROTOCOL_VECTORS["operation_result"]["digest"]
+    )
+    assert encode_record(operation_response) == _vector_bytes(
+        "operation_response", "frame_b64"
+    )
+    assert (
+        record_digest(operation_response)
+        == FROZEN_PROTOCOL_VECTORS["operation_response"]["digest"]
+    )
+
+
 def test_every_record_round_trips_as_one_closed_canonical_frame(
     all_records: tuple[object, ...],
 ) -> None:
@@ -508,6 +606,503 @@ def test_every_record_round_trips_as_one_closed_canonical_frame(
         encoded = encode_record(record)
         assert len(encoded) <= MAX_FRAME_BYTES
         assert encode_record(parse_record(encoded)) == encoded
+
+
+def test_operation_result_wire_shape_keeps_every_nullable_item_and_media_key(
+    connector: DevicePrivateIdentity,
+    signed_request: SignedRequest,
+) -> None:
+    result = OperationResultV1(
+        items=(
+            OperationResultItemV1(
+                kind="content",
+                text="",
+                media=OperationResultMediaV1(coverage="unknown"),
+            ),
+        ),
+        truncated=False,
+    )
+    mapping = json.loads(canonical_operation_result_bytes(result))
+    item = mapping["items"][0]
+    media = item["media"]
+
+    assert set(mapping) == {"items", "truncated", "version"}
+    assert set(item) == {
+        "author",
+        "kind",
+        "media",
+        "native_id",
+        "published_at",
+        "text",
+        "title",
+        "url",
+    }
+    assert item == {
+        "author": None,
+        "kind": "content",
+        "media": media,
+        "native_id": None,
+        "published_at": None,
+        "text": "",
+        "title": None,
+        "url": None,
+    }
+    assert media == {
+        "comment_count": None,
+        "coverage": "unknown",
+        "duration_seconds": None,
+        "subtitle_language": None,
+        "subtitle_origin": None,
+        "version": "v1",
+        "view_count": None,
+    }
+
+    receipt = create_signed_receipt(
+        signer=connector,
+        message_id=RECEIPT_MESSAGE_ID,
+        receipt_id=RECEIPT_ID,
+        request=signed_request,
+        decision="allow",
+        failure=None,
+        usage=ReceiptUsage(sequence=1, remaining=199),
+        backend=PublicBackendIdentity("reach-bounded-executor-v1", "1"),
+        started_at=NOW + 5,
+        ended_at=NOW + 6,
+        expires_at=NOW + 306,
+        result=result,
+        outcome="ok",
+    )
+    response = OperationResponseV1(receipt.message_id, receipt, result)
+    assert parse_record(encode_record(response)) == response
+
+
+@pytest.mark.parametrize(
+    ("envelope", "location"),
+    [
+        pytest.param("invocation", "outer", id="invocation-outer"),
+        pytest.param("invocation", "body", id="invocation-body"),
+        pytest.param("response", "outer", id="response-outer"),
+        pytest.param("response", "body", id="response-body"),
+    ],
+)
+def test_operation_envelope_parser_rejects_unknown_fields(
+    operation_invocation: OperationInvocationV1,
+    operation_response: OperationResponseV1,
+    envelope: str,
+    location: str,
+) -> None:
+    record = operation_invocation if envelope == "invocation" else operation_response
+    mapping = _mapping(record)
+    target = mapping if location == "outer" else mapping["body"]
+    target["provider_SECRET_CANARY"] = "TOKEN_CANARY"  # type: ignore[index]
+
+    with pytest.raises(ProtocolValidationError):
+        parse_record(_raw(mapping))
+
+
+@pytest.mark.parametrize(
+    ("location", "field", "mutation"),
+    [
+        pytest.param("result", "version", "missing", id="result-missing"),
+        pytest.param("result", "secret", "unknown", id="result-unknown"),
+        pytest.param("item", "author", "missing", id="item-missing-null"),
+        pytest.param("item", "secret", "unknown", id="item-unknown"),
+        pytest.param("media", "comment_count", "missing", id="media-missing-null"),
+        pytest.param("media", "secret", "unknown", id="media-unknown"),
+    ],
+)
+def test_operation_result_parser_requires_exact_closed_nested_key_sets(
+    operation_response: OperationResponseV1,
+    location: str,
+    field: str,
+    mutation: str,
+) -> None:
+    mapping = _mapping(operation_response)
+    result = mapping["body"]["result"]  # type: ignore[index]
+    item = result["items"][0]  # type: ignore[index]
+    targets = {"result": result, "item": item, "media": item["media"]}
+    target = targets[location]
+    if mutation == "missing":
+        target.pop(field)
+    else:
+        target[field] = "TOKEN_CANARY"
+
+    with pytest.raises(ProtocolValidationError):
+        parse_record(_raw(mapping))
+
+
+@pytest.mark.parametrize(
+    ("record_name", "field"),
+    [
+        pytest.param("invocation", "signed_request", id="signed-request"),
+        pytest.param("response", "receipt", id="signed-receipt"),
+    ],
+)
+def test_operation_envelopes_reject_padded_embedded_record_base64url(
+    operation_invocation: OperationInvocationV1,
+    operation_response: OperationResponseV1,
+    record_name: str,
+    field: str,
+) -> None:
+    record = operation_invocation if record_name == "invocation" else operation_response
+    mapping = _mapping(record)
+    body = mapping["body"]
+    body[field] += "="  # type: ignore[index,operator]
+
+    with pytest.raises(ProtocolValidationError):
+        parse_record(_raw(mapping))
+
+
+def test_operation_invocation_rejects_protected_payload_substitution(
+    operation_invocation: OperationInvocationV1,
+) -> None:
+    substituted = protect_operation_call(
+        validate_read(
+            {
+                "source": "rss",
+                "operation": "read.feed",
+                "target": {"url": "https://example.invalid/feed.xml"},
+            }
+        )
+    )
+    mapping = _mapping(operation_invocation)
+    mapping["body"]["protected_payload"] = json.loads(  # type: ignore[index]
+        substituted.transport_bytes()
+    )
+
+    with pytest.raises(ProtocolValidationError):
+        parse_record(_raw(mapping))
+
+
+def test_operation_response_rejects_result_substitution_and_digest_mismatch(
+    operation_response: OperationResponseV1,
+) -> None:
+    substituted = _mapping(operation_response)
+    substituted["body"]["result"]["items"][0]["text"] = "substituted"  # type: ignore[index]
+
+    mismatched_digest = _mapping(operation_response)
+    body = mismatched_digest["body"]  # type: ignore[assignment]
+    receipt_value = body["receipt"]  # type: ignore[index]
+    assert isinstance(receipt_value, str)
+    receipt_bytes = base64.urlsafe_b64decode(
+        receipt_value + "=" * (-len(receipt_value) % 4)
+    )
+    receipt_mapping = json.loads(receipt_bytes)
+    receipt_mapping["body"]["claims"]["result_digest"] = "00" * 32
+    body["receipt"] = (
+        base64.urlsafe_b64encode(_raw(receipt_mapping)).decode("ascii").rstrip("=")
+    )
+
+    for mapping in (substituted, mismatched_digest):
+        with pytest.raises(ProtocolValidationError):
+            parse_record(_raw(mapping))
+
+
+def test_response_verification_rejects_a_resigned_result_without_a_resigned_receipt(
+    connector: DevicePrivateIdentity,
+    signed_request: SignedRequest,
+    signed_receipt: SignedReceipt,
+) -> None:
+    other_result = _result(text="other result")
+    response = OperationResponseV1(
+        signed_receipt.message_id,
+        replace(
+            signed_receipt,
+            result_digest=operation_result_digest(other_result),
+        ),
+        other_result,
+    )
+
+    with pytest.raises(ProtocolValidationError):
+        verify_operation_response(
+            response,
+            pinned_connector=connector.public_identity,
+            request=signed_request,
+            now=NOW + 7,
+        )
+
+
+def test_empty_success_and_allow_error_are_closed_response_states(
+    connector: DevicePrivateIdentity,
+    signed_request: SignedRequest,
+) -> None:
+    empty = OperationResultV1(items=(), truncated=False)
+    success = create_signed_receipt(
+        signer=connector,
+        message_id=RECEIPT_MESSAGE_ID,
+        receipt_id=RECEIPT_ID,
+        request=signed_request,
+        decision="allow",
+        failure=None,
+        usage=ReceiptUsage(sequence=1, remaining=199),
+        backend=PublicBackendIdentity("reach-bounded-executor-v1", "1"),
+        started_at=NOW + 5,
+        ended_at=NOW + 6,
+        expires_at=NOW + 306,
+        result=empty,
+        outcome="ok",
+    )
+    failed = create_signed_receipt(
+        signer=connector,
+        message_id=COMPLETE_MESSAGE_ID,
+        receipt_id=FILE_GRANT_ID,
+        request=signed_request,
+        decision="allow",
+        failure=ReceiptFailure("secret", ConnectorErrorCode.SECRET_UNAVAILABLE),
+        usage=ReceiptUsage(sequence=2, remaining=198),
+        backend=None,
+        started_at=NOW + 5,
+        ended_at=NOW + 6,
+        expires_at=NOW + 306,
+        result=None,
+        outcome="error",
+    )
+
+    success_response = OperationResponseV1(success.message_id, success, empty)
+    failed_response = OperationResponseV1(failed.message_id, failed, None)
+    for response in (success_response, failed_response):
+        assert parse_record(encode_record(response)) == response
+        assert (
+            verify_operation_response(
+                response,
+                pinned_connector=connector.public_identity,
+                request=signed_request,
+                now=NOW + 7,
+            )
+            is None
+        )
+    assert success.result_count == 0
+    assert success.result_digest == operation_result_digest(empty)
+    assert failed.result_count == 0
+    assert failed.result_digest is None
+
+
+def test_operation_response_rejects_every_receipt_result_consistency_mismatch(
+    signed_receipt: SignedReceipt,
+) -> None:
+    result = _result()
+    mismatches = (
+        (replace(signed_receipt, result_count=0), result),
+        (replace(signed_receipt, truncated=True), result),
+        (replace(signed_receipt, result_digest="00" * 32), result),
+        (signed_receipt, None),
+    )
+    for receipt, candidate in mismatches:
+        with pytest.raises(ProtocolValidationError):
+            OperationResponseV1(receipt.message_id, receipt, candidate)
+
+
+def test_result_url_text_and_media_integer_boundaries() -> None:
+    url_prefix = "https://example.invalid/"
+    maximum_url = url_prefix + "x" * (4096 - len(url_prefix))
+
+    assert OperationResultItemV1("content", "", url=maximum_url).url == maximum_url
+    assert OperationResultItemV1("content", "").text == ""
+    assert (
+        OperationResultMediaV1(
+            coverage="unknown",
+            duration_seconds=MAX_NORMALIZED_INTEGER,
+            view_count=MAX_NORMALIZED_INTEGER,
+            comment_count=MAX_NORMALIZED_INTEGER,
+        ).duration_seconds
+        == MAX_NORMALIZED_INTEGER
+    )
+
+    invalid_items = (
+        {"kind": "content", "text": "", "url": maximum_url + "x"},
+        {"kind": "content", "text": "", "url": "ftp://example.invalid/file"},
+        {"kind": "content", "text": "line\nfeed"},
+    )
+    for values in invalid_items:
+        with pytest.raises(ProtocolValidationError):
+            OperationResultItemV1(**values)
+    for value in (MAX_NORMALIZED_INTEGER + 1, True):
+        with pytest.raises(ProtocolValidationError):
+            OperationResultMediaV1(coverage="unknown", view_count=value)
+
+
+def test_result_item_count_and_character_boundaries_follow_the_catalog(
+    connector: DevicePrivateIdentity,
+    signed_request: SignedRequest,
+    protected: ProtectedOperationPayload,
+) -> None:
+    runtime = protected.to_operation_call().operation.runtime
+    item = OperationResultItemV1(kind="content", text="")
+    maximum_items = OperationResultV1(
+        items=(item,) * runtime.maximum_items,
+        truncated=False,
+    )
+    item_receipt = create_signed_receipt(
+        signer=connector,
+        message_id=RECEIPT_MESSAGE_ID,
+        receipt_id=RECEIPT_ID,
+        request=signed_request,
+        decision="allow",
+        failure=None,
+        usage=ReceiptUsage(sequence=1, remaining=199),
+        backend=PublicBackendIdentity("reach-bounded-executor-v1", "1"),
+        started_at=NOW + 5,
+        ended_at=NOW + 6,
+        expires_at=NOW + 306,
+        result=maximum_items,
+        outcome="ok",
+    )
+    assert (
+        OperationResponseV1(item_receipt.message_id, item_receipt, maximum_items).result
+        is maximum_items
+    )
+
+    too_many_items = replace(maximum_items, items=maximum_items.items + (item,))
+    with pytest.raises(ProtocolValidationError):
+        OperationResponseV1(
+            item_receipt.message_id,
+            replace(
+                item_receipt,
+                result_digest=operation_result_digest(too_many_items),
+            ),
+            too_many_items,
+        )
+
+    maximum_text = "x" * (runtime.maximum_characters - len(item.kind))
+    maximum_characters = OperationResultV1(
+        items=(replace(item, text=maximum_text),),
+        truncated=False,
+    )
+    character_receipt = create_signed_receipt(
+        signer=connector,
+        message_id=RECEIPT_MESSAGE_ID,
+        receipt_id=RECEIPT_ID,
+        request=signed_request,
+        decision="allow",
+        failure=None,
+        usage=ReceiptUsage(sequence=1, remaining=199),
+        backend=PublicBackendIdentity("reach-bounded-executor-v1", "1"),
+        started_at=NOW + 5,
+        ended_at=NOW + 6,
+        expires_at=NOW + 306,
+        result=maximum_characters,
+        outcome="ok",
+    )
+    assert maximum_characters.character_count() == runtime.maximum_characters
+    assert (
+        OperationResponseV1(
+            character_receipt.message_id,
+            character_receipt,
+            maximum_characters,
+        ).result
+        is maximum_characters
+    )
+
+    too_many_characters = replace(
+        maximum_characters,
+        items=(replace(maximum_characters.items[0], text=maximum_text + "x"),),
+    )
+    with pytest.raises(ProtocolValidationError):
+        OperationResponseV1(
+            character_receipt.message_id,
+            replace(
+                character_receipt,
+                result_digest=operation_result_digest(too_many_characters),
+            ),
+            too_many_characters,
+        )
+
+
+def test_protected_result_and_outer_frame_byte_boundaries(
+    signed_request: SignedRequest,
+    protected: ProtectedOperationPayload,
+) -> None:
+    exact_protected = _exact_json_object(MAX_PROTECTED_OPERATION_BYTES)
+    oversized_protected = _exact_json_object(MAX_PROTECTED_OPERATION_BYTES + 1)
+    assert load_canonical_json(
+        exact_protected,
+        max_bytes=MAX_PROTECTED_OPERATION_BYTES,
+    )["padding"] == "x" * (MAX_PROTECTED_OPERATION_BYTES - len(b'{"padding":""}'))
+    with pytest.raises(ProtocolValidationError):
+        load_canonical_json(
+            oversized_protected,
+            max_bytes=MAX_PROTECTED_OPERATION_BYTES,
+        )
+
+    exact_payload = ProtectedOperationPayload(
+        protected.to_operation_call(), exact_protected
+    )
+    exact_request = replace(
+        signed_request,
+        payload_digest=operation_payload_digest(exact_payload),
+    )
+    assert (
+        OperationInvocationV1(
+            exact_request.message_id, exact_request, exact_payload
+        ).protected_payload
+        is exact_payload
+    )
+    oversized_payload = ProtectedOperationPayload(
+        protected.to_operation_call(), oversized_protected
+    )
+    oversized_request = replace(
+        signed_request,
+        payload_digest=operation_payload_digest(oversized_payload),
+    )
+    with pytest.raises(ProtocolValidationError):
+        OperationInvocationV1(
+            oversized_request.message_id,
+            oversized_request,
+            oversized_payload,
+        )
+
+    empty_result = OperationResultV1(
+        items=(OperationResultItemV1(kind="content", text=""),),
+        truncated=False,
+    )
+    base_size = len(canonical_operation_result_bytes(empty_result))
+    exact_result = replace(
+        empty_result,
+        items=(
+            replace(
+                empty_result.items[0],
+                text="x" * (MAX_OPERATION_RESULT_BYTES - base_size),
+            ),
+        ),
+    )
+    assert (
+        len(canonical_operation_result_bytes(exact_result))
+        == MAX_OPERATION_RESULT_BYTES
+    )
+    oversized_result = replace(
+        exact_result,
+        items=(replace(exact_result.items[0], text=exact_result.items[0].text + "x"),),
+    )
+    with pytest.raises(ProtocolValidationError):
+        canonical_operation_result_bytes(oversized_result)
+
+    exact_frame = _exact_json_object(MAX_FRAME_BYTES)
+    assert canonical_json_bytes(load_canonical_json(exact_frame)) == exact_frame
+    with pytest.raises(ProtocolValidationError):
+        load_canonical_json(_exact_json_object(MAX_FRAME_BYTES + 1))
+
+
+def test_opaque_capability_scope_survives_signed_grant_round_trip(
+    connector: DevicePrivateIdentity,
+    grant_claims: GrantClaims,
+) -> None:
+    capability_scope = replace(grant_claims.scopes[0], capability_id=CAPABILITY_ID)
+    grant = create_signed_grant(
+        signer=connector,
+        message_id=GRANT_MESSAGE_ID,
+        claims=replace(grant_claims, scopes=(capability_scope,)),
+    )
+
+    parsed = parse_record(encode_record(grant))
+
+    assert isinstance(parsed, SignedGrant)
+    assert parsed.claims.scopes == (capability_scope,)
+    verify_signed_grant(
+        parsed,
+        pinned_connector=connector.public_identity,
+        expected_subject_key_id=parsed.claims.subject_key_id,
+        now=NOW + 3,
+    )
 
 
 def test_every_signed_record_uses_its_exact_domain(
@@ -1138,11 +1733,11 @@ def test_denied_receipt_uses_closed_failure_metadata_without_result_or_backend(
         started_at=NOW + 5,
         ended_at=NOW + 5,
         expires_at=NOW + 305,
-        result_count=0,
-        truncated=False,
+        result=None,
         outcome="error",
     )
     encoded = encode_record(receipt)
+    response = OperationResponseV1(receipt.message_id, receipt, None)
 
     assert b"grant_scope_denied" in encoded
     assert b"remediation" not in encoded
@@ -1157,6 +1752,7 @@ def test_denied_receipt_uses_closed_failure_metadata_without_result_or_backend(
         )
         is None
     )
+    assert parse_record(encode_record(response)) == response
 
 
 def test_receipt_verification_rejects_wrong_key_subject_request_and_expiry(
@@ -1230,8 +1826,7 @@ def test_receipt_creation_binds_request_audience(
             started_at=NOW + 5,
             ended_at=NOW + 5,
             expires_at=NOW + 305,
-            result_count=0,
-            truncated=False,
+            result=None,
             outcome="error",
         )
 
@@ -1261,8 +1856,7 @@ def test_receipt_verification_rejects_a_request_with_b_signed_receipt(
         started_at=NOW + 5,
         ended_at=NOW + 5,
         expires_at=NOW + 305,
-        result_count=0,
-        truncated=False,
+        result=None,
         outcome="error",
     )
     with pytest.raises(ProtocolValidationError):
@@ -1300,8 +1894,7 @@ def test_successful_receipt_must_finish_and_arrive_before_request_deadline(
         started_at=NOW + 5,
         ended_at=ended_at,
         expires_at=ended_at + 300,
-        result_count=1,
-        truncated=False,
+        result=_result(),
         outcome="ok",
     )
 

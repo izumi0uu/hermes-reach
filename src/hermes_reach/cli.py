@@ -7,11 +7,18 @@ import asyncio
 import sys
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from .agent_reach_bridge import AgentReachBridgeError, upstream_doctor_data
 from .bootstrap import DEFAULT_RUNTIME
 from .catalog import SOURCE_CATALOG, get_operation, get_source
+from .connector.cli import (
+    ConnectorInspector,
+    OfflineConnectorInspector,
+    execute_connector_inspection,
+    register_connector_cli,
+    render_connector_error,
+)
 from .connector.client import (
     PairingDisplay,
     VpsPairingOrchestrator,
@@ -71,29 +78,7 @@ def register_cli(subparser: argparse.ArgumentParser) -> None:
         "connector", help="Operate the trusted foreground Connector"
     )
     connector_commands = connector.add_subparsers(dest="reach_connector_command")
-    connector_init = connector_commands.add_parser(
-        "init", help="Initialize one Connector or VPS device identity"
-    )
-    connector_init.add_argument("--role", choices=("connector", "vps"), required=True)
-    connector_init.add_argument("--state-directory", type=Path, required=True)
-    connector_init.set_defaults(func=connector_command)
-
-    connector_serve = connector_commands.add_parser(
-        "serve", help="Run a locked foreground Connector"
-    )
-    connector_serve.add_argument("--state-directory", type=Path, required=True)
-    connector_serve.add_argument("--bind", dest="bind_host", required=True)
-    connector_serve.add_argument("--port", type=int, required=True)
-    connector_serve.set_defaults(func=connector_command)
-
-    connector_pair = connector_commands.add_parser(
-        "pair", help="Pair this VPS with a trusted foreground Connector"
-    )
-    connector_pair.add_argument("--state-directory", type=Path, required=True)
-    connector_pair.add_argument("--connector", dest="connector_endpoint", required=True)
-    connector_pair.add_argument("--device-label", required=True)
-    connector_pair.add_argument("--scope", action="append", required=True)
-    connector_pair.set_defaults(func=connector_command)
+    register_connector_cli(connector_commands, connector_command)
 
     subparser.set_defaults(func=reach_command)
 
@@ -104,48 +89,119 @@ def reach_command(args: argparse.Namespace) -> None:
     print(render_command(args))
 
 
-def connector_command(args: argparse.Namespace) -> None:
-    """Run the narrow TTY-only Connector initialization or foreground service."""
+class ConnectorMutationService(Protocol):
+    """Injected owner of Connector identity, pairing, and service mutations."""
+
+    def initialize_connector(
+        self, state_directory: Path, reader: TtyPassphraseReader
+    ) -> None: ...
+
+    def initialize_vps(self, state_directory: Path) -> str: ...
+
+    def pair(self, args: argparse.Namespace, reader: TtyPassphraseReader) -> None: ...
+
+    def serve(
+        self,
+        state_directory: Path,
+        *,
+        reader: TtyPassphraseReader,
+        bind_host: str,
+        port: int,
+    ) -> None: ...
+
+
+class _DefaultConnectorMutationService:
+    def initialize_connector(
+        self, state_directory: Path, reader: TtyPassphraseReader
+    ) -> None:
+        ConnectorService.initialize_state_directory(state_directory, tty_reader=reader)
+
+    def initialize_vps(self, state_directory: Path) -> str:
+        return VpsKeyStore(state_directory).initialize().fingerprint
+
+    def pair(self, args: argparse.Namespace, reader: TtyPassphraseReader) -> None:
+        asyncio.run(_pair_vps(args, reader))
+
+    def serve(
+        self,
+        state_directory: Path,
+        *,
+        reader: TtyPassphraseReader,
+        bind_host: str,
+        port: int,
+    ) -> None:
+        service = ConnectorService.open_state_directory(
+            state_directory,
+            tty_reader=reader,
+            bind_host=bind_host,
+            port=port,
+        )
+        asyncio.run(service.serve_foreground())
+
+
+def connector_command(
+    args: argparse.Namespace,
+    *,
+    mutation_service: ConnectorMutationService | None = None,
+    inspection_service: ConnectorInspector | None = None,
+) -> None:
+    """Execute one bounded Connector operator command."""
+
+    command = getattr(args, "reach_connector_command", None)
+    if command in {"status", "devices", "grants"}:
+        inspector = (
+            OfflineConnectorInspector()
+            if inspection_service is None
+            else inspection_service
+        )
+        try:
+            print(execute_connector_inspection(args, inspector))
+        except ConnectorError as error:
+            print(
+                render_connector_error(
+                    error, json_output=getattr(args, "json", False) is True
+                )
+            )
+        return
 
     reader: TtyPassphraseReader | None = None
-    service: ConnectorService | None = None
     try:
         reader = TtyPassphraseReader()
-        command = getattr(args, "reach_connector_command", None)
+        mutations = (
+            _DefaultConnectorMutationService()
+            if mutation_service is None
+            else mutation_service
+        )
         state_directory = getattr(args, "state_directory", None)
         if not isinstance(state_directory, Path):
             raise ConnectorError(ConnectorErrorCode.CONNECTOR_STATE_INVALID)
         if command == "init":
             role = getattr(args, "role", None)
             if role == "connector":
-                ConnectorService.initialize_state_directory(
-                    state_directory, tty_reader=reader
-                )
+                mutations.initialize_connector(state_directory, reader)
                 reader._write("Connector state initialized.\n")
                 return
             if role == "vps":
-                public_identity = VpsKeyStore(state_directory).initialize()
+                fingerprint = mutations.initialize_vps(state_directory)
                 reader._write(
-                    "VPS identity initialized.\n"
-                    f"fingerprint: {public_identity.fingerprint}\n"
+                    f"VPS identity initialized.\nfingerprint: {fingerprint}\n"
                 )
                 return
             raise ConnectorError(ConnectorErrorCode.CONNECTOR_STATE_INVALID)
         if command == "pair":
-            asyncio.run(_pair_vps(args, reader))
+            mutations.pair(args, reader)
             return
         if command == "serve":
             bind_host = getattr(args, "bind_host", None)
             port = getattr(args, "port", None)
             if type(bind_host) is not str or type(port) is not int:
                 raise ConnectorError(ConnectorErrorCode.CONNECTOR_STATE_INVALID)
-            service = ConnectorService.open_state_directory(
+            mutations.serve(
                 state_directory,
-                tty_reader=reader,
+                reader=reader,
                 bind_host=bind_host,
                 port=port,
             )
-            asyncio.run(service.serve_foreground())
             return
         raise ConnectorError(ConnectorErrorCode.CONNECTOR_STATE_INVALID)
     except ConnectorError as error:
@@ -154,7 +210,7 @@ def connector_command(args: argparse.Namespace) -> None:
         else:
             print(f"{error.code}: {error.message}", file=sys.stderr)
     finally:
-        if service is None and reader is not None:
+        if reader is not None:
             reader.close()
 
 

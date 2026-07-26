@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import hashlib
 import secrets
 import time
 from collections.abc import Callable
@@ -22,8 +21,10 @@ from .identity import (
     _require_test_tty_reader,
     _require_tty_reader,
 )
+from .media_policy import FileGrantProposal, ModelPolicy, ProcessLocalFileGrants
 from .protocol import (
     ErrorFrame,
+    FileGrant,
     GrantClaims,
     PairingComplete,
     PairingInit,
@@ -69,9 +70,15 @@ class PairingDisplay:
     max_uses: int
 
 
-_INITIAL_POLICY_DIGEST = hashlib.sha256(
-    b"hermes-reach:connector:policy:v1:default-deny"
-).hexdigest()
+@dataclass(frozen=True, slots=True)
+class _FileGrantContext:
+    device_label: str
+    subject_key_id: str
+    grant_revision: int
+    policy_revision: int
+
+
+_INITIAL_POLICY_DIGEST = ModelPolicy.default_deny(1).digest()
 
 
 class ConnectorService:
@@ -91,6 +98,8 @@ class ConnectorService:
         id_factory: Callable[[], str] | None = None,
         server_starter: WssServerStarter | None = None,
         owned_lease: StoreWriterLease | None = None,
+        model_policy: ModelPolicy | None = None,
+        file_grants: ProcessLocalFileGrants | None = None,
     ) -> None:
         _require_tty_reader(tty_reader)
         self._initialize(
@@ -105,6 +114,8 @@ class ConnectorService:
             id_factory=id_factory,
             server_starter=server_starter,
             owned_lease=owned_lease,
+            model_policy=model_policy,
+            file_grants=file_grants,
             test_reader=False,
         )
 
@@ -123,6 +134,8 @@ class ConnectorService:
         id_factory: Callable[[], str] | None = None,
         server_starter: WssServerStarter | None = None,
         owned_lease: StoreWriterLease | None = None,
+        model_policy: ModelPolicy | None = None,
+        file_grants: ProcessLocalFileGrants | None = None,
     ) -> ConnectorService:
         """Construct a service with a hermetic reader only from private tests."""
 
@@ -140,6 +153,8 @@ class ConnectorService:
             id_factory=id_factory,
             server_starter=server_starter,
             owned_lease=owned_lease,
+            model_policy=model_policy,
+            file_grants=file_grants,
             test_reader=True,
         )
         return service
@@ -158,6 +173,8 @@ class ConnectorService:
         id_factory: Callable[[], str] | None,
         server_starter: WssServerStarter | None,
         owned_lease: StoreWriterLease | None,
+        model_policy: ModelPolicy | None,
+        file_grants: ProcessLocalFileGrants | None,
         test_reader: bool,
     ) -> None:
         effective_clock = _wall_timestamp if clock is None else clock
@@ -178,6 +195,28 @@ class ConnectorService:
             or (owned_lease is not None and type(owned_lease) is not StoreWriterLease)
         ):
             raise TypeError("The Connector service dependencies are invalid.")
+        current_policy_revision = store.current_policy_revision()
+        effective_model_policy = (
+            ModelPolicy.default_deny(current_policy_revision)
+            if model_policy is None
+            else model_policy
+        )
+        effective_file_grants = (
+            ProcessLocalFileGrants(
+                clock=effective_clock, id_factory=effective_id_factory
+            )
+            if file_grants is None
+            else file_grants
+        )
+        if not isinstance(effective_model_policy, ModelPolicy) or not isinstance(
+            effective_file_grants, ProcessLocalFileGrants
+        ):
+            raise TypeError("The Connector service dependencies are invalid.")
+        if (
+            effective_model_policy.revision != current_policy_revision
+            or effective_model_policy.digest() != store.current_policy_digest()
+        ):
+            raise ConnectorError(ConnectorErrorCode.CONNECTOR_STATE_INVALID)
         if (
             store.connector_identity
             != tls_store.load(
@@ -196,6 +235,8 @@ class ConnectorService:
         self._id_factory = effective_id_factory
         self._server_starter = effective_server_starter
         self._owned_lease = owned_lease
+        self._model_policy = effective_model_policy
+        self._file_grants = effective_file_grants
         self._test_reader = test_reader
         self._lifecycle_lock = asyncio.Lock()
         self._server: WssServer | None = None
@@ -370,6 +411,8 @@ class ConnectorService:
                     id_factory=id_factory,
                     server_starter=server_starter,
                     owned_lease=lease,
+                    model_policy=None,
+                    file_grants=None,
                 )
             return cls(
                 key_store=ConnectorKeyStore(state_directory),
@@ -383,6 +426,8 @@ class ConnectorService:
                 id_factory=id_factory,
                 server_starter=server_starter,
                 owned_lease=lease,
+                model_policy=None,
+                file_grants=None,
             )
         except BaseException:
             lease.close()
@@ -456,6 +501,7 @@ class ConnectorService:
         try:
             await self.lock()
         finally:
+            self._file_grants.clear()
             self._tty_reader.close()
             if self._owned_lease is not None:
                 self._owned_lease.close()
@@ -567,6 +613,106 @@ class ConnectorService:
             raise ConnectorError(ConnectorErrorCode.INTERACTIVE_UNLOCK_REQUIRED)
         self._store.deny_pairing(pairing_id, now=self._clock())
 
+    def approve_local_file(
+        self,
+        path: Path,
+        *,
+        grant_id: str,
+        source: str,
+        operation: str,
+        expires_at: int | None = None,
+    ) -> FileGrant:
+        """Display and approve one process-local transcription file on the TTY."""
+
+        signer = self._require_unlocked_signer()
+        context = self._file_grant_context(
+            grant_id=grant_id,
+            source=source,
+            operation=operation,
+            now=self._clock(),
+        )
+        row = self._model_policy.require_row(
+            source=source,
+            operation=operation,
+            media_source_class="connector_local_file",
+        )
+        proposal = self._file_grants.propose(
+            path,
+            subject_key_id=context.subject_key_id,
+            source=source,
+            operation=operation,
+            grant_revision=context.grant_revision,
+            policy_revision=context.policy_revision,
+            expires_at=expires_at,
+            maximum_bytes=row.maximum_source_bytes,
+        )
+        prompt = _file_approval_prompt(context.device_label, proposal)
+        if not self._tty_reader._confirm(prompt, "approve"):
+            self._file_grants.discard(proposal)
+            raise ConnectorError(ConnectorErrorCode.INTERACTIVE_UNLOCK_REQUIRED)
+        try:
+            current = self._file_grant_context(
+                grant_id=grant_id,
+                source=source,
+                operation=operation,
+                now=self._clock(),
+            )
+            signer_is_current = self._require_unlocked_signer() is signer
+        except BaseException:
+            self._file_grants.discard(proposal)
+            raise
+        if current != context or not signer_is_current:
+            self._file_grants.discard(proposal)
+            raise ConnectorError(ConnectorErrorCode.FILE_GRANT_INVALID)
+        return self._file_grants.approve(
+            proposal,
+            signer=signer,
+            message_id=self._id_factory(),
+        )
+
+    def _file_grant_context(
+        self,
+        *,
+        grant_id: str,
+        source: str,
+        operation: str,
+        now: int,
+    ) -> _FileGrantContext:
+        policy_revision = self._store.current_policy_revision()
+        if policy_revision != self._model_policy.revision:
+            raise ConnectorError(ConnectorErrorCode.MODEL_POLICY_DENIED)
+        grants = tuple(
+            grant
+            for grant in self._store.inspect_grants()
+            if grant.grant_id == grant_id
+            and grant.superseded_at is None
+            and grant.revoked_at is None
+            and grant.not_before <= now < grant.expires_at
+            and grant.policy_revision == policy_revision
+            and any(
+                scope.source == source and scope.operation == operation
+                for scope in grant.scopes
+            )
+        )
+        if len(grants) != 1:
+            raise ConnectorError(ConnectorErrorCode.FILE_GRANT_INVALID)
+        grant = grants[0]
+        devices = tuple(
+            device
+            for device in self._store.inspect_devices()
+            if device.device_id == grant.device_id
+            and device.key_id == grant.subject_key_id
+            and device.revoked_at is None
+        )
+        if len(devices) != 1:
+            raise ConnectorError(ConnectorErrorCode.FILE_GRANT_INVALID)
+        return _FileGrantContext(
+            device_label=devices[0].label,
+            subject_key_id=grant.subject_key_id,
+            grant_revision=grant.revision,
+            policy_revision=grant.policy_revision,
+        )
+
     async def _handle_record(self, record: WireRecord) -> WireRecord:
         if not isinstance(record, PairingInit):
             return ErrorFrame(
@@ -672,6 +818,19 @@ def _approval_prompt(display: PairingDisplay) -> str:
         f"scopes: {scopes}\n"
         f"expires_at: {display.expires_at}\n"
         f"max_uses: {display.max_uses}\n"
+        "Type approve: "
+    )
+
+
+def _file_approval_prompt(device_label: str, proposal: FileGrantProposal) -> str:
+    return (
+        "Approve Connector-local transcription file\n"
+        f"device: {device_label}\n"
+        f"basename: {proposal.basename}\n"
+        f"digest: {proposal.digest}\n"
+        f"size: {proposal.size}\n"
+        f"operation: {proposal.source}:{proposal.operation}\n"
+        f"expires_at: {proposal.expires_at}\n"
         "Type approve: "
     )
 

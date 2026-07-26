@@ -30,12 +30,12 @@ from .errors import ConnectorError, ConnectorErrorCode
 from .limits import MAX_FRAME_BYTES
 from .protocol import (
     ErrorFrame,
+    OperationInvocationV1,
+    OperationResponseV1,
     PairingChallenge,
     PairingInit,
     PairingResolution,
     ProtocolValidationError,
-    SignedReceipt,
-    SignedRequest,
     WireRecord,
     encode_record,
     pairing_ca_der,
@@ -115,8 +115,8 @@ class ConnectorTransport(Protocol):
     """Injectable pinned operation exchange used by the future VPS client."""
 
     async def exchange(
-        self, request: SignedRequest, *, deadline: float
-    ) -> SignedReceipt | ErrorFrame: ...
+        self, invocation: OperationInvocationV1, *, deadline: float
+    ) -> OperationResponseV1 | ErrorFrame: ...
 
 
 class WssConnection(Protocol):
@@ -369,16 +369,16 @@ class PinnedWssClient:
         self._wall_clock = _wall_timestamp if wall_clock is None else wall_clock
 
     async def exchange(
-        self, request: SignedRequest, *, deadline: float
-    ) -> SignedReceipt | ErrorFrame:
-        if not isinstance(request, SignedRequest):
-            raise TypeError("The pinned transport accepts only SignedRequest.")
+        self, invocation: OperationInvocationV1, *, deadline: float
+    ) -> OperationResponseV1 | ErrorFrame:
+        if not isinstance(invocation, OperationInvocationV1):
+            raise TypeError("The pinned transport accepts only an invocation.")
         context = build_pinned_client_context(self._authority)
         response, leaf_der = await _exchange_record(
             self._dialer,
             self._endpoint,
             context,
-            request,
+            invocation,
             deadline=deadline,
             peer_validator=lambda payload: verify_connector_leaf_der(
                 payload,
@@ -387,7 +387,7 @@ class PinnedWssClient:
                 now=self._wall_clock(),
             ),
         )
-        if not isinstance(response, SignedReceipt | ErrorFrame):
+        if not isinstance(response, OperationResponseV1 | ErrorFrame):
             raise ConnectorError(ConnectorErrorCode.CONNECTOR_PROTOCOL_MISMATCH)
         return response
 

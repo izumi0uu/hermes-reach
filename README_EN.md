@@ -37,7 +37,9 @@ Hermes Reach assumes that an attacker may fully compromise the VPS. Its security
 
 The future Connector runs on your computer or another trusted device. Passwords, cookies, browser sessions, and Bitwarden tokens remain there. The VPS receives only expiring, usage-limited, revocable grants.
 
-The codebase already contains foundations for identity, live authorization, pinned TLS, original-terminal unlock, VPS pairing, and local availability snapshots. **However, the protocol does not yet carry protected requests and normalized results, and the VPS client is not connected to normal `reach_*` requests, so this remote security path is not production-ready.**
+The codebase already contains foundations for identity, live authorization, pinned TLS, original-terminal unlock, VPS pairing, local availability snapshots, isolated Bitwarden resolution, and protected-request/result envelopes. **However, the foreground ConnectorService still handles pairing traffic only, no production executor or real backend is enabled, and the VPS client is not connected to normal `reach_*` requests, so this remote security path is not production-ready.**
+
+Before deployment, read the [Connector security and operations guide](docs/connector-security.md) for the network, grant, key-recovery, audit, and rollback boundaries. The guide documents constraints; it does not mean remote execution is available.
 
 <details>
 <summary>View the implemented Connector security foundations</summary>
@@ -49,6 +51,8 @@ The codebase already contains foundations for identity, live authorization, pinn
 | SQLite live authority | Atomically check scope, expiry, revocation, replay, and remaining uses |
 | Secure WebSocket (WSS) with pinned TLS | Pin the certificate authority and validate the current short-lived certificate |
 | Signed receipts | Correlate requests, grant revisions, backends, and usage accounting |
+| Isolated Bitwarden resolution | Resolve one opaque capability binding in a constrained child process without exposing vault configuration to the VPS |
+| Request/result envelopes | Transport protected requests and bind bounded normalized results into signed receipts |
 | VPS pairing and status snapshots | Persist pinned identity, the first grant, and short-lived no-network health state |
 | Foreground ConnectorService | Activate authorization only after the trusted device completes unlock |
 
@@ -160,8 +164,9 @@ The roadmap describes development order, not release dates. Incomplete capabilit
 | Stage | Goal | Main work |
 | --- | --- | --- |
 | Complete | Stabilize public retrieval | Five tools, local adapters, read-only policy, Agent-Reach catalog |
-| Current | Secure pairing and client foundation | ConnectorClient, pinned identity and grants, local availability snapshots, signed requests and receipts |
-| Next | Isolate credentials and freeze the execution protocol | Bitwarden SecretProvider, protected-request and normalized-result envelopes |
+| Complete | Secure pairing and client foundation | ConnectorClient, pinned identity and grants, local availability snapshots, signed requests and receipts |
+| Complete | Isolate credentials and freeze the execution protocol | Bitwarden SecretProvider, protected-request and normalized-result envelopes |
+| Current | Constrain execution authorization | Model policy, single-file grants, and an exact executor seam with no default implementation |
 | Then | Execute upstream backends | Exact Agent-Reach bindings, Exa, and media backends |
 | Later | Support authenticated platforms and production operations | Twitter/X and similar sources, one-step grants, audit export, alerts, upgrades, and rollback |
 

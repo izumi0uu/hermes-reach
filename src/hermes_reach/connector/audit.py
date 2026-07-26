@@ -20,6 +20,7 @@ from .errors import ConnectorError, ConnectorErrorCode
 from .identity import DevicePublicIdentity, _open_state_directory
 from .limits import AUDIT_RETENTION_SECONDS, MAX_FRAME_BYTES, MAX_TIMESTAMP_SECONDS
 from .protocol import (
+    OperationResponseV1,
     ProtocolValidationError,
     ReceiptContextMismatchError,
     ReceiptExpiredError,
@@ -30,6 +31,7 @@ from .protocol import (
     load_canonical_json,
     parse_record,
     record_digest,
+    verify_operation_response,
     verify_record,
     verify_signed_receipt,
 )
@@ -80,6 +82,31 @@ def verify_receipt(
     except (ProtocolValidationError, TypeError, ValueError):
         raise ConnectorError(ConnectorErrorCode.RECEIPT_INVALID) from None
     return receipt
+
+
+def verify_response(
+    response: OperationResponseV1,
+    *,
+    pinned_connector: DevicePublicIdentity,
+    request: SignedRequest,
+    now: int,
+) -> OperationResponseV1:
+    """Map complete response verification failures to closed receipt outcomes."""
+
+    try:
+        verify_operation_response(
+            response,
+            pinned_connector=pinned_connector,
+            request=request,
+            now=now,
+        )
+    except ReceiptContextMismatchError:
+        raise ConnectorError(ConnectorErrorCode.RECEIPT_CONTEXT_MISMATCH) from None
+    except ReceiptExpiredError:
+        raise ConnectorError(ConnectorErrorCode.RECEIPT_EXPIRED) from None
+    except (ProtocolValidationError, TypeError, ValueError):
+        raise ConnectorError(ConnectorErrorCode.RECEIPT_INVALID) from None
+    return response
 
 
 class ReceiptEvidenceLedger:

@@ -29,9 +29,7 @@ def test_installed_hermes_resolves_the_namespaced_plugin_skill() -> None:
 
 def test_safe_skill_routes_every_canonical_source_and_no_unknown_source() -> None:
     text = _skill_text()
-    routed_sources = set(
-        re.findall(r"^\| `([a-z0-9_]+)` \|", text, flags=re.MULTILINE)
-    )
+    routed_sources = set(re.findall(r"^\| `([a-z0-9_]+)` \|", text, flags=re.MULTILINE))
 
     assert routed_sources == {source.name for source in SOURCE_CATALOG}
 

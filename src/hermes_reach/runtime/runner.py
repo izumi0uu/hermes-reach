@@ -9,6 +9,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Final
 
+from ..normalized import normalized_item_characters
 from .adapters import AdapterBinding, AdapterResult, FailureClass, RawItem
 from .policy import AuthorizedCall, scope_includes
 
@@ -250,19 +251,15 @@ class BoundedRunner:
 
     @staticmethod
     def _item_characters(item: RawItem) -> int:
-        scalar_characters = sum(
-            len(value)
-            for value in (
-                item.kind,
-                item.text,
-                item.native_id,
-                item.title,
-                item.url,
-                item.author,
-                item.published_at,
-            )
-            if value is not None
-        )
-        return scalar_characters + (
-            0 if item.media is None else item.media.character_count()
+        return normalized_item_characters(
+            kind=item.kind,
+            text=item.text,
+            native_id=item.native_id,
+            title=item.title,
+            url=item.url,
+            author=item.author,
+            published_at=item.published_at,
+            media_characters=(
+                0 if item.media is None else item.media.character_count()
+            ),
         )

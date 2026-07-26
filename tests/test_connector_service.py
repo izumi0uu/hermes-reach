@@ -17,13 +17,23 @@ from hermes_reach.connector.identity import (
     DevicePrivateIdentity,
     TtyPassphraseReader,
 )
+from hermes_reach.connector.media_policy import (
+    ModelCleanupPolicy,
+    ModelCostPolicy,
+    ModelIdentity,
+    ModelPolicy,
+    ModelPolicyRow,
+    ProcessLocalFileGrants,
+)
 from hermes_reach.connector.protocol import (
     ErrorFrame,
+    FileGrant,
     GrantScope,
     PairingChallenge,
     PairingInit,
     PairingResolution,
     create_pairing_init,
+    encode_record,
     verify_pairing_resolution,
 )
 from hermes_reach.connector.service import ConnectorService
@@ -34,6 +44,7 @@ from hermes_reach.connector.transport import ServerFrameHandler, WssEndpoint
 NOW = 1_800_000_000
 PASSPHRASE = "service-test-passphrase"
 SCOPE = GrantScope("web", "read.url", "public")
+TRANSCRIBE_SCOPE = GrantScope("youtube", "transcribe.video", "public")
 
 
 def _id(value: int) -> str:
@@ -131,6 +142,42 @@ def _pairing(vps: DevicePrivateIdentity) -> PairingInit:
     )
 
 
+def _transcribe_pairing(vps: DevicePrivateIdentity) -> PairingInit:
+    return create_pairing_init(
+        signer=vps,
+        message_id=_id(11),
+        pairing_id=_id(12),
+        device_label="vps-media",
+        endpoint_digest=hashlib.sha256(b"media-endpoint").hexdigest(),
+        vps_nonce=bytes(range(32)),
+        requested_scopes=(TRANSCRIBE_SCOPE,),
+        grant_expires_at=NOW + 3_600,
+        grant_max_uses=2,
+        issued_at=NOW,
+        deadline=NOW + 300,
+    )
+
+
+def _media_policy() -> ModelPolicy:
+    return ModelPolicy(
+        1,
+        (
+            ModelPolicyRow(
+                source="youtube",
+                operation="transcribe.video",
+                media_source_class="connector_local_file",
+                primary=ModelIdentity("fixture-provider", "fixture-model-v1"),
+                maximum_source_bytes=1024,
+                maximum_duration_seconds=60,
+                maximum_chunks=4,
+                fallbacks=(),
+                cleanup=ModelCleanupPolicy(False),
+                cost=ModelCostPolicy("media_minute", 50_000),
+            ),
+        ),
+    )
+
+
 def _assert_code(
     error: pytest.ExceptionInfo[ConnectorError], code: ConnectorErrorCode
 ) -> None:
@@ -154,7 +201,7 @@ def test_foreground_service_starts_locked_then_tty_approves_one_pairing(
             state,
             connector_public,
             lease,
-            initial_policy_digest=hashlib.sha256(b"initial-policy").hexdigest(),
+            initial_policy_digest=ModelPolicy.default_deny(1).digest(),
             now=NOW,
         )
         authority = GrantAuthority(store, clock=lambda: NOW)
@@ -276,7 +323,7 @@ def test_pairing_approval_requires_the_exact_original_tty_confirmation(
             state,
             connector_public,
             lease,
-            initial_policy_digest=hashlib.sha256(b"initial-policy").hexdigest(),
+            initial_policy_digest=ModelPolicy.default_deny(1).digest(),
             now=NOW,
         )
         authority = GrantAuthority(store, clock=lambda: NOW)
@@ -390,7 +437,7 @@ def test_foreground_loop_uses_only_its_captured_tty_and_closes_on_exit(
             state,
             connector_public,
             lease,
-            initial_policy_digest=hashlib.sha256(b"initial-policy").hexdigest(),
+            initial_policy_digest=ModelPolicy.default_deny(1).digest(),
             now=NOW,
         )
         starter = _ServerStarter()
@@ -424,6 +471,130 @@ def test_foreground_loop_uses_only_its_captured_tty_and_closes_on_exit(
             lease.close()
 
     asyncio.run(exercise())
+
+
+def test_original_tty_approves_path_free_process_local_file_grant(
+    tmp_path: Path,
+) -> None:
+    async def exercise() -> None:
+        state = tmp_path / "connector"
+        key_store = ConnectorKeyStore(state, _platform="linux")
+        connector_public = key_store._initialize_from_tty_for_testing(
+            _reader(PASSPHRASE)
+        )
+        signer = key_store._unlock_from_tty_for_testing(_reader(PASSPHRASE))
+        tls_store = ConnectorTLSStore(state, _platform="linux")
+        tls_store.initialize(signer, now=NOW)
+        lease = StoreWriterLease(state)
+        policy = _media_policy()
+        store = AuthorityStore.initialize(
+            state,
+            connector_public,
+            lease,
+            initial_policy_digest=policy.digest(),
+            now=NOW,
+        )
+        authority = GrantAuthority(store, clock=lambda: NOW)
+        starter = _ServerStarter()
+        reader = _reader(PASSPHRASE, confirmation="approve\napprove\n")
+        file_grants = ProcessLocalFileGrants(clock=lambda: NOW, id_factory=_IdFactory())
+        service = ConnectorService._from_test_dependencies(
+            key_store=key_store,
+            tls_store=tls_store,
+            store=store,
+            authority=authority,
+            tty_reader=reader,
+            bind_host="127.0.0.1",
+            port=8765,
+            clock=lambda: NOW,
+            id_factory=_IdFactory(),
+            server_starter=starter,  # type: ignore[arg-type]
+            model_policy=policy,
+            file_grants=file_grants,
+        )
+        try:
+            await service.unlock()
+            assert starter.handler is not None
+            pairing = _transcribe_pairing(
+                DevicePrivateIdentity._from_seed_for_testing(bytes(range(32)))
+            )
+            assert isinstance(await starter.handler(pairing), PairingChallenge)
+            service.approve_pairing(pairing.pairing_id)
+            grant_inspection = store.inspect_grants()[0]
+
+            private_directory = tmp_path / "SECRET_PARENT_PATH_CANARY"
+            private_directory.mkdir()
+            media = private_directory / "episode.wav"
+            media.write_bytes(b"fixture media")
+            file_grant = service.approve_local_file(
+                media,
+                grant_id=grant_inspection.grant_id,
+                source="youtube",
+                operation="transcribe.video",
+            )
+
+            assert isinstance(file_grant, FileGrant)
+            assert file_grant.subject_key_id == pairing.vps_key_id
+            assert file_grant.grant_revision == grant_inspection.revision
+            assert file_grant.policy_revision == policy.revision
+            assert file_grants.active_count == 1
+            terminal = reader._terminal
+            assert isinstance(terminal, _InteractiveTerminal)
+            output = terminal.output.getvalue()
+            assert pairing.device_label in output
+            assert media.name in output
+            assert file_grant.digest in output
+            assert str(file_grant.size) in output
+            assert "youtube:transcribe.video" in output
+            assert str(file_grant.expires_at) in output
+            assert "SECRET_PARENT_PATH_CANARY" not in output
+            assert b"SECRET_PARENT_PATH_CANARY" not in encode_record(file_grant)
+            assert b"episode.wav" not in encode_record(file_grant)
+            database = state / "connector-authority.sqlite3"
+            assert b"SECRET_PARENT_PATH_CANARY" not in database.read_bytes()
+        finally:
+            await service.close()
+            assert file_grants.active_count == 0
+            lease.close()
+
+    asyncio.run(exercise())
+
+
+def test_service_rejects_model_rows_not_bound_to_authority_policy_digest(
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "connector"
+    key_store = ConnectorKeyStore(state, _platform="linux")
+    connector_public = key_store._initialize_from_tty_for_testing(_reader(PASSPHRASE))
+    signer = key_store._unlock_from_tty_for_testing(_reader(PASSPHRASE))
+    tls_store = ConnectorTLSStore(state, _platform="linux")
+    tls_store.initialize(signer, now=NOW)
+    lease = StoreWriterLease(state)
+    store = AuthorityStore.initialize(
+        state,
+        connector_public,
+        lease,
+        initial_policy_digest=ModelPolicy.default_deny(1).digest(),
+        now=NOW,
+    )
+    reader = _reader(PASSPHRASE)
+    try:
+        with pytest.raises(ConnectorError) as mismatch:
+            ConnectorService._from_test_dependencies(
+                key_store=key_store,
+                tls_store=tls_store,
+                store=store,
+                authority=GrantAuthority(store, clock=lambda: NOW),
+                tty_reader=reader,
+                bind_host="127.0.0.1",
+                port=8765,
+                clock=lambda: NOW,
+                model_policy=_media_policy(),
+            )
+        _assert_code(mismatch, ConnectorErrorCode.CONNECTOR_STATE_INVALID)
+    finally:
+        reader.close()
+        lease.close()
 
 
 def test_failed_state_initialization_preserves_partial_state_and_refuses_retry(

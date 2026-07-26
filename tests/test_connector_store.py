@@ -43,7 +43,8 @@ NOW = 1_800_000_000
 DATABASE_NAME = "connector-authority.sqlite3"
 LOCK_NAME = "connector-authority.lock"
 INITIAL_POLICY_DIGEST = hashlib.sha256(b"initial-policy").hexdigest()
-SCOPE = GrantScope("web", "read.url", "public")
+CAPABILITY_ID = "aaaaaaaaaaaaaaaaaaaaaaaafi"
+SCOPE = GrantScope("web", "read.url", "public", CAPABILITY_ID)
 PROTECTED_OPERATION = protect_operation_call(
     validate_read(
         {
@@ -312,6 +313,7 @@ def test_pairing_approval_atomically_creates_device_and_first_grant(
     assert grants[0].revision == 1
     assert grants[0].used_count == 0
     assert grants[0].scopes[0].source == SCOPE.source
+    assert not hasattr(grants[0].scopes[0], "capability_id")
 
     pairing = _pairing(harness.vps, slot=2, max_uses=3)
     colliding_grant = _grant(
@@ -604,7 +606,10 @@ def test_stale_policy_denies_old_grant_and_replacement_requires_current_policy(
     harness: StoreHarness,
 ) -> None:
     grant_id, _ = _approve_first_grant(harness)
-    assert harness.store.advance_policy_revision(_digest("policy-2"), now=NOW + 20) == 2
+    assert harness.store.current_policy_digest() == INITIAL_POLICY_DIGEST
+    next_digest = _digest("policy-2")
+    assert harness.store.advance_policy_revision(next_digest, now=NOW + 20) == 2
+    assert harness.store.current_policy_digest() == next_digest
 
     stale = harness.store.claim(
         _request(harness.connector, harness.vps, slot=70, grant_id=grant_id),

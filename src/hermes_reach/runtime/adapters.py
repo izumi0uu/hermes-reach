@@ -8,6 +8,11 @@ from dataclasses import dataclass
 from typing import Final, Literal
 
 from ..catalog import DataScope, get_operation, get_source
+from ..normalized import (
+    MAX_NORMALIZED_INTEGER,
+    NORMALIZED_MEDIA_VERSION,
+    media_metadata_characters,
+)
 from .availability import Availability, AvailabilityRecord
 from .policy import AuthorizedCall, scope_includes
 
@@ -58,7 +63,9 @@ class MediaMetadata:
     def __post_init__(self) -> None:
         for value in (self.duration_seconds, self.view_count, self.comment_count):
             if value is not None and (
-                isinstance(value, bool) or not isinstance(value, int) or value < 0
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or not 0 <= value <= MAX_NORMALIZED_INTEGER
             ):
                 raise ValueError("Media counts must be non-negative integers.")
         if self.subtitle_language is not None and not _LANGUAGE_TAG.fullmatch(
@@ -76,24 +83,22 @@ class MediaMetadata:
     def character_count(self) -> int:
         """Return the scalar contribution to the runner's output budget."""
 
-        return sum(
-            len(value)
-            for value in (
-                "v1",
-                self.coverage,
-                self.subtitle_language,
-                self.subtitle_origin,
-                None if self.duration_seconds is None else str(self.duration_seconds),
-                None if self.view_count is None else str(self.view_count),
-                None if self.comment_count is None else str(self.comment_count),
-            )
-            if value is not None
+        return media_metadata_characters(
+            coverage=self.coverage,
+            duration_seconds=self.duration_seconds,
+            view_count=self.view_count,
+            comment_count=self.comment_count,
+            subtitle_language=self.subtitle_language,
+            subtitle_origin=self.subtitle_origin,
         )
 
     def as_data(self) -> dict[str, object]:
         """Return only the fixed public media projection."""
 
-        data: dict[str, object] = {"version": "v1", "coverage": self.coverage}
+        data: dict[str, object] = {
+            "version": NORMALIZED_MEDIA_VERSION,
+            "coverage": self.coverage,
+        }
         for name in (
             "duration_seconds",
             "view_count",

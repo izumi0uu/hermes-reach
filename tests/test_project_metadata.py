@@ -32,6 +32,14 @@ def test_lockfile_keeps_the_inspected_agent_reach_commit() -> None:
     assert "1494c2ab239e7355a77e7cceaf3271453a1f34b5" in lockfile
 
 
+def test_source_distribution_excludes_test_only_executor_implementations() -> None:
+    root = Path(__file__).resolve().parents[1]
+
+    assert (root / "MANIFEST.in").read_text(encoding="ascii") == (
+        "include docs/connector-security.md\nprune tests\n"
+    )
+
+
 def test_installed_entry_point_loads_the_plugin_module() -> None:
     plugins = entry_points(group="hermes_agent.plugins")
     reach = next(plugin for plugin in plugins if plugin.name == "reach")

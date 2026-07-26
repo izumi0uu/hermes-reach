@@ -18,9 +18,9 @@ from hermes_reach.connector.identity import DevicePrivateIdentity
 from hermes_reach.connector.protocol import (
     ErrorFrame,
     GrantScope,
+    OperationInvocationV1,
     PairingChallenge,
     PairingInit,
-    SignedRequest,
     create_pairing_challenge,
     create_pairing_init,
     create_signed_request,
@@ -100,7 +100,7 @@ def _pairing_init() -> PairingInit:
     )
 
 
-def _signed_request() -> SignedRequest:
+def _invocation() -> OperationInvocationV1:
     connector = _identity(_CONNECTOR_SEED)
     payload = protect_operation_call(
         validate_read(
@@ -111,7 +111,7 @@ def _signed_request() -> SignedRequest:
             }
         )
     )
-    return create_signed_request(
+    request = create_signed_request(
         signer=_identity(_VPS_SEED),
         message_id=_REQUEST_MESSAGE_ID,
         request_id=_REQUEST_ID,
@@ -126,6 +126,7 @@ def _signed_request() -> SignedRequest:
         deadline=_NOW + 30,
         protected_payload=payload,
     )
+    return OperationInvocationV1(request.message_id, request, payload)
 
 
 class _FakeConnection:
@@ -243,7 +244,7 @@ def test_pairing_transport_is_unpinned_and_rejects_operation_input() -> None:
     client = PairingWssClient(WssEndpoint.parse("wss://127.0.0.1:8765"), dialer=dialer)
 
     with pytest.raises(TypeError):
-        asyncio.run(client.exchange(_signed_request(), deadline=time.monotonic() + 1))
+        asyncio.run(client.exchange(_invocation(), deadline=time.monotonic() + 1))
     assert dialer.contexts == []
 
     with pytest.raises(ConnectorError) as caught:
@@ -321,7 +322,7 @@ def test_pinned_transport_validates_leaf_before_sending_and_rejects_pairing_inpu
     assert dialer.contexts == []
 
     with pytest.raises(ConnectorError) as caught:
-        asyncio.run(client.exchange(_signed_request(), deadline=time.monotonic() + 1))
+        asyncio.run(client.exchange(_invocation(), deadline=time.monotonic() + 1))
     _assert_code(caught, ConnectorErrorCode.CONNECTOR_TLS_FAILED.value)
     assert dialer.contexts[0].verify_mode == ssl.CERT_REQUIRED
     assert connection.sent == []
@@ -499,7 +500,7 @@ def test_pinned_wss_round_trip_only_trusts_the_connector_ca(tmp_path: Path) -> N
         )
 
         async def handler(record: object) -> ErrorFrame:
-            assert isinstance(record, SignedRequest)
+            assert isinstance(record, OperationInvocationV1)
             return ErrorFrame(
                 _ERROR_MESSAGE_ID, ConnectorErrorCode.CONNECTOR_PROTOCOL_MISMATCH
             )
@@ -516,9 +517,7 @@ def test_pinned_wss_round_trip_only_trusts_the_connector_ca(tmp_path: Path) -> N
                 server.endpoint,
                 authority,
                 wall_clock=lambda: _NOW,
-            ).exchange(
-                _signed_request(), deadline=asyncio.get_running_loop().time() + 5
-            )
+            ).exchange(_invocation(), deadline=asyncio.get_running_loop().time() + 5)
             assert isinstance(response, ErrorFrame)
             assert response.code is ConnectorErrorCode.CONNECTOR_PROTOCOL_MISMATCH
         finally:
@@ -563,7 +562,7 @@ def test_pinned_wss_rejects_a_different_public_ca(tmp_path: Path) -> None:
                     expected_authority,
                     wall_clock=lambda: _NOW,
                 ).exchange(
-                    _signed_request(),
+                    _invocation(),
                     deadline=asyncio.get_running_loop().time() + 5,
                 )
             _assert_code(caught, ConnectorErrorCode.CONNECTOR_TLS_FAILED.value)

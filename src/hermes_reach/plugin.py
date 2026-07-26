@@ -29,9 +29,7 @@ _AGENT_REACH_SKILL_NAME: Final = "agent-reach"
 _AGENT_REACH_SKILL_DESCRIPTION: Final = (
     "Route bounded, read-only internet retrieval through Hermes Reach."
 )
-_AGENT_REACH_SKILL_PATH: Final = (
-    Path(__file__).resolve().parent / "skill" / "SKILL.md"
-)
+_AGENT_REACH_SKILL_PATH: Final = Path(__file__).resolve().parent / "skill" / "SKILL.md"
 _TOOLS: Final[tuple[tuple[str, dict[str, object], ToolHandler, bool], ...]] = (
     ("reach_search", REACH_SEARCH, reach_search, True),
     ("reach_read", REACH_READ, reach_read, True),
