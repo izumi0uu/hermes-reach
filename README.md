@@ -132,13 +132,18 @@ flowchart TD
 
 ### Agent-Reach 用到了什么程度
 
-| 已接入 | 尚未接入 |
-| --- | --- |
-| 15 个平台的目录和执行后端信息 | 普通请求执行引擎 |
-| 固定版本和兼容性检查 | 认证平台的 Cookie 和账号会话 |
-| 受限、显式触发的上游检查 | 任意执行后端命令或上游安装器 |
-| 适配为 Hermes 路由规则的平台语义 | 生产构成中的真实平台 executor（当前为空） |
-| Reddit 的 OpenCLI 优先路由已收窄为固定 `read.post` executor | 自动安装 OpenCLI、发现浏览器会话或启用默认 Connector 绑定 |
+15 个平台的目录、backend 元数据、版本兼容性和受限 doctor 直接来自
+Agent-Reach。普通请求没有经过 Agent-Reach 的执行路径：26 个已标记实现的
+operation 中，0 个直接复用 Agent-Reach execution，9 个保留了相同外部
+backend 的薄适配，11 个采用 Hermes-native 替代机制，6 个重写了平台逻辑，
+另有 37 个仍未实现。26 项中只有 16 项已有具体读取实现；YouTube、Bilibili
+的 8 项和 Exa 的 2 项仍只是未绑定的审计接口，不是可用的生产 executor。
+
+因此当前边界已经冻结：Hermes Reach 只拥有协议、授权、安全调用、规范化、
+限制、脱敏、回执和审计；平台知识、backend 选择和读取实现应留在
+Agent-Reach 或其固定 backend。新增平台 adapter 暂停，native 替代或重复
+实现必须经过单独例外审批。完整矩阵、口径和迁移优先级见
+[Agent-Reach 复用边界](docs/agent-reach-reuse-boundary.md)。
 
 项目固定使用 Agent-Reach `1.5.0` 和 commit `1494c2ab239e7355a77e7cceaf3271453a1f34b5`。
 
@@ -170,7 +175,8 @@ Roadmap 表示开发顺序，不承诺发布日期。未完成的能力会保持
 | 已完成 | 隔离凭据并冻结执行协议 | Bitwarden SecretProvider、受保护请求与规范化结果 envelope |
 | 已完成 | 精确远程执行桥 | 显式 Connector 适配器、已授权操作交付、回执与重试；默认构成仍为空 |
 | 已完成 | 首个来源 executor | Reddit `read.post` 的固定 OpenCLI 读取、封闭 YAML 映射和 WSS 回执测试；默认未绑定 |
-| 随后 | 执行更多上游后端 | 逐来源审核的精确绑定、Exa 与媒体后端 |
+| 现在 | 冻结并校正复用边界 | 审计 63 个 operation，优先处理 GitHub/Web/Exa，再处理 RSS/V2EX；不新增平台抓取逻辑 |
+| 随后 | 执行更多上游后端 | 只增加直接复用或固定 upstream backend 的薄适配 |
 | 后续 | 支持认证平台和生产运维 | Twitter/X 等平台、一键授权、审计导出、告警、升级与回滚 |
 
 ## 开发

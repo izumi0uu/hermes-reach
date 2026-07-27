@@ -36,7 +36,9 @@ def test_manifest_pins_security_guide_and_prunes_tests() -> None:
     root = Path(__file__).resolve().parents[1]
 
     assert (root / "MANIFEST.in").read_text(encoding="ascii") == (
-        "include docs/connector-security.md\nprune tests\n"
+        "include docs/connector-security.md\n"
+        "include docs/agent-reach-reuse-boundary.md\n"
+        "prune tests\n"
     )
 
 
