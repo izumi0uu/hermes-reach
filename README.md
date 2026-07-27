@@ -7,7 +7,7 @@ Hermes Reach 让 Hermes 通过一组统一的只读工具读取网页和公开�
 它参考 [Agent-Reach](https://github.com/Panniantong/Agent-Reach) 支持的平台，通过 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 插件提供搜索、读取、浏览、转写和状态查询。
 
 > [!IMPORTANT]
-> 项目目前处于 **Pre-Alpha**。Web、RSS/Atom、V2EX 和 GitHub 已可本地使用。远程 Connector、Bitwarden 和 Agent-Reach 执行链路仍在开发。
+> 项目目前处于 **Pre-Alpha**。Web、RSS/Atom、V2EX 和 GitHub 已可本地使用。远程 Connector 的精确执行桥已经具备，但默认生产构成没有 Connector 绑定或执行器；Bitwarden 和 Agent-Reach 实际后端仍未启用。
 
 ## 它解决什么问题
 
@@ -37,7 +37,7 @@ Hermes Reach 假设 VPS 可能被完全攻破。安全设计的目标是限制�
 
 未来的 Connector 会运行在你的电脑或其他可信设备上。密码、Cookie、浏览器会话和 Bitwarden 启动令牌留在该设备，VPS 只能使用有期限、有次数限制且可撤销的授权。
 
-Connector 的身份、在线授权、固定 TLS、原终端解锁、VPS 配对、本地可用性快照、隔离 Bitwarden 取密和请求/结果 envelope 已有基础实现。**但前台 ConnectorService 仍只处理配对流量，没有生产执行器或真实 backend，VPS 客户端也没有接入普通 `reach_*` 请求，因此这条远程安全链路目前不能视为生产可用。**
+Connector 的身份、在线授权、固定 TLS、原终端解锁、VPS 配对、本地可用性快照、隔离 Bitwarden 取密和请求/结果 envelope 已有基础实现。运行时也可以通过**显式注册的精确绑定**将一个已授权操作传到可信设备上的精确 Connector executor。**默认运行时并不注册这些绑定，生产 executor 组合也为空；因此没有平台凭据、Bitwarden 密钥或真实 Agent-Reach backend 可由普通 `reach_*` 请求触发，这条远程链路仍不能视为生产可用。**
 
 部署前需要理解的网络、授权、密钥恢复、审计和回滚边界见 [Connector 安全与运维指南](docs/connector-security.md)。该指南描述安全约束，不表示远程执行链路已经可用。
 
@@ -54,7 +54,7 @@ Connector 的身份、在线授权、固定 TLS、原终端解锁、VPS 配对�
 | 隔离 Bitwarden 取密 | 在受限子进程中按不透明能力绑定取出单个密钥，不向 VPS 暴露 vault 配置 |
 | 请求/结果 envelope | 传输受保护请求，并用签名回执绑定有界规范化结果 |
 | VPS 配对与状态快照 | 持久化固定身份、首个授权和不联网的短期健康状态 |
-| 前台 ConnectorService | 只在可信设备完成解锁后激活授权服务 |
+| 前台 ConnectorService | 只在可信设备完成解锁后激活授权服务，并把已授权的精确操作交给显式注入的 executor |
 
 </details>
 
@@ -126,7 +126,7 @@ flowchart TD
     Guard --> Runtime["有界运行时"]
     Runtime --> Adapters["Web · RSS · V2EX · GitHub"]
     Adapters --> Results["分组结果与来源信息"]
-    Connector["Connector 安全基础<br/>尚未接入普通请求"] -.-> Runtime
+    Connector["Connector 执行桥<br/>仅显式绑定；生产默认关闭"] -.-> Runtime
 ```
 
 ### Agent-Reach 用到了什么程度
@@ -136,13 +136,13 @@ flowchart TD
 | 15 个平台的目录和执行后端信息 | 普通请求执行引擎 |
 | 固定版本和兼容性检查 | 认证平台的 Cookie 和账号会话 |
 | 受限、显式触发的上游检查 | 任意执行后端命令或上游安装器 |
-| 适配为 Hermes 路由规则的平台语义 | 可信设备中的精确接口绑定 |
+| 适配为 Hermes 路由规则的平台语义 | 生产构成中的真实平台 executor（当前为空） |
 
 项目固定使用 Agent-Reach `1.5.0` 和 commit `1494c2ab239e7355a77e7cceaf3271453a1f34b5`。
 
-### 目标 Connector 路径
+### 显式组成时的 Connector 路径
 
-目标架构在可信设备中执行 Agent-Reach 的平台后端。VPS 不能选择凭据、执行后端、浏览器会话或本地路径。
+精确绑定可以在可信设备中执行经过审查的 Agent-Reach 平台后端。VPS 不能选择凭据、执行后端、浏览器会话或本地路径。默认生产构成不提供这些绑定或后端；每个来源必须单独通过安全设计和测试后才能启用。
 
 ```mermaid
 flowchart TD
@@ -166,8 +166,8 @@ Roadmap 表示开发顺序，不承诺发布日期。未完成的能力会保持
 | 已完成 | 稳定公共读取面 | 五个工具、本地适配器、只读策略、Agent-Reach 目录 |
 | 已完成 | 安全配对与客户端基础 | ConnectorClient、固定身份与授权、本地可用性快照、签名请求和回执 |
 | 已完成 | 隔离凭据并冻结执行协议 | Bitwarden SecretProvider、受保护请求与规范化结果 envelope |
-| 当前 | 收紧执行授权 | 模型策略、单文件授权和无默认实现的精确执行器接口 |
-| 随后 | 执行上游后端 | 精确 Agent-Reach 绑定、Exa 与媒体后端 |
+| 已完成 | 精确远程执行桥 | 显式 Connector 适配器、已授权操作交付、回执与重试；默认构成仍为空 |
+| 随后 | 执行上游后端 | 逐来源审核的精确 Agent-Reach 绑定、Exa 与媒体后端 |
 | 后续 | 支持认证平台和生产运维 | Twitter/X 等平台、一键授权、审计导出、告警、升级与回滚 |
 
 ## 开发
