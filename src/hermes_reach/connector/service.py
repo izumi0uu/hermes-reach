@@ -372,6 +372,7 @@ class ConnectorService:
         clock: Callable[[], int] | None = None,
         id_factory: Callable[[], str] | None = None,
         server_starter: WssServerStarter | None = None,
+        execution_composition: ConnectorExecutionComposition | None = None,
     ) -> ConnectorService:
         """Open verified public state for a locked foreground Connector service."""
 
@@ -384,6 +385,7 @@ class ConnectorService:
             clock=clock,
             id_factory=id_factory,
             server_starter=server_starter,
+            execution_composition=execution_composition,
             test_reader=False,
         )
 
@@ -398,6 +400,7 @@ class ConnectorService:
         clock: Callable[[], int] | None = None,
         id_factory: Callable[[], str] | None = None,
         server_starter: WssServerStarter | None = None,
+        execution_composition: ConnectorExecutionComposition | None = None,
     ) -> ConnectorService:
         """Open state through the explicit private test-reader boundary."""
 
@@ -410,6 +413,7 @@ class ConnectorService:
             clock=clock,
             id_factory=id_factory,
             server_starter=server_starter,
+            execution_composition=execution_composition,
             test_reader=True,
         )
 
@@ -424,6 +428,7 @@ class ConnectorService:
         clock: Callable[[], int] | None,
         id_factory: Callable[[], str] | None,
         server_starter: WssServerStarter | None,
+        execution_composition: ConnectorExecutionComposition | None,
         test_reader: bool,
     ) -> ConnectorService:
         if not isinstance(state_directory, Path):
@@ -451,7 +456,7 @@ class ConnectorService:
                     owned_lease=lease,
                     model_policy=None,
                     file_grants=None,
-                    execution_composition=None,
+                    execution_composition=execution_composition,
                     monotonic_clock=None,
                 )
             return cls(
@@ -468,7 +473,7 @@ class ConnectorService:
                 owned_lease=lease,
                 model_policy=None,
                 file_grants=None,
-                execution_composition=None,
+                execution_composition=execution_composition,
                 monotonic_clock=None,
             )
         except BaseException:

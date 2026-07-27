@@ -5,8 +5,10 @@ import base64
 import errno
 import hashlib
 import io
+import os
 import socket
 import stat
+import sys
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -14,12 +16,16 @@ from pathlib import Path
 
 import pytest
 
+from hermes_reach.bootstrap import build_vps_runtime
 from hermes_reach.connector.audit import ReceiptEvidenceLedger
 from hermes_reach.connector.authority import AuthorizedExecution, GrantAuthority
 from hermes_reach.connector.client import (
     ConnectorClient,
     ConnectorSnapshotStore,
     PairedVpsProfile,
+    PendingVpsProfile,
+    VpsProfileStore,
+    _endpoint_digest,
 )
 from hermes_reach.connector.execution import (
     ConnectorExecutionComposition,
@@ -29,6 +35,7 @@ from hermes_reach.connector.identity import (
     ConnectorKeyStore,
     DevicePrivateIdentity,
     TtyPassphraseReader,
+    VpsKeyStore,
 )
 from hermes_reach.connector.media_policy import ModelPolicy
 from hermes_reach.connector.protocol import (
@@ -50,13 +57,13 @@ from hermes_reach.connector.protocol import (
 from hermes_reach.connector.service import ConnectorService
 from hermes_reach.connector.store import AuthorityStore, StoreWriterLease
 from hermes_reach.connector.tls import ConnectorTLSStore
-from hermes_reach.connector.transport import PinnedWssClient
+from hermes_reach.connector.transport import PinnedWssClient, WssEndpoint
 from hermes_reach.contracts import OperationCall, validate_read
 from hermes_reach.runtime.adapters import AdapterRegistry
 from hermes_reach.runtime.availability import AvailabilityRecord
 from hermes_reach.runtime.dispatcher import RuntimeDispatcher
 from hermes_reach.sources.connector import connector_bindings
-from hermes_reach.sources.reddit import OpenCliRedditReadExecutor
+from hermes_reach.sources.reddit import build_reddit_opencli_execution_composition
 
 PASSPHRASE = "bridge-e2e-passphrase"
 SCOPE = GrantScope("web", "read.url", "public")
@@ -152,15 +159,6 @@ class _BlockingExecutor:
         self.cleaned.set()
 
 
-class _RedditProcess:
-    def __init__(self) -> None:
-        self.calls: list[tuple[tuple[str, ...], float]] = []
-
-    async def run(self, argv: tuple[str, ...], *, deadline: float) -> str:
-        self.calls.append((argv, deadline))
-        return REDDIT_OUTPUT
-
-
 @dataclass
 class _BridgeHarness:
     service: ConnectorService
@@ -169,20 +167,38 @@ class _BridgeHarness:
     lease: StoreWriterLease
     receipt_ledger: ReceiptEvidenceLedger
     snapshot_store: ConnectorSnapshotStore
+    trusted_state: Path
     vps_state: Path
 
 
 async def _open_bridge(
     tmp_path: Path,
-    executor: _FixtureExecutor | _BlockingExecutor | OpenCliRedditReadExecutor,
+    executor: _FixtureExecutor | _BlockingExecutor | None,
     *,
     scope: GrantScope = SCOPE,
+    execution_composition: ConnectorExecutionComposition | None = None,
+    persist_vps_profile: bool = False,
 ) -> _BridgeHarness:
     now = int(time.time())
     ids = _Ids()
     trusted_state = tmp_path / "connector"
     vps_state = tmp_path / "vps"
-    vps_state.mkdir(mode=0o700)
+    expected_endpoint: WssEndpoint | None = None
+    service_port = 0
+    if persist_vps_profile:
+        port_probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            port_probe.bind(("127.0.0.1", 0))
+            service_port = int(port_probe.getsockname()[1])
+        finally:
+            port_probe.close()
+        expected_endpoint = WssEndpoint.parse(f"wss://127.0.0.1:{service_port}")
+        vps_key_store = VpsKeyStore(vps_state, _platform="linux")
+        vps_key_store.initialize()
+        vps = vps_key_store.load()
+    else:
+        vps_state.mkdir(mode=0o700)
+        vps = DevicePrivateIdentity._from_seed_for_testing(bytes([31]) * 32)
     key_store = ConnectorKeyStore(trusted_state, _platform="linux")
     connector_public = key_store._initialize_from_tty_for_testing(_reader(PASSPHRASE))
     signer = key_store._unlock_from_tty_for_testing(_reader(PASSPHRASE))
@@ -196,13 +212,16 @@ async def _open_bridge(
         initial_policy_digest=ModelPolicy.default_deny(1).digest(),
         now=now,
     )
-    vps = DevicePrivateIdentity._from_seed_for_testing(bytes([31]) * 32)
     pairing = create_pairing_init(
         vps,
         message_id=ids(),
         pairing_id=ids(),
         device_label="bridge-e2e-vps",
-        endpoint_digest=hashlib.sha256(b"loopback-bridge").hexdigest(),
+        endpoint_digest=(
+            _endpoint_digest(expected_endpoint)
+            if expected_endpoint is not None
+            else hashlib.sha256(b"loopback-bridge").hexdigest()
+        ),
         vps_nonce=bytes(range(32)),
         requested_scopes=(scope,),
         grant_expires_at=now + 3_600,
@@ -268,12 +287,15 @@ async def _open_bridge(
         pairing_complete=complete,
     )
     assert isinstance(resolution, PairingResolution)
-    binding = ConnectorExecutorBinding(
-        scope,
-        BACKEND,
-        executor,
-        getattr(executor, "cleanup", None),
-    )
+    if execution_composition is None:
+        assert executor is not None
+        binding = ConnectorExecutorBinding(
+            scope,
+            BACKEND,
+            executor,
+            getattr(executor, "cleanup", None),
+        )
+        execution_composition = ConnectorExecutionComposition((binding,))
     service = ConnectorService._from_test_dependencies(
         key_store=key_store,
         tls_store=tls_store,
@@ -281,21 +303,34 @@ async def _open_bridge(
         authority=GrantAuthority(store, id_factory=ids),
         tty_reader=_reader(PASSPHRASE),
         bind_host="127.0.0.1",
-        port=0,
+        port=service_port,
         id_factory=ids,
-        execution_composition=ConnectorExecutionComposition((binding,)),
+        execution_composition=execution_composition,
     )
     await service.unlock()
     endpoint = service.endpoint
     assert endpoint is not None
-    profile = PairedVpsProfile(
-        endpoint,
-        vps.public_identity.key_id,
-        connector_public,
-        certificate.der,
-        resolution.signed_grant,
-        resolution.pairing_complete,
-    )
+    if expected_endpoint is not None:
+        assert endpoint == expected_endpoint
+        pending = PendingVpsProfile(
+            endpoint,
+            vps.public_identity.key_id,
+            pairing,
+            challenge,
+            leaf_fingerprint,
+        )
+        profile_store = VpsProfileStore(vps_state)
+        profile_store.save_pending(pending)
+        profile = profile_store.commit_paired(pending, resolution, now=now)
+    else:
+        profile = PairedVpsProfile(
+            endpoint,
+            vps.public_identity.key_id,
+            connector_public,
+            certificate.der,
+            resolution.signed_grant,
+            resolution.pairing_complete,
+        )
     receipt_ledger = ReceiptEvidenceLedger(
         vps_state / "receipts.jsonl", connector_public, role="vps"
     )
@@ -315,6 +350,7 @@ async def _open_bridge(
         lease,
         receipt_ledger,
         snapshot_store,
+        trusted_state,
         vps_state,
     )
 
@@ -409,24 +445,67 @@ def test_real_wss_bridge_executes_and_verifies_one_exact_operation(
     asyncio.run(exercise())
 
 
-def test_real_wss_bridge_executes_reddit_through_one_explicit_binding(
-    tmp_path: Path,
+def test_production_reddit_composition_and_vps_runtime_cross_real_wss(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _require_loopback_bind()
+    executable = tmp_path / "opencli"
+    expected_argv = (
+        "reddit",
+        "read",
+        REDDIT_POST_ID,
+        "--sort",
+        "best",
+        "--limit",
+        "3",
+        "--depth",
+        "2",
+        "--replies",
+        "2",
+        "--max-length",
+        "800",
+        "-f",
+        "yaml",
+    )
+    executable.write_text(
+        f"#!{sys.executable}\n"
+        "import sys\n"
+        f"if tuple(sys.argv[1:]) != {expected_argv!r}:\n"
+        "    raise SystemExit(7)\n"
+        f"sys.stdout.write({REDDIT_OUTPUT!r})\n",
+        encoding="utf-8",
+    )
+    executable.chmod(0o700)
+    executable_path = str(executable.resolve()).encode()
+    executable_hash = hashlib.sha256(executable.read_bytes())
+    executable_digest = executable_hash.digest()
+    executable_digest_hex = executable_hash.hexdigest().encode()
+    composition = build_reddit_opencli_execution_composition(
+        executable,
+        environment={
+            "HOME": str(tmp_path),
+            "PATH": os.environ["PATH"],
+            "LANG": "C.UTF-8",
+            "HTTPS_PROXY": "http://proxy-canary",
+            "AWS_SECRET_ACCESS_KEY": "credential-canary",
+        },
+    )
 
     async def exercise() -> None:
-        process = _RedditProcess()
-        executor = OpenCliRedditReadExecutor(process)
-        harness = await _open_bridge(tmp_path, executor, scope=REDDIT_SCOPE)
-        registry = AdapterRegistry()
-        for binding in connector_bindings(
-            harness.client, _available, (("reddit", "read.post"),)
-        ):
-            registry.register(binding)
+        harness = await _open_bridge(
+            tmp_path,
+            None,
+            scope=REDDIT_SCOPE,
+            execution_composition=composition,
+            persist_vps_profile=True,
+        )
+        monkeypatch.setattr(VpsKeyStore, "_ensure_platform", lambda self: None)
+        runtime = build_vps_runtime(harness.vps_state)
         try:
-            result = await RuntimeDispatcher(registry).dispatch(
-                _reddit_call(), trace_id="f" * 32
-            )
+            before = runtime.operation_availability("reddit", "read.post")
+            assert before.state == "degraded"
+
+            result = await runtime.dispatch(_reddit_call(), trace_id="f" * 32)
 
             assert result is not None
             assert [(item.kind, item.text) for item in result.items] == [
@@ -435,24 +514,6 @@ def test_real_wss_bridge_executes_reddit_through_one_explicit_binding(
             ]
             assert result.items[0].native_id == REDDIT_POST_ID
             assert result.selected_backend_id == BACKEND.backend_id
-            assert process.calls[0][0] == (
-                "reddit",
-                "read",
-                REDDIT_POST_ID,
-                "--sort",
-                "best",
-                "--limit",
-                "3",
-                "--depth",
-                "2",
-                "--replies",
-                "2",
-                "--max-length",
-                "800",
-                "-f",
-                "yaml",
-            )
-            assert len(process.calls) == 1
             assert harness.store.inspect_grants()[0].used_count == 1
             records = harness.receipt_ledger.records()
             assert len(records) == 1
@@ -462,11 +523,18 @@ def test_real_wss_bridge_executes_reddit_through_one_explicit_binding(
             assert snapshot is not None
             assert snapshot.state == "authenticated"
             assert snapshot.scopes == (("reddit", "read.post"),)
+            after = runtime.operation_availability("reddit", "read.post")
+            assert after.state == "available"
+            assert after.backend_id == BACKEND.backend_id
             stored = b"".join(
                 path.read_bytes()
-                for path in harness.vps_state.iterdir()
+                for state_directory in (harness.trusted_state, harness.vps_state)
+                for path in state_directory.rglob("*")
                 if path.is_file()
             )
+            assert executable_path not in stored
+            assert executable_digest not in stored
+            assert executable_digest_hex not in stored
             assert REDDIT_POST_ID.encode() not in stored
             assert b"Fixture Reddit post" not in stored
         finally:

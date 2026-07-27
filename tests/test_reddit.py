@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import os
 import signal
 from collections.abc import Callable
@@ -28,6 +29,8 @@ from hermes_reach.contracts import (
 from hermes_reach.sources.reddit import (
     OpenCliRedditReadExecutor,
     OpenCliSubprocess,
+    attest_opencli_executable,
+    build_reddit_opencli_execution_composition,
 )
 
 NOW = 1_800_000_000
@@ -415,6 +418,125 @@ def _subprocess_runner(
     )
 
 
+def _opencli_executable(tmp_path: Path, content: bytes = b"fixture-opencli") -> Path:
+    executable = tmp_path / "opencli"
+    executable.write_bytes(content)
+    executable.chmod(0o700)
+    return executable
+
+
+def test_production_composition_attests_canonical_opencli_executable(
+    tmp_path: Path,
+) -> None:
+    executable = _opencli_executable(tmp_path)
+    selected = tmp_path / "selected-opencli"
+    selected.symlink_to(executable)
+
+    attestation = attest_opencli_executable(selected)
+    composition = build_reddit_opencli_execution_composition(
+        selected,
+        environment={"HOME": str(tmp_path), "PATH": "/usr/bin"},
+    )
+
+    assert attestation.canonical_path == executable.resolve()
+    assert attestation.sha256 == hashlib.sha256(b"fixture-opencli").hexdigest()
+    assert composition.required_scope("reddit", "read.post") == GrantScope(
+        "reddit", "read.post", "public"
+    )
+    assert repr(composition) == "ConnectorExecutionComposition(count=1)"
+
+
+@pytest.mark.parametrize("unsafe", ["relative", "missing", "broken", "directory"])
+def test_opencli_attestation_rejects_unresolved_or_non_regular_paths(
+    tmp_path: Path, unsafe: str
+) -> None:
+    if unsafe == "relative":
+        candidate = Path("opencli")
+    elif unsafe == "missing":
+        candidate = tmp_path / "missing"
+    elif unsafe == "broken":
+        candidate = tmp_path / "broken"
+        candidate.symlink_to(tmp_path / "missing-target")
+    else:
+        candidate = tmp_path / "directory"
+        candidate.mkdir()
+
+    with pytest.raises(ConnectorError) as rejected:
+        attest_opencli_executable(candidate)
+
+    _assert_code(rejected, ConnectorErrorCode.CONNECTOR_STATE_INVALID)
+
+
+def test_opencli_attestation_rejects_terminal_control_characters(
+    tmp_path: Path,
+) -> None:
+    executable = tmp_path / "opencli\nforged-scope"
+    executable.write_bytes(b"fixture-opencli")
+    executable.chmod(0o700)
+
+    with pytest.raises(ConnectorError) as rejected:
+        attest_opencli_executable(executable)
+
+    _assert_code(rejected, ConnectorErrorCode.CONNECTOR_STATE_INVALID)
+
+
+@pytest.mark.parametrize("mode", [0o600, 0o001, 0o720, 0o702])
+def test_opencli_attestation_rejects_non_executable_or_writable_modes(
+    tmp_path: Path, mode: int
+) -> None:
+    executable = _opencli_executable(tmp_path)
+    executable.chmod(mode)
+
+    with pytest.raises(ConnectorError) as rejected:
+        attest_opencli_executable(executable)
+
+    _assert_code(rejected, ConnectorErrorCode.CONNECTOR_STATE_INVALID)
+
+
+def test_opencli_attestation_rejects_empty_and_multiply_linked_files(
+    tmp_path: Path,
+) -> None:
+    empty = _opencli_executable(tmp_path, b"")
+    with pytest.raises(ConnectorError):
+        attest_opencli_executable(empty)
+
+    empty.unlink()
+    executable = _opencli_executable(tmp_path)
+    os.link(executable, tmp_path / "second-link")
+    with pytest.raises(ConnectorError) as linked:
+        attest_opencli_executable(executable)
+    _assert_code(linked, ConnectorErrorCode.CONNECTOR_STATE_INVALID)
+
+
+def test_attested_subprocess_revalidates_digest_before_zero_spawns(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    executable = _opencli_executable(tmp_path)
+    attestation = attest_opencli_executable(executable)
+    executable.write_bytes(b"drifted-opencli")
+    executable.chmod(0o700)
+    spawns = 0
+
+    async def create(*_: str, **__: object) -> _SubprocessFixture:
+        nonlocal spawns
+        spawns += 1
+        return _SubprocessFixture()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", create)
+    runner = OpenCliSubprocess(
+        attestation.canonical_path,
+        environment={"HOME": str(tmp_path), "PATH": "/usr/bin"},
+        expected_sha256=attestation.sha256,
+        clock=lambda: 10.0,
+    )
+
+    with pytest.raises(ConnectorError) as drifted:
+        asyncio.run(runner.run(EXPECTED_ARGV, deadline=50.0))
+
+    _assert_code(drifted, ConnectorErrorCode.CONNECTOR_STATE_INVALID)
+    assert spawns == 0
+
+
 def test_subprocess_uses_fixed_exec_and_allowlisted_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -447,6 +569,22 @@ def test_subprocess_uses_fixed_exec_and_allowlisted_environment(
         "TMPDIR": "/tmp/opencli",
         "TZ": "UTC",
     }
+
+
+@pytest.mark.parametrize(
+    "environment",
+    [
+        {"HOME": "relative", "PATH": "/usr/bin"},
+        {"HOME": "/tmp/opencli\nhome", "PATH": "/usr/bin"},
+        {"HOME": "/tmp/opencli-home", "PATH": "bin:/usr/bin"},
+        {"HOME": "/tmp/opencli-home", "PATH": "/usr/bin:\x1b[31m/bin"},
+    ],
+)
+def test_subprocess_rejects_ambient_relative_or_controlled_paths(
+    environment: dict[str, str],
+) -> None:
+    with pytest.raises(ValueError):
+        OpenCliSubprocess(Path("/usr/local/bin/opencli"), environment=environment)
 
 
 def test_subprocess_rejects_non_read_argv_before_process_creation(

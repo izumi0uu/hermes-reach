@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import os
 import re
 import signal
+import stat
 import time
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, Protocol, cast
 
@@ -15,11 +18,17 @@ import yaml
 
 from ..connector.authority import AuthorizedExecution
 from ..connector.errors import ConnectorError, ConnectorErrorCode
-from ..connector.execution import ExecutorEnvironment
+from ..connector.execution import (
+    ConnectorExecutionComposition,
+    ConnectorExecutorBinding,
+    ExecutorEnvironment,
+)
 from ..connector.protocol import (
+    GrantScope,
     OperationResultItemV1,
     OperationResultV1,
     ProtocolValidationError,
+    PublicBackendIdentity,
 )
 from ..contracts import operation_call_is_valid, reddit_post_id_from_url
 from .documents import normalize_whitespace
@@ -59,6 +68,10 @@ _MAX_TITLE_CHARACTERS: Final = 512
 _MAX_AUTHOR_CHARACTERS: Final = 64
 _OPENCLI_POST_ID: Final = re.compile(r"[a-z0-9]{1,32}")
 _COMMENT_LEVEL: Final = re.compile(r"L[0-9]+")
+_SHA256_HEX: Final = re.compile(r"[0-9a-f]{64}")
+_MAX_EXECUTABLE_BYTES: Final = 256 * 1024 * 1024
+_REDDIT_SCOPE: Final = GrantScope("reddit", "read.post", "public")
+_REDDIT_BACKEND: Final = PublicBackendIdentity("reach-bounded-executor-v1", "1")
 _LOCALE_ENVIRONMENT_NAMES: Final[tuple[str, ...]] = (
     "LANG",
     "LC_ALL",
@@ -75,26 +88,106 @@ class OpenCliProcess(Protocol):
     async def run(self, argv: tuple[str, ...], *, deadline: float) -> str: ...
 
 
+@dataclass(frozen=True, slots=True)
+class OpenCliExecutableAttestation:
+    """Process-local identity of one operator-selected OpenCLI executable."""
+
+    canonical_path: Path
+    sha256: str
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.canonical_path, Path)
+            or not self.canonical_path.is_absolute()
+            or type(self.sha256) is not str
+            or _SHA256_HEX.fullmatch(self.sha256) is None
+        ):
+            raise ValueError("The OpenCLI executable attestation is invalid.")
+
+
+def attest_opencli_executable(executable: Path) -> OpenCliExecutableAttestation:
+    """Resolve and attest one bounded executable without discovering PATH."""
+
+    if not isinstance(executable, Path) or not executable.is_absolute():
+        raise ConnectorError(ConnectorErrorCode.CONNECTOR_STATE_INVALID)
+    try:
+        canonical_path = executable.resolve(strict=True)
+        if not str(canonical_path).isprintable():
+            raise ConnectorError(ConnectorErrorCode.CONNECTOR_STATE_INVALID)
+        digest = _opencli_executable_digest(canonical_path)
+    except ConnectorError:
+        raise
+    except (OSError, RuntimeError, ValueError):
+        raise ConnectorError(ConnectorErrorCode.CONNECTOR_STATE_INVALID) from None
+    return OpenCliExecutableAttestation(canonical_path, digest)
+
+
+def reddit_opencli_execution_composition(
+    attestation: OpenCliExecutableAttestation,
+    *,
+    environment: Mapping[str, str],
+) -> ConnectorExecutionComposition:
+    """Compose exactly one attested Reddit read executor for this process."""
+
+    if not isinstance(attestation, OpenCliExecutableAttestation):
+        raise TypeError("The Reddit OpenCLI composition is invalid.")
+    process = OpenCliSubprocess(
+        attestation.canonical_path,
+        environment=environment,
+        expected_sha256=attestation.sha256,
+    )
+    return ConnectorExecutionComposition(
+        (
+            ConnectorExecutorBinding(
+                required_scope=_REDDIT_SCOPE,
+                backend=_REDDIT_BACKEND,
+                executor=OpenCliRedditReadExecutor(process),
+            ),
+        )
+    )
+
+
+def build_reddit_opencli_execution_composition(
+    executable: Path,
+    *,
+    environment: Mapping[str, str],
+) -> ConnectorExecutionComposition:
+    """Attest and compose the production Reddit OpenCLI executor."""
+
+    return reddit_opencli_execution_composition(
+        attest_opencli_executable(executable), environment=environment
+    )
+
+
 class OpenCliSubprocess:
     """Run an explicit local OpenCLI binary without ambient secret environment."""
 
-    __slots__ = ("_clock", "_environment", "_executable")
+    __slots__ = ("_clock", "_environment", "_executable", "_expected_sha256")
 
     def __init__(
         self,
         executable: Path,
         *,
         environment: Mapping[str, str],
+        expected_sha256: str | None = None,
         clock: MonotonicClock = time.monotonic,
     ) -> None:
         if (
             not isinstance(executable, Path)
             or not executable.is_absolute()
             or not callable(clock)
+            or (
+                expected_sha256 is not None
+                and (
+                    type(expected_sha256) is not str
+                    or _SHA256_HEX.fullmatch(expected_sha256) is None
+                )
+            )
         ):
             raise ValueError("The OpenCLI process configuration is invalid.")
         self._executable = executable
         self._environment = _minimal_opencli_environment(environment)
+        self._expected_sha256 = expected_sha256
         self._clock = clock
 
     async def run(self, argv: tuple[str, ...], *, deadline: float) -> str:
@@ -105,6 +198,21 @@ class OpenCliSubprocess:
         remaining = deadline - self._clock()
         if remaining <= 0:
             raise ConnectorError(ConnectorErrorCode.CONNECTOR_DEADLINE_EXCEEDED)
+        expected_sha256 = self._expected_sha256
+        if expected_sha256 is not None:
+            try:
+                observed_sha256 = _opencli_executable_digest(self._executable)
+            except ConnectorError:
+                raise
+            except (OSError, ValueError):
+                raise ConnectorError(
+                    ConnectorErrorCode.CONNECTOR_STATE_INVALID
+                ) from None
+            if observed_sha256 != expected_sha256:
+                raise ConnectorError(ConnectorErrorCode.CONNECTOR_STATE_INVALID)
+            remaining = deadline - self._clock()
+            if remaining <= 0:
+                raise ConnectorError(ConnectorErrorCode.CONNECTOR_DEADLINE_EXCEEDED)
         process: asyncio.subprocess.Process | None = None
         try:
             async with asyncio.timeout(remaining):
@@ -331,17 +439,100 @@ def _minimal_opencli_environment(parent: Mapping[str, str]) -> dict[str, str]:
         type(home) is not str
         or not home
         or "\x00" in home
+        or not home.isprintable()
+        or not Path(home).is_absolute()
         or type(path) is not str
         or not path
         or "\x00" in path
+        or not path.isprintable()
+        or not all(
+            component and Path(component).is_absolute()
+            for component in path.split(os.pathsep)
+        )
     ):
         raise ValueError("The OpenCLI process configuration is invalid.")
     environment = {"HOME": home, "PATH": path, "NO_COLOR": "1"}
     for name in _LOCALE_ENVIRONMENT_NAMES:
         value = parent.get(name)
-        if type(value) is str and value and "\x00" not in value:
+        if (
+            type(value) is str
+            and value
+            and "\x00" not in value
+            and value.isprintable()
+            and (name != "TMPDIR" or Path(value).is_absolute())
+        ):
             environment[name] = value
     return environment
+
+
+def _opencli_executable_digest(path: Path) -> str:
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = -1
+    try:
+        descriptor = os.open(path, flags)
+        before = os.fstat(descriptor)
+        _validate_opencli_executable_metadata(before)
+        digest = hashlib.sha256()
+        remaining = before.st_size
+        while remaining:
+            chunk = os.read(descriptor, min(1024 * 1024, remaining))
+            if not chunk:
+                raise ConnectorError(ConnectorErrorCode.CONNECTOR_STATE_INVALID)
+            digest.update(chunk)
+            remaining -= len(chunk)
+        if os.read(descriptor, 1):
+            raise ConnectorError(ConnectorErrorCode.CONNECTOR_STATE_INVALID)
+        after = os.fstat(descriptor)
+        if _attested_metadata(before) != _attested_metadata(after):
+            raise ConnectorError(ConnectorErrorCode.CONNECTOR_STATE_INVALID)
+        return digest.hexdigest()
+    except ConnectorError:
+        raise
+    except OSError:
+        raise ConnectorError(ConnectorErrorCode.CONNECTOR_STATE_INVALID) from None
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+
+
+def _validate_opencli_executable_metadata(metadata: os.stat_result) -> None:
+    mode = metadata.st_mode
+    if (
+        not stat.S_ISREG(mode)
+        or metadata.st_nlink != 1
+        or metadata.st_uid not in {0, os.geteuid()}
+        or mode & (stat.S_IWGRP | stat.S_IWOTH)
+        or not _current_process_can_execute(metadata)
+        or not 0 < metadata.st_size <= _MAX_EXECUTABLE_BYTES
+    ):
+        raise ConnectorError(ConnectorErrorCode.CONNECTOR_STATE_INVALID)
+
+
+def _current_process_can_execute(metadata: os.stat_result) -> bool:
+    mode = metadata.st_mode
+    effective_user = os.geteuid()
+    if effective_user == 0:
+        return bool(mode & (stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH))
+    if metadata.st_uid == effective_user:
+        return bool(mode & stat.S_IXUSR)
+    groups = {os.getegid(), *os.getgroups()}
+    if metadata.st_gid in groups:
+        return bool(mode & stat.S_IXGRP)
+    return bool(mode & stat.S_IXOTH)
+
+
+def _attested_metadata(metadata: os.stat_result) -> tuple[int, ...]:
+    return (
+        metadata.st_dev,
+        metadata.st_ino,
+        metadata.st_mode,
+        metadata.st_nlink,
+        metadata.st_uid,
+        metadata.st_gid,
+        metadata.st_size,
+        metadata.st_mtime_ns,
+        metadata.st_ctime_ns,
+    )
 
 
 async def _read_stdout_bounded(process: asyncio.subprocess.Process) -> bytes:
@@ -380,4 +571,12 @@ async def _kill_process_group(process: asyncio.subprocess.Process) -> None:
         pass
 
 
-__all__ = ["OpenCliProcess", "OpenCliRedditReadExecutor", "OpenCliSubprocess"]
+__all__ = [
+    "OpenCliExecutableAttestation",
+    "OpenCliProcess",
+    "OpenCliRedditReadExecutor",
+    "OpenCliSubprocess",
+    "attest_opencli_executable",
+    "build_reddit_opencli_execution_composition",
+    "reddit_opencli_execution_composition",
+]

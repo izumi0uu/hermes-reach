@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 
 from hermes_reach import plugin
+from hermes_reach.sources.registry import build_alpha1_runtime
 
 
 class FakePluginContext:
@@ -129,3 +130,25 @@ def test_registration_fails_before_side_effects_when_skill_is_missing(
     assert context.tools == []
     assert context.commands == []
     assert context.skills == []
+
+
+def test_registration_injects_one_process_runtime_into_tools_and_cli(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = FakePluginContext()
+    runtime = build_alpha1_runtime()
+    installed: list[object] = []
+    seen_environment: list[object] = []
+
+    def configured(environment: object) -> object:
+        seen_environment.append(environment)
+        return runtime
+
+    monkeypatch.setattr(plugin, "runtime_from_environment", configured)
+    monkeypatch.setattr(plugin, "_set_tool_runtime", installed.append)
+    monkeypatch.setattr(plugin, "_set_cli_runtime", installed.append)
+
+    plugin.register(context)
+
+    assert seen_environment == [plugin.os.environ]
+    assert installed == [runtime, runtime]
