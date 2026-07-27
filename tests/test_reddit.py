@@ -537,6 +537,38 @@ def test_attested_subprocess_revalidates_digest_before_zero_spawns(
     assert spawns == 0
 
 
+def test_attested_subprocess_offloads_digest_recheck(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    executable = _opencli_executable(tmp_path)
+    attestation = attest_opencli_executable(executable)
+    process = _SubprocessFixture()
+    offloaded: list[tuple[Callable[[Path], str], Path]] = []
+
+    async def to_thread(function: Callable[[Path], str], path: Path) -> str:
+        offloaded.append((function, path))
+        return function(path)
+
+    async def create(*_: str, **__: object) -> _SubprocessFixture:
+        return process
+
+    monkeypatch.setattr(asyncio, "to_thread", to_thread)
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", create)
+    runner = OpenCliSubprocess(
+        attestation.canonical_path,
+        environment={"HOME": str(tmp_path), "PATH": "/usr/bin"},
+        expected_sha256=attestation.sha256,
+        clock=lambda: 10.0,
+    )
+
+    output = asyncio.run(runner.run(EXPECTED_ARGV, deadline=50.0))
+
+    assert output == FIXTURE_OUTPUT
+    assert len(offloaded) == 1
+    assert offloaded[0][0].__name__ == "_opencli_executable_digest"
+    assert offloaded[0][1] == attestation.canonical_path
+
+
 def test_subprocess_uses_fixed_exec_and_allowlisted_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
