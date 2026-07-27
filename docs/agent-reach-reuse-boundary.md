@@ -45,10 +45,10 @@ Every implemented `source + operation` has exactly one execution class:
 | Reach reimplementation | Rewrites platform retrieval or parsing, even against the same endpoint | Exception required |
 | Not implemented | Catalog-only, with no production execution path | Must remain unavailable |
 
-Provider identity alone is not execution reuse. For example, an Exa client
-that bypasses Agent-Reach's `mcporter` path is a Hermes-native equivalent, not
-an exact backend wrapper. Likewise, calling the same public V2EX API through
-new request and parsing code is a reimplementation.
+Provider identity alone is not execution reuse. The removed generic Exa client
+could not become an exact wrapper merely by attesting the provider name while
+bypassing Agent-Reach's `mcporter` path. Likewise, calling the same public V2EX
+API through new request and parsing code is a reimplementation.
 
 ## Frozen Audit Matrix
 
@@ -57,7 +57,7 @@ Writing and account mutation commands documented by Agent-Reach are excluded.
 
 | Source | Operations by class | Upstream execution evidence | Current decision |
 | --- | --- | --- | --- |
-| GitHub | 8 Hermes-native equivalent | `gh` CLI | Anonymous REST replacement is frozen; P0 migration/exception review |
+| GitHub | 8 Hermes-native equivalent | `gh` CLI | P0 public-authority exception approved; anonymous REST retained |
 | Twitter/X | 6 not implemented | `twitter-cli`, OpenCLI, `bird` | Frozen before implementation |
 | YouTube | 4 exact backend thin contracts, 1 not implemented | `yt-dlp`; transcription pipeline | Contracts remain unbound until a concrete backend passes review |
 | Reddit | 1 exact backend thin wrapper, 6 not implemented | OpenCLI, then `rdt-cli` | Fixed OpenCLI `read.post` is the reference pattern; other operations frozen |
@@ -70,16 +70,16 @@ Writing and account mutation commands documented by Agent-Reach are excluded.
 | V2EX | 4 Reach reimplementations | Agent-Reach channel methods over public API | Grandfathered; P1 migration/exception review |
 | Xueqiu | 4 not implemented | Agent-Reach cookie-aware API methods | Frozen before implementation |
 | RSS | 2 Reach reimplementations | `feedparser` route | Grandfathered; P1 migration/exception review |
-| Exa | 2 Hermes-native equivalent contracts | Exa through `mcporter` | Unbound; P0 migration/exception review |
-| Web | 1 Hermes-native equivalent | Agent-Reach Jina Reader method | P0 migration/exception review |
+| Exa | 2 not implemented | Exa through `mcporter` | Generic client removed; exact route blocked by artifact, schema, and query-logging gaps |
+| Web | 1 Hermes-native equivalent | Agent-Reach Jina Reader method | P0 safety exception approved; bounded direct origin reader retained |
 
-| Execution classification | All 63 operations | 26 catalog-implemented operations |
+| Execution classification | All 63 operations | 24 catalog-implemented operations |
 | --- | ---: | ---: |
 | Direct Agent-Reach execution | 0 (0%) | 0 (0%) |
-| Exact backend thin wrapper | 9 (14.3%) | 9 (34.6%) |
-| Hermes-native equivalent | 11 (17.5%) | 11 (42.3%) |
-| Reach reimplementation | 6 (9.5%) | 6 (23.1%) |
-| Not implemented | 37 (58.7%) | 0 |
+| Exact backend thin wrapper | 9 (14.3%) | 9 (37.5%) |
+| Hermes-native equivalent | 9 (14.3%) | 9 (37.5%) |
+| Reach reimplementation | 6 (9.5%) | 6 (25.0%) |
+| Not implemented | 39 (61.9%) | 0 |
 
 The exact implemented-operation classifications are frozen as follows:
 
@@ -89,16 +89,41 @@ The exact implemented-operation classifications are frozen as follows:
 | Exact backend thin wrapper | Reddit | `read.post` |
 | Exact backend thin wrapper | Bilibili | `search.videos`, `read.video`, `browse.hot`, `browse.rank` |
 | Hermes-native equivalent | GitHub | `search.repositories`, `search.code`, `read.repository`, `read.issue`, `read.pull_request`, `browse.actions`, `read.action_run`, `browse.releases` |
-| Hermes-native equivalent | Exa | `search.web`, `search.code` |
 | Hermes-native equivalent | Web | `read.url` |
 | Reach reimplementation | V2EX | `browse.hot`, `browse.node_topics`, `read.topic`, `read.user` |
 | Reach reimplementation | RSS | `read.feed`, `browse.entries` |
+| Not implemented | Exa | `search.web`, `search.code` |
 
 Only 16 operations currently have a concrete retrieval implementation: 15
 default-bound Web/RSS/V2EX/GitHub operations are Reach-owned and the Reddit
 operation is a fixed upstream-selected OpenCLI wrapper that remains unbound by
-default. The YouTube, Bilibili, and Exa rows are typed, audited contracts, not
-concrete production backend implementations.
+default. The YouTube and Bilibili rows are typed, audited contracts, not
+concrete production backend implementations. Exa is catalog-planned with no
+production backend interface.
+
+## P0 Review Resolution
+
+The P0 review is resolved without pretending unsafe compatibility is reuse.
+The machine-readable review set is
+[`agent-reach-reuse-decisions.json`](agent-reach-reuse-decisions.json), and
+the source decisions are:
+
+- [`web-1.5.0.md`](agent-reach-decisions/web-1.5.0.md): keep
+  `web-public-http-v1` because the pinned synchronous Jina callable cannot
+  preserve cancellation, streamed raw-size bounds, transport isolation, or
+  the retention claim.
+- [`github-gh-2.95.0.md`](agent-reach-decisions/github-gh-2.95.0.md): keep
+  anonymous `github-public-rest-v1` because isolated `gh` requires
+  authentication and ambient authentication can exceed public authority.
+- [`exa-mcporter-1.5.0.md`](agent-reach-decisions/exa-mcporter-1.5.0.md):
+  remove the generic injected-client path and keep both rows planned because
+  mcporter is unpinned, code-search arguments have drifted, and the provider
+  logs queries.
+
+This correction removes a dishonest activation surface but does not change
+the 16 concrete retrieval paths. Overall execution-ownership drift therefore
+remains approximately 6.5/10; the difference is that every P0 deviation now
+has evidence, an approval disposition, a rollback, and a review milestone.
 
 ## Drift Assessment
 
@@ -110,7 +135,7 @@ decision aid, not a code-volume formula:
 | --- | --- | --- |
 | Platform execution ownership | High | No implemented operation calls an Agent-Reach execution path; 15 of 16 concrete paths are Reach-owned |
 | Catalog/backend metadata | Low | All 15 channels are projected and compatibility-checked from the pinned upstream registry |
-| Platform logic duplication | Local but material | 6 of 26 implemented rows, all RSS/V2EX, repeat platform logic |
+| Platform logic duplication | Local but material | 6 of 24 implemented rows, all RSS/V2EX, repeat platform logic |
 | Security and control plane | Minimal | Connector, grants, secret isolation, bounds, receipts, and audit have no upstream equivalent |
 
 This is not a claim that 65% of the repository should be removed. Most code is

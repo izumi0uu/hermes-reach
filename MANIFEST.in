@@ -1,3 +1,2 @@
-include docs/connector-security.md
-include docs/agent-reach-reuse-boundary.md
+recursive-include docs *.md *.json
 prune tests

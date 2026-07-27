@@ -126,10 +126,27 @@ def test_catalog_marks_released_alpha1_source_boundaries_implemented() -> None:
         ("v2ex", "browse.node_topics"),
         ("v2ex", "read.topic"),
         ("v2ex", "read.user"),
-        ("exa", "search.web"),
-        ("exa", "search.code"),
     }
     assert all(operation.unavailable_reason for operation in operations)
+
+
+def test_exa_operations_are_planned_without_changing_their_public_schema() -> None:
+    source = get_source("exa")
+
+    assert source is not None
+    assert source.access_class == "api_key"
+    for name in ("search.web", "search.code"):
+        operation = get_operation(source, name)
+
+        assert operation is not None
+        assert operation.tool == "search"
+        assert operation.alpha_wave == 1
+        assert operation.access_class == "api_key"
+        assert operation.implementation_state == "planned"
+        assert [option.name for option in operation.options] == ["limit"]
+        assert operation.options[0].minimum == 1
+        assert operation.options[0].maximum == 50
+        assert operation.targets == ()
 
 
 def test_alpha1_operation_inputs_are_catalog_owned() -> None:

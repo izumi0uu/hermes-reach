@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+from ..catalog import EXA_SETUP_REQUIRED_REASON
 from ..runtime.adapters import AdapterBinding, AdapterCallable, AdapterRegistry
 from ..runtime.availability import Availability
 from ..runtime.dispatcher import RuntimeDispatcher
-from .exa import AuditedExaClient, exa_bindings, exa_client_is_eligible
 from .github import GitHubAdapter
 from .media import (
     AuditedBilibiliBackend,
@@ -23,12 +23,14 @@ from .web import WebAdapter
 
 def build_alpha1_registry(
     http_client: PublicHttpClient | None = None,
-    exa_client: AuditedExaClient | None = None,
+    exa_client: None = None,
     youtube_backend: AuditedYouTubeBackend | None = None,
     bilibili_backend: AuditedBilibiliBackend | None = None,
 ) -> AdapterRegistry:
     """Register deterministic adapters without probing network or secrets."""
 
+    if exa_client is not None:
+        raise TypeError("Exa client injection is no longer supported.")
     registry = AdapterRegistry()
     client = http_client if http_client is not None else PublicHttpTransport()
     web = WebAdapter(client)
@@ -71,28 +73,18 @@ def build_alpha1_registry(
             github.execute,
         )
 
-    if exa_client is None:
-        _mark_exa(
-            registry,
-            "setup_required",
-            "Configure a separately audited Exa client through operator setup.",
-        )
-    elif exa_client_is_eligible(exa_client):
-        for binding in exa_bindings(exa_client):
-            registry.register(binding)
-    else:
-        _mark_exa(
-            registry,
-            "unavailable",
-            "The configured Exa client failed the exact-provider safety gate.",
-        )
+    _mark_exa(
+        registry,
+        "setup_required",
+        EXA_SETUP_REQUIRED_REASON,
+    )
     _register_media_backends(registry, youtube_backend, bilibili_backend)
     return registry
 
 
 def build_alpha1_runtime(
     http_client: PublicHttpClient | None = None,
-    exa_client: AuditedExaClient | None = None,
+    exa_client: None = None,
     youtube_backend: AuditedYouTubeBackend | None = None,
     bilibili_backend: AuditedBilibiliBackend | None = None,
 ) -> RuntimeDispatcher:

@@ -82,7 +82,7 @@ def test_github_execution_uses_the_injected_public_http_client_without_process(
     assert "private-query-token" not in json.dumps(response)
 
 
-def test_exa_search_requires_an_audited_client_without_echoing_query() -> None:
+def test_planned_exa_search_requires_setup_without_echoing_query() -> None:
     private_query = "private-exa-query"
 
     response = _run(
@@ -199,10 +199,8 @@ def test_status_can_filter_planned_operations_without_hiding_released_rows() -> 
     assert [operation["name"] for operation in sources["web"]["operations"]] == [
         "read.url"
     ]
-    assert [operation["name"] for operation in sources["exa"]["operations"]] == [
-        "search.web",
-        "search.code",
-    ]
+    assert sources["exa"]["operations"] == []
+    assert sources["exa"]["availability"] == "unavailable"
     assert len(sources["github"]["operations"]) == 8
     assert sources["github"]["availability"] == "available"
     assert [operation["name"] for operation in sources["youtube"]["operations"]] == [

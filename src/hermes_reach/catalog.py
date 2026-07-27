@@ -26,6 +26,9 @@ DataScope = Literal["public", "account_visible"]
 
 CATALOG_VERSION: Final = "v1"
 PROTOCOL_VERSION: Final = "v1"
+EXA_SETUP_REQUIRED_REASON: Final = (
+    "Exact Agent-Reach-selected mcporter execution remains frozen pending review."
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -666,8 +669,7 @@ SOURCE_CATALOG: Final[tuple[SourceSpec, ...]] = (
                 1,
                 "api_key",
                 (LIMIT,),
-                implementation_state="implemented",
-                unavailable_reason="Configure an audited Exa client to enable search.",
+                unavailable_reason=EXA_SETUP_REQUIRED_REASON,
             ),
             _operation(
                 "exa",
@@ -676,8 +678,7 @@ SOURCE_CATALOG: Final[tuple[SourceSpec, ...]] = (
                 1,
                 "api_key",
                 (LIMIT,),
-                implementation_state="implemented",
-                unavailable_reason="Configure an audited Exa client to enable search.",
+                unavailable_reason=EXA_SETUP_REQUIRED_REASON,
             ),
         ),
     ),

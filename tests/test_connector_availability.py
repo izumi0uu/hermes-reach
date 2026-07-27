@@ -12,7 +12,7 @@ def _exa_source():
 
 
 def test_default_status_operation_shape_has_no_connector_fields() -> None:
-    result = source_status(_exa_source(), include_planned=False)
+    result = source_status(_exa_source(), include_planned=True)
 
     assert set(result["operations"][0]) == {
         "name",
@@ -38,7 +38,7 @@ def test_connector_availability_fields_are_projected_when_present() -> None:
             1_753_510_400,
         )
 
-    result = source_status(_exa_source(), include_planned=False, resolver=resolve)
+    result = source_status(_exa_source(), include_planned=True, resolver=resolve)
 
     for operation in result["operations"]:
         assert operation["cause_code"] == "connector_offline"
@@ -57,7 +57,7 @@ def test_local_available_operation_wins_source_aggregation() -> None:
             )
         return AvailabilityRecord("available", "A local adapter is available.")
 
-    result = source_status(_exa_source(), include_planned=False, resolver=resolve)
+    result = source_status(_exa_source(), include_planned=True, resolver=resolve)
 
     assert result["availability"] == "available"
     operations = {operation["name"]: operation for operation in result["operations"]}

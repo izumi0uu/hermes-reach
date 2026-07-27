@@ -220,7 +220,8 @@ The roadmap describes development order, not release dates. Incomplete capabilit
 | Complete | Exact remote execution bridge | Explicit Connector adapters, authorized-operation delivery, receipts, and retries; default composition remains empty |
 | Complete | First source executor | Fixed OpenCLI read, closed YAML mapping, and WSS receipt test for Reddit `read.post`; unbound by default |
 | Complete | Explicit two-sided production composition | Attest and confirm OpenCLI on the trusted device; build the sole Reddit adapter from owner-only paired VPS state |
-| Now | Freeze and correct the reuse boundary | Audit all 63 operations, prioritize GitHub/Web/Exa then RSS/V2EX, and add no platform retrieval logic |
+| Complete | Correct the P0 reuse boundary | Audit all 63 operations; approve bounded Web/GitHub exceptions, remove generic Exa activation, and freeze evidence in a machine-readable manifest |
+| Now | Resolve RSS/V2EX P1 drift | Prefer fixed upstream callables; record time-bounded exceptions where the safety boundary cannot be preserved, and add no platform retrieval logic |
 | Then | Execute more upstream backends | Add only direct reuse or thin wrappers around pinned upstream backends |
 | Later | Support authenticated platforms and production operations | Twitter/X and similar sources, one-step grants, audit export, alerts, upgrades, and rollback |
 
