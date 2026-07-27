@@ -1,0 +1,130 @@
+{
+  "schema_version": "v1",
+  "agent_reach": {
+    "version": "1.5.0",
+    "commit": "1494c2ab239e7355a77e7cceaf3271453a1f34b5"
+  },
+  "reviews": [
+    {
+      "source": "web",
+      "operation": "read.url",
+      "upstream_execution": "agent_reach.channels.web.WebChannel.read(url)",
+      "classification": "hermes_native_equivalent",
+      "semantic_delta": "Keep proxy-free DNS-pinned bounded origin retrieval; upstream Jina call is blocking, unbounded, proxy-sensitive, non-cancellable, discloses the full URL, and has no compatible retention guarantee.",
+      "approval": "owner-approved-safety-exception-2026-07-27",
+      "current_backend": "web-public-http-v1",
+      "review_milestone": "next Agent-Reach pin with a cancellable bounded Web callable and compatible retention contract",
+      "decision_record": "docs/agent-reach-decisions/web-1.5.0.md"
+    },
+    {
+      "source": "github",
+      "operation": "search.repositories",
+      "upstream_execution": "gh search repos --sort stars --limit <limit> --json <fields> -- <query>",
+      "classification": "hermes_native_equivalent",
+      "semantic_delta": "Keep anonymous public-only authority; isolated gh requires authentication and ambient auth can expose private results.",
+      "approval": "owner-approved-public-authority-exception-2026-07-27",
+      "current_backend": "github-public-rest-v1",
+      "review_milestone": "credential-free gh support or issuer-proven public-only authority",
+      "decision_record": "docs/agent-reach-decisions/github-gh-2.95.0.md"
+    },
+    {
+      "source": "github",
+      "operation": "search.code",
+      "upstream_execution": "gh search code --limit <limit> --json <fields> -- <query>",
+      "classification": "hermes_native_equivalent",
+      "semantic_delta": "Keep anonymous public-only authority; isolated gh requires authentication and ambient auth can expose private results.",
+      "approval": "owner-approved-public-authority-exception-2026-07-27",
+      "current_backend": "github-public-rest-v1",
+      "review_milestone": "credential-free gh support or issuer-proven public-only authority",
+      "decision_record": "docs/agent-reach-decisions/github-gh-2.95.0.md"
+    },
+    {
+      "source": "github",
+      "operation": "read.repository",
+      "upstream_execution": "gh repo view <repository> --json <fields>",
+      "classification": "hermes_native_equivalent",
+      "semantic_delta": "Keep anonymous public-only authority; isolated gh requires authentication and ambient auth can expose private results.",
+      "approval": "owner-approved-public-authority-exception-2026-07-27",
+      "current_backend": "github-public-rest-v1",
+      "review_milestone": "credential-free gh support or issuer-proven public-only authority",
+      "decision_record": "docs/agent-reach-decisions/github-gh-2.95.0.md"
+    },
+    {
+      "source": "github",
+      "operation": "read.issue",
+      "upstream_execution": "gh issue view <id> --repo <repository> --json <fields>",
+      "classification": "hermes_native_equivalent",
+      "semantic_delta": "Keep anonymous public-only authority; isolated gh requires authentication and ambient auth can expose private results.",
+      "approval": "owner-approved-public-authority-exception-2026-07-27",
+      "current_backend": "github-public-rest-v1",
+      "review_milestone": "credential-free gh support or issuer-proven public-only authority",
+      "decision_record": "docs/agent-reach-decisions/github-gh-2.95.0.md"
+    },
+    {
+      "source": "github",
+      "operation": "read.pull_request",
+      "upstream_execution": "gh pr view <id> --repo <repository> --json <fields>",
+      "classification": "hermes_native_equivalent",
+      "semantic_delta": "Keep anonymous public-only authority; isolated gh requires authentication and ambient auth can expose private results.",
+      "approval": "owner-approved-public-authority-exception-2026-07-27",
+      "current_backend": "github-public-rest-v1",
+      "review_milestone": "credential-free gh support or issuer-proven public-only authority",
+      "decision_record": "docs/agent-reach-decisions/github-gh-2.95.0.md"
+    },
+    {
+      "source": "github",
+      "operation": "browse.actions",
+      "upstream_execution": "gh run list --repo <repository> --limit <limit> --json <fields>",
+      "classification": "hermes_native_equivalent",
+      "semantic_delta": "Keep anonymous public-only authority; isolated gh requires authentication and ambient auth can expose private results.",
+      "approval": "owner-approved-public-authority-exception-2026-07-27",
+      "current_backend": "github-public-rest-v1",
+      "review_milestone": "credential-free gh support or issuer-proven public-only authority",
+      "decision_record": "docs/agent-reach-decisions/github-gh-2.95.0.md"
+    },
+    {
+      "source": "github",
+      "operation": "read.action_run",
+      "upstream_execution": "gh run view <id> --repo <repository> --json <fields>",
+      "classification": "hermes_native_equivalent",
+      "semantic_delta": "Keep anonymous public-only authority; isolated gh requires authentication and ambient auth can expose private results.",
+      "approval": "owner-approved-public-authority-exception-2026-07-27",
+      "current_backend": "github-public-rest-v1",
+      "review_milestone": "credential-free gh support or issuer-proven public-only authority",
+      "decision_record": "docs/agent-reach-decisions/github-gh-2.95.0.md"
+    },
+    {
+      "source": "github",
+      "operation": "browse.releases",
+      "upstream_execution": "gh release list --repo <repository> --limit <limit> --json <fields>",
+      "classification": "hermes_native_equivalent",
+      "semantic_delta": "Keep anonymous public-only authority; isolated gh requires authentication and ambient auth can expose private results.",
+      "approval": "owner-approved-public-authority-exception-2026-07-27",
+      "current_backend": "github-public-rest-v1",
+      "review_milestone": "credential-free gh support or issuer-proven public-only authority",
+      "decision_record": "docs/agent-reach-decisions/github-gh-2.95.0.md"
+    },
+    {
+      "source": "exa",
+      "operation": "search.web",
+      "upstream_execution": "mcporter call exa.web_search_exa(query, numResults)",
+      "classification": "not_implemented",
+      "semantic_delta": "No production binding: Agent-Reach does not pin mcporter or Node and the hosted provider logs submitted queries.",
+      "approval": "owner-approved-fail-closed-2026-07-27",
+      "current_backend": null,
+      "review_milestone": "pinned executable closure and approved provider-query retention contract",
+      "decision_record": "docs/agent-reach-decisions/exa-mcporter-1.5.0.md"
+    },
+    {
+      "source": "exa",
+      "operation": "search.code",
+      "upstream_execution": "mcporter call exa.get_code_context_exa(query, tokensNum)",
+      "classification": "not_implemented",
+      "semantic_delta": "No production binding: the pinned tokensNum argument is rejected by the current deprecated provider method, mcporter is unpinned, and the provider logs queries.",
+      "approval": "owner-approved-fail-closed-2026-07-27",
+      "current_backend": null,
+      "review_milestone": "compatible Agent-Reach method schema, pinned executable closure, and approved provider-query retention contract",
+      "decision_record": "docs/agent-reach-decisions/exa-mcporter-1.5.0.md"
+    }
+  ]
+}

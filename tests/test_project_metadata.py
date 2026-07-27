@@ -32,13 +32,11 @@ def test_lockfile_keeps_the_inspected_agent_reach_commit() -> None:
     assert "1494c2ab239e7355a77e7cceaf3271453a1f34b5" in lockfile
 
 
-def test_manifest_pins_security_guide_and_prunes_tests() -> None:
+def test_manifest_includes_reviewed_docs_and_prunes_tests() -> None:
     root = Path(__file__).resolve().parents[1]
 
     assert (root / "MANIFEST.in").read_text(encoding="ascii") == (
-        "include docs/connector-security.md\n"
-        "include docs/agent-reach-reuse-boundary.md\n"
-        "prune tests\n"
+        "recursive-include docs *.md *.json\nprune tests\n"
     )
 
 

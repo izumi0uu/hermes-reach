@@ -197,6 +197,8 @@ def test_connector_factory_rejects_duplicate_unknown_and_planned_operations() ->
     )
     with pytest.raises(ValueError, match="selection"):
         connector_bindings(client, _availability, (("reddit", "browse.hot"),))
+    with pytest.raises(ValueError, match="selection"):
+        connector_bindings(client, _availability, (("exa", "search.web"),))
 
 
 def test_multi_source_tool_trace_reaches_each_connector_binding(
@@ -207,7 +209,7 @@ def test_multi_source_tool_trace_reaches_each_connector_binding(
     for binding in connector_bindings(
         client,
         _degraded_availability,
-        (("github", "search.repositories"), ("exa", "search.web")),
+        (("github", "search.repositories"), ("youtube", "search.videos")),
     ):
         registry.register(binding)
     monkeypatch.setattr(reach_tools, "_RUNTIME", RuntimeDispatcher(registry))
@@ -223,8 +225,8 @@ def test_multi_source_tool_trace_reaches_each_connector_binding(
                             "query": "first",
                         },
                         {
-                            "source": "exa",
-                            "operation": "search.web",
+                            "source": "youtube",
+                            "operation": "search.videos",
                             "query": "second",
                         },
                     ]

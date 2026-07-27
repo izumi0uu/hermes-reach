@@ -105,11 +105,7 @@ def built_archives(
 
     for filename in ("LICENSE", "MANIFEST.in", "README.md", "pyproject.toml"):
         shutil.copy2(root / filename, source / filename)
-    (source / "docs").mkdir()
-    shutil.copy2(
-        root / "docs" / "connector-security.md",
-        source / "docs" / "connector-security.md",
-    )
+    shutil.copytree(root / "docs", source / "docs")
     shutil.copytree(
         root / "src",
         source / "src",
@@ -175,6 +171,29 @@ def test_source_distribution_includes_exact_operator_security_guide(
     ]
 
     assert packaged_guides == [(root / suffix).read_bytes()]
+
+
+def test_source_distribution_includes_agent_reach_decision_evidence(
+    built_archives: tuple[Path, Path],
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    _, source_distribution = built_archives
+    members = _archive_members(source_distribution)
+    suffixes = (
+        "docs/agent-reach-reuse-boundary.md",
+        "docs/agent-reach-reuse-decisions.json",
+        "docs/agent-reach-decisions/web-1.5.0.md",
+        "docs/agent-reach-decisions/exa-mcporter-1.5.0.md",
+        "docs/agent-reach-decisions/github-gh-2.95.0.md",
+    )
+
+    for suffix in suffixes:
+        packaged = [
+            content
+            for member, content in members.items()
+            if member == suffix or member.endswith(f"/{suffix}")
+        ]
+        assert packaged == [(root / suffix).read_bytes()]
 
 
 def test_built_distributions_exclude_runtime_state_and_test_secrets(

@@ -1,19 +1,21 @@
 from __future__ import annotations
 
 import asyncio
+import builtins
 import json
-from dataclasses import replace
+import socket
+import subprocess
+from collections.abc import Callable
+from pathlib import Path
 
+import pytest
+
+import hermes_reach.sources.registry as source_registry
 from hermes_reach.contracts import validate_browse, validate_read, validate_search
-from hermes_reach.runtime.adapters import RawItem
+from hermes_reach.runtime.adapters import AdapterRegistry
 from hermes_reach.runtime.policy import ReadOnlyPolicy
-from hermes_reach.sources.exa import (
-    AuditedExaClient,
-    ExaClientAttestation,
-    exa_client_is_eligible,
-)
 from hermes_reach.sources.public_http import HttpFailure, HttpResponse
-from hermes_reach.sources.registry import build_alpha1_runtime
+from hermes_reach.sources.registry import build_alpha1_registry, build_alpha1_runtime
 from hermes_reach.sources.rss import RssAdapter
 from hermes_reach.sources.v2ex import V2exAdapter
 from hermes_reach.sources.web import WebAdapter
@@ -323,62 +325,82 @@ def test_v2ex_node_route_uses_only_validated_query_values() -> None:
     ]
 
 
-class FixtureExaClient:
-    def __init__(self) -> None:
-        self.calls: list[tuple[str, str, int]] = []
+def test_exa_is_planned_setup_required_and_has_no_runtime_binding() -> None:
+    registry = build_alpha1_registry(FixtureHttpClient())
+    runtime = build_alpha1_runtime(FixtureHttpClient())
 
-    async def search_web(self, query: str, limit: int) -> tuple[RawItem, ...]:
-        self.calls.append(("web", query, limit))
-        return (RawItem("result", kind="result", title="Web result"),)
+    for operation in ("search.web", "search.code"):
+        record = registry.availability("exa", operation)
+        call = validate_search(
+            {
+                "requests": [
+                    {
+                        "source": "exa",
+                        "operation": operation,
+                        "query": "private-query",
+                        "options": {"limit": 3},
+                    }
+                ]
+            }
+        )[0]
 
-    async def search_code(self, query: str, limit: int) -> tuple[RawItem, ...]:
-        self.calls.append(("code", query, limit))
-        return (RawItem("code", kind="result", title="Code result"),)
+        assert call.operation.implementation_state == "planned"
+        assert record.state == "setup_required"
+        assert record.reason == call.operation.unavailable_reason
+        assert record.backend_id is None
+        assert record.backend_version is None
+        assert registry.has_binding("exa", operation) is False
+        assert asyncio.run(runtime.dispatch(call)) is None
 
 
-def _exa_bundle(client: FixtureExaClient) -> AuditedExaClient:
-    return AuditedExaClient(
-        client,
-        ExaClientAttestation(
-            provider_id="exa",
-            provider_version="1.2.3",
-            operations=frozenset({"search.web", "search.code"}),
-            logs_queries=False,
-            persists_content=False,
-            hidden_model_processing=False,
-            runtime_dependency_install=False,
-        ),
-    )
+def test_exa_client_injection_is_not_a_registry_activation_path() -> None:
+    builder: Callable[..., object] = build_alpha1_runtime
+
+    with pytest.raises(TypeError, match="no longer supported"):
+        builder(exa_client=object())
 
 
-def test_exa_defaults_to_setup_required_and_binds_only_audited_client() -> None:
-    default_runtime = build_alpha1_runtime()
-    default = default_runtime.operation_availability("exa", "search.web")
+def test_removed_exa_slot_preserves_positional_media_composition(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    youtube_backend = object()
+    bilibili_backend = object()
+    captured: list[tuple[object, object]] = []
 
-    client = FixtureExaClient()
-    bundle = _exa_bundle(client)
-    assert exa_client_is_eligible(bundle)
-    runtime = build_alpha1_runtime(FixtureHttpClient(), bundle)
-    call = validate_search(
-        {
-            "requests": [
-                {
-                    "source": "exa",
-                    "operation": "search.web",
-                    "query": "private-query",
-                    "options": {"limit": 3},
-                }
-            ]
-        }
-    )[0]
-    result = asyncio.run(runtime.dispatch(call))
-    default_result = asyncio.run(default_runtime.dispatch(call))
+    def capture_media(
+        registry: AdapterRegistry,
+        youtube: object,
+        bilibili: object,
+    ) -> None:
+        del registry
+        captured.append((youtube, bilibili))
 
-    assert default.state == "setup_required"
-    assert default_result is None
-    assert result is not None
-    assert result.items[0].title == "Web result"
-    assert client.calls == [("web", "private-query", 3)]
+    monkeypatch.setattr(source_registry, "_register_media_backends", capture_media)
+    builder: Callable[..., AdapterRegistry] = build_alpha1_registry
+
+    builder(FixtureHttpClient(), None, youtube_backend, bilibili_backend)
+
+    assert captured == [(youtube_backend, bilibili_backend)]
+
+
+def test_exa_registry_construction_performs_no_process_network_or_file_io(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def unexpected_io(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        raise AssertionError("registry construction attempted I/O")
+
+    monkeypatch.setattr(builtins, "open", unexpected_io)
+    monkeypatch.setattr(Path, "open", unexpected_io)
+    monkeypatch.setattr(socket, "create_connection", unexpected_io)
+    monkeypatch.setattr(subprocess, "run", unexpected_io)
+    monkeypatch.setattr(subprocess, "Popen", unexpected_io)
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", unexpected_io)
+
+    registry = build_alpha1_registry(FixtureHttpClient())
+
+    assert registry.has_binding("exa", "search.web") is False
+    assert registry.has_binding("exa", "search.code") is False
 
 
 def test_registry_preserves_a_falsy_injected_http_client() -> None:
@@ -403,17 +425,3 @@ def test_registry_preserves_a_falsy_injected_http_client() -> None:
     assert result is not None
     assert result.items[0].text == "Injected response"
     assert client.calls == ["https://example.com/article"]
-
-
-def test_exa_rejects_a_query_logging_attestation_without_calling_client() -> None:
-    client = FixtureExaClient()
-    bundle = _exa_bundle(client)
-    unsafe = AuditedExaClient(
-        client,
-        replace(bundle.attestation, logs_queries=True),
-    )
-
-    runtime = build_alpha1_runtime(FixtureHttpClient(), unsafe)
-
-    assert runtime.operation_availability("exa", "search.web").state == "unavailable"
-    assert client.calls == []

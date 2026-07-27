@@ -216,7 +216,8 @@ Roadmap 表示开发顺序，不承诺发布日期。未完成的能力会保持
 | 已完成 | 精确远程执行桥 | 显式 Connector 适配器、已授权操作交付、回执与重试；默认构成仍为空 |
 | 已完成 | 首个来源 executor | Reddit `read.post` 的固定 OpenCLI 读取、封闭 YAML 映射和 WSS 回执测试；默认未绑定 |
 | 已完成 | 双端显式生产组成 | 可信设备证明 OpenCLI 并确认启用；VPS 从 owner-only 配对状态组成唯一 Reddit adapter |
-| 现在 | 冻结并校正复用边界 | 审计 63 个 operation，优先处理 GitHub/Web/Exa，再处理 RSS/V2EX；不新增平台抓取逻辑 |
+| 已完成 | P0 复用边界校正 | 审计 63 个 operation；批准 Web/GitHub 安全例外，移除 Exa 泛化激活，并用机器清单冻结证据 |
+| 现在 | 处理 RSS/V2EX P1 偏移 | 优先迁回固定上游 callable；无法保留边界时形成有期限的明确例外，不新增平台抓取逻辑 |
 | 随后 | 执行更多上游后端 | 只增加直接复用或固定 upstream backend 的薄适配 |
 | 后续 | 支持认证平台和生产运维 | Twitter/X 等平台、一键授权、审计导出、告警、升级与回滚 |
 
