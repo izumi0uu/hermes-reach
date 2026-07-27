@@ -132,13 +132,22 @@ flowchart TD
 
 ### How much of Agent-Reach is reused
 
-| Integrated | Not connected |
-| --- | --- |
-| 15-platform catalog and backend metadata | Normal request execution engine |
-| Pinned version and compatibility checks | Cookies and account sessions for authenticated platforms |
-| Restricted, explicitly triggered doctor | Arbitrary provider commands or the upstream installer |
-| Routing semantics adapted into a Hermes skill | Live platform executors in the production composition (currently empty) |
-| The OpenCLI-first Reddit route narrowed to one fixed `read.post` executor | Automatic OpenCLI installation, browser-session discovery, or a default Connector binding |
+The 15-platform catalog, backend metadata, version compatibility, and
+restricted doctor come directly from Agent-Reach. Normal requests do not pass
+through an Agent-Reach execution path. Of 26 operations marked implemented,
+none directly reuses Agent-Reach execution, 9 thinly wrap the same external
+backend, 11 use a Hermes-native replacement mechanism, and 6 reimplement
+platform logic. Another 37 operations remain unimplemented. Only 16 of the 26
+have a concrete retrieval implementation; the 8 YouTube/Bilibili rows and 2
+Exa rows are still unbound audited interfaces, not production executors.
+
+The boundary is therefore frozen: Hermes Reach owns protocol, authorization,
+safe invocation, normalization, bounds, redaction, receipts, and audit.
+Platform knowledge, backend selection, and retrieval implementation belong to
+Agent-Reach or its pinned backend. New platform adapters are paused, and a
+native replacement or reimplementation requires a separately approved
+exception. See the full matrix, accounting rules, and migration priorities in
+the [Agent-Reach reuse boundary](docs/agent-reach-reuse-boundary.md).
 
 The project pins Agent-Reach `1.5.0` at commit `1494c2ab239e7355a77e7cceaf3271453a1f34b5`.
 
@@ -170,7 +179,8 @@ The roadmap describes development order, not release dates. Incomplete capabilit
 | Complete | Isolate credentials and freeze the execution protocol | Bitwarden SecretProvider, protected-request and normalized-result envelopes |
 | Complete | Exact remote execution bridge | Explicit Connector adapters, authorized-operation delivery, receipts, and retries; default composition remains empty |
 | Complete | First source executor | Fixed OpenCLI read, closed YAML mapping, and WSS receipt test for Reddit `read.post`; unbound by default |
-| Then | Execute more upstream backends | Per-source reviewed exact bindings, Exa, and media backends |
+| Now | Freeze and correct the reuse boundary | Audit all 63 operations, prioritize GitHub/Web/Exa then RSS/V2EX, and add no platform retrieval logic |
+| Then | Execute more upstream backends | Add only direct reuse or thin wrappers around pinned upstream backends |
 | Later | Support authenticated platforms and production operations | Twitter/X and similar sources, one-step grants, audit export, alerts, upgrades, and rollback |
 
 ## Development
