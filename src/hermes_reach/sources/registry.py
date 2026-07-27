@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ..agent_reach_bridge import FEEDPARSER_VERSION
 from ..catalog import EXA_SETUP_REQUIRED_REASON
 from ..runtime.adapters import AdapterBinding, AdapterCallable, AdapterRegistry
 from ..runtime.availability import Availability
@@ -39,8 +40,22 @@ def build_alpha1_registry(
     github = GitHubAdapter(client)
 
     _register(registry, "web", "read.url", "web-public-http-v1", web.execute)
-    _register(registry, "rss", "read.feed", "rss-atom-parser-v1", rss.execute)
-    _register(registry, "rss", "browse.entries", "rss-atom-parser-v1", rss.execute)
+    _register(
+        registry,
+        "rss",
+        "read.feed",
+        "feedparser",
+        rss.execute,
+        backend_version=FEEDPARSER_VERSION,
+    )
+    _register(
+        registry,
+        "rss",
+        "browse.entries",
+        "feedparser",
+        rss.execute,
+        backend_version=FEEDPARSER_VERSION,
+    )
     for operation in (
         "browse.hot",
         "browse.node_topics",
@@ -104,13 +119,15 @@ def _register(
     operation: str,
     backend_id: str,
     execute: AdapterCallable,
+    *,
+    backend_version: str = "1",
 ) -> None:
     registry.register(
         AdapterBinding(
             source=source,
             operation=operation,
             backend_id=backend_id,
-            backend_version="1",
+            backend_version=backend_version,
             priority=10,
             required_scope="public",
             equivalence_group=f"{source}:{operation}:v1",

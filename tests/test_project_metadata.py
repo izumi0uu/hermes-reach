@@ -22,6 +22,7 @@ def test_project_declares_the_documented_hermes_plugin_entry_point() -> None:
         "agent-reach @ git+https://github.com/Panniantong/Agent-Reach.git@"
         "1494c2ab239e7355a77e7cceaf3271453a1f34b5"
     ) in project["project"]["dependencies"]
+    assert "feedparser==6.0.12" in project["project"]["dependencies"]
 
 
 def test_lockfile_keeps_the_inspected_agent_reach_commit() -> None:
@@ -30,6 +31,8 @@ def test_lockfile_keeps_the_inspected_agent_reach_commit() -> None:
 
     assert 'name = "agent-reach"' in lockfile
     assert "1494c2ab239e7355a77e7cceaf3271453a1f34b5" in lockfile
+    assert 'name = "feedparser"' in lockfile
+    assert "feedparser-6.0.12" in lockfile
 
 
 def test_manifest_includes_reviewed_docs_and_prunes_tests() -> None:

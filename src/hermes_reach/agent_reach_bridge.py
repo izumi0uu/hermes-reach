@@ -14,6 +14,8 @@ from .catalog import SOURCE_CATALOG
 AGENT_REACH_DISTRIBUTION: Final = "agent-reach"
 AGENT_REACH_VERSION: Final = "1.5.0"
 AGENT_REACH_COMMIT: Final = "1494c2ab239e7355a77e7cceaf3271453a1f34b5"
+FEEDPARSER_DISTRIBUTION: Final = "feedparser"
+FEEDPARSER_VERSION: Final = "6.0.12"
 SAFE_AGENT_REACH_DOCTOR_CHANNELS: Final[frozenset[str]] = frozenset(
     {"web", "rss", "v2ex", "youtube"}
 )
@@ -41,6 +43,9 @@ _REACH_SOURCES: Final[frozenset[str]] = frozenset(
 )
 _UPSTREAM_STATES: Final[frozenset[str]] = frozenset({"ok", "warn", "off", "error"})
 _INCOMPATIBLE_VERSION: Final = "Agent-Reach has an incompatible installed version."
+_INCOMPATIBLE_RSS_BACKEND: Final = (
+    "Agent-Reach's RSS backend has an incompatible installed version."
+)
 _INCOMPATIBLE_REGISTRY: Final = "Agent-Reach has an incompatible channel registry."
 _INCOMPATIBLE_DOCTOR: Final = "Agent-Reach returned an incompatible doctor report."
 HealthState = Literal["available", "setup_required", "degraded", "unavailable"]
@@ -93,9 +98,14 @@ def load_agent_reach_catalog(
 ) -> AgentReachCatalog:
     """Load and validate upstream channel metadata without executing a probe."""
 
-    installed_version = _installed_version(version_reader)
+    installed_version = _installed_version(AGENT_REACH_DISTRIBUTION, version_reader)
     if installed_version != AGENT_REACH_VERSION:
         raise AgentReachBridgeError(_INCOMPATIBLE_VERSION)
+    if (
+        _installed_version(FEEDPARSER_DISTRIBUTION, version_reader)
+        != FEEDPARSER_VERSION
+    ):
+        raise AgentReachBridgeError(_INCOMPATIBLE_RSS_BACKEND)
 
     loader = channel_loader if channel_loader is not None else _default_channel_loader
     channels = tuple(loader())
@@ -187,11 +197,13 @@ def upstream_doctor_data(
     }
 
 
-def _installed_version(version_reader: VersionReader) -> str:
+def _installed_version(distribution: str, version_reader: VersionReader) -> str:
     try:
-        return version_reader(AGENT_REACH_DISTRIBUTION)
+        return version_reader(distribution)
     except PackageNotFoundError as error:
-        raise AgentReachBridgeError("Agent-Reach is not installed.") from error
+        raise AgentReachBridgeError(
+            f"The required {distribution} distribution is not installed."
+        ) from error
 
 
 def _default_channel_loader() -> Sequence[object]:

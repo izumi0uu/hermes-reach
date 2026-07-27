@@ -3,7 +3,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from hermes_reach.agent_reach_bridge import AGENT_REACH_COMMIT, AGENT_REACH_VERSION
+from hermes_reach.agent_reach_bridge import (
+    AGENT_REACH_COMMIT,
+    AGENT_REACH_VERSION,
+    FEEDPARSER_VERSION,
+)
 from hermes_reach.catalog import all_operations
 from hermes_reach.sources.registry import build_alpha1_registry
 
@@ -27,6 +31,8 @@ DIRECT_AGENT_REACH_RUNTIME: frozenset[tuple[str, str]] = frozenset()
 
 EXACT_BACKEND_THIN_WRAPPER = frozenset(
     {
+        ("rss", "browse.entries"),
+        ("rss", "read.feed"),
         ("youtube", "search.videos"),
         ("youtube", "read.video"),
         ("youtube", "read.subtitles"),
@@ -60,14 +66,28 @@ P0_BLOCKED_NOT_IMPLEMENTED = frozenset(
     }
 )
 
+P1_V2EX_EXCEPTIONS = frozenset(
+    {
+        ("v2ex", "browse.hot"),
+        ("v2ex", "browse.node_topics"),
+        ("v2ex", "read.topic"),
+        ("v2ex", "read.user"),
+    }
+)
+
+P1_RSS_EXACT_WRAPPERS = frozenset(
+    {
+        ("rss", "browse.entries"),
+        ("rss", "read.feed"),
+    }
+)
+
 REACH_REIMPLEMENTATION = frozenset(
     {
         ("v2ex", "browse.hot"),
         ("v2ex", "browse.node_topics"),
         ("v2ex", "read.topic"),
         ("v2ex", "read.user"),
-        ("rss", "read.feed"),
-        ("rss", "browse.entries"),
     }
 )
 
@@ -99,16 +119,16 @@ def test_frozen_reuse_audit_counts_are_review_visible() -> None:
 
     assert len(operations) == 63
     assert len(DIRECT_AGENT_REACH_RUNTIME) == 0
-    assert len(EXACT_BACKEND_THIN_WRAPPER) == 9
+    assert len(EXACT_BACKEND_THIN_WRAPPER) == 11
     assert len(HERMES_NATIVE_EQUIVALENT) == 9
-    assert len(REACH_REIMPLEMENTATION) == 6
+    assert len(REACH_REIMPLEMENTATION) == 4
     assert (
         sum(operation.implementation_state == "planned" for operation in operations)
         == 39
     )
 
 
-def test_p0_decisions_are_pinned_to_catalog_and_runtime_state() -> None:
+def test_review_decisions_are_pinned_to_catalog_and_runtime_state() -> None:
     manifest = json.loads(DECISIONS.read_text(encoding="utf-8"))
     assert set(manifest) == {"schema_version", "agent_reach", "reviews"}
     assert manifest["schema_version"] == "v1"
@@ -121,7 +141,12 @@ def test_p0_decisions_are_pinned_to_catalog_and_runtime_state() -> None:
     assert isinstance(reviews, list)
     keyed = {(review["source"], review["operation"]): review for review in reviews}
     assert len(keyed) == len(reviews)
-    assert set(keyed) == HERMES_NATIVE_EQUIVALENT | P0_BLOCKED_NOT_IMPLEMENTED
+    assert set(keyed) == (
+        HERMES_NATIVE_EQUIVALENT
+        | P0_BLOCKED_NOT_IMPLEMENTED
+        | P1_V2EX_EXCEPTIONS
+        | P1_RSS_EXACT_WRAPPERS
+    )
     assert {
         key
         for key, review in keyed.items()
@@ -132,6 +157,16 @@ def test_p0_decisions_are_pinned_to_catalog_and_runtime_state() -> None:
         for key, review in keyed.items()
         if review["classification"] == "not_implemented"
     } == P0_BLOCKED_NOT_IMPLEMENTED
+    assert {
+        key
+        for key, review in keyed.items()
+        if review["classification"] == "reach_reimplementation"
+    } == P1_V2EX_EXCEPTIONS
+    assert {
+        key
+        for key, review in keyed.items()
+        if review["classification"] == "exact_backend_thin_wrapper"
+    } == P1_RSS_EXACT_WRAPPERS
 
     catalog = {
         (operation.source, operation.name): operation for operation in all_operations()
@@ -155,3 +190,5 @@ def test_p0_decisions_are_pinned_to_catalog_and_runtime_state() -> None:
             assert catalog[key].implementation_state == "implemented"
             assert availability.state == "available"
             assert availability.backend_id == review["current_backend"]
+            if key in P1_RSS_EXACT_WRAPPERS:
+                assert availability.backend_version == FEEDPARSER_VERSION
