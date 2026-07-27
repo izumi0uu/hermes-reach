@@ -114,6 +114,7 @@ def test_catalog_marks_released_alpha1_source_boundaries_implemented() -> None:
         ("youtube", "read.video"),
         ("youtube", "read.subtitles"),
         ("youtube", "read.comments"),
+        ("reddit", "read.post"),
         ("bilibili", "search.videos"),
         ("bilibili", "read.video"),
         ("bilibili", "browse.hot"),
@@ -155,9 +156,11 @@ def test_alpha1_operation_inputs_are_catalog_owned() -> None:
     github = get_source("github")
     youtube = get_source("youtube")
     bilibili = get_source("bilibili")
+    reddit = get_source("reddit")
     assert github is not None
     assert youtube is not None
     assert bilibili is not None
+    assert reddit is not None
     assert [
         target.string_format
         for target in get_operation(github, "read.repository").targets
@@ -171,6 +174,9 @@ def test_alpha1_operation_inputs_are_catalog_owned() -> None:
     assert [
         target.string_format for target in get_operation(bilibili, "read.video").targets
     ] == ["bilibili_video_url"]
+    assert [
+        target.string_format for target in get_operation(reddit, "read.post").targets
+    ] == ["reddit_post_url"]
 
 
 def test_catalog_runtime_defaults_and_account_visible_overrides_are_explicit() -> None:

@@ -28,6 +28,9 @@ _GITHUB_OWNER: Final = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])
 _GITHUB_REPOSITORY: Final = re.compile(r"[A-Za-z0-9._-]{1,100}")
 _YOUTUBE_VIDEO_ID: Final = re.compile(r"[A-Za-z0-9_-]{11}")
 _BILIBILI_VIDEO_ID: Final = re.compile(r"BV[A-Za-z0-9]{10}")
+_REDDIT_POST_ID: Final = re.compile(r"[A-Za-z0-9]{1,32}")
+_REDDIT_SUBREDDIT: Final = re.compile(r"[A-Za-z0-9_]{1,32}")
+_REDDIT_POST_SLUG: Final = re.compile(r"[A-Za-z0-9_-]{1,256}")
 
 
 class ReachValidationError(Exception):
@@ -408,6 +411,8 @@ def _validate_string_format(value: str, string_format: str, field: str) -> None:
         return
     if string_format == "github_resource" and _github_resource(value):
         return
+    if string_format == "reddit_post_url" and reddit_post_id_from_url(value):
+        return
     if string_format == "youtube_video_url" and _youtube_video_url(value):
         return
     if string_format == "bilibili_video_url" and _bilibili_video_url(value):
@@ -425,6 +430,45 @@ def _github_repository(value: str) -> bool:
         and _GITHUB_REPOSITORY.fullmatch(repository)
         and repository not in {".", ".."}
     )
+
+
+def reddit_post_id_from_url(value: str) -> str | None:
+    """Return a canonical Reddit post ID only from an exact post URL."""
+
+    try:
+        parsed = urlsplit(value)
+        port = parsed.port
+    except ValueError:
+        return None
+    host = parsed.hostname
+    if (
+        parsed.scheme != "https"
+        or not isinstance(host, str)
+        or (host != "reddit.com" and not host.endswith(".reddit.com"))
+        or port is not None
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+    ):
+        return None
+    normalized_path = parsed.path[:-1] if parsed.path.endswith("/") else parsed.path
+    parts = normalized_path.split("/")
+    if (
+        len(parts) not in {5, 6}
+        or parts[0] != ""
+        or parts[1] != "r"
+        or parts[3] != "comments"
+    ):
+        return None
+    subreddit, post_id = parts[2], parts[4]
+    if not _REDDIT_SUBREDDIT.fullmatch(subreddit) or not _REDDIT_POST_ID.fullmatch(
+        post_id
+    ):
+        return None
+    if len(parts) == 6 and not _REDDIT_POST_SLUG.fullmatch(parts[5]):
+        return None
+    return post_id.lower()
 
 
 def _github_resource(value: str) -> bool:

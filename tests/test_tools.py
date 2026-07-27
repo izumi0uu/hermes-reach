@@ -114,7 +114,9 @@ def test_exa_search_requires_an_audited_client_without_echoing_query() -> None:
             {
                 "source": "reddit",
                 "operation": "read.post",
-                "target": {"native_id": "owner/post"},
+                "target": {
+                    "url": "https://www.reddit.com/r/python/comments/abc123/a_post"
+                },
             },
         ),
         (reach_browse, {"source": "reddit", "operation": "browse.hot"}),
@@ -128,7 +130,7 @@ def test_exa_search_requires_an_audited_client_without_echoing_query() -> None:
         ),
     ],
 )
-def test_non_search_tools_use_the_same_planned_contract(
+def test_unbound_or_planned_non_search_tools_return_unavailable(
     handler: Callable[[dict[str, object]], Awaitable[str]],
     args: dict[str, object],
 ) -> None:

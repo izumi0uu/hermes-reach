@@ -44,6 +44,35 @@ environment. Do not put it in Reach configuration or copy it to the VPS. The
 runtime does not install or update `bws`, use stale values, or use plaintext or
 encrypted Bitwarden caches.
 
+## Reddit OpenCLI executor boundary
+
+`reddit:read.post` is the only account-session operation with an implemented
+source executor. It is still disabled by default. An owning trusted-device
+application must explicitly compose both the exact `reddit:read.post` Connector
+executor and the matching VPS-side Connector adapter before it can become
+available.
+
+The VPS may send only a canonical HTTPS Reddit post URL. The trusted executor
+derives the post ID and invokes the operator-selected absolute OpenCLI binary
+with one fixed `reddit read` argument vector. It does not accept a command,
+provider, executable path, browser profile, session identifier, local path,
+process environment, or fallback from the request. Nearby OpenCLI write
+commands such as reply, save, subscribe, and vote are outside the binding.
+
+OpenCLI uses the trusted device's existing local browser session. This path has
+no Bitwarden `SecretExecutionPlan`, and the executor rejects any non-empty
+secret environment. The process receives only allowlisted local `HOME`, `PATH`,
+locale, timezone, and temporary-directory fields; stderr is discarded and
+stdout is size-bounded before a closed safe-YAML parser maps it to normalized
+post and reply items. Parser drift, process failure, timeout, and cancellation
+fail closed without returning provider output.
+
+Package import, `reach_status`, doctor, and default Hermes plugin startup do not
+find OpenCLI, inspect a browser, start a daemon, or register this executor. An
+explicit composition decision is therefore also the rollback point: removing
+the binding restores signed `backend_unbound` behavior without changing browser
+or Bitwarden state.
+
 ## Foreground lifecycle and availability
 
 Every service process starts locked with no listener. Only `unlock` on the

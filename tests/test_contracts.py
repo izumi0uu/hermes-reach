@@ -143,7 +143,7 @@ def test_deferred_operations_keep_foundation_target_behavior() -> None:
         call = validate_read(
             {
                 "source": "reddit",
-                "operation": "read.post",
+                "operation": "read.subreddit",
                 "target": target,
             }
         )

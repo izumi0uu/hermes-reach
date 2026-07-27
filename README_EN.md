@@ -7,7 +7,7 @@ Hermes Reach gives Hermes a consistent set of read-only tools for public web and
 It uses [Agent-Reach](https://github.com/Panniantong/Agent-Reach) as its upstream capability source and exposes search, read, browse, transcribe, and status operations through a [Hermes Agent](https://github.com/NousResearch/hermes-agent) plugin.
 
 > [!IMPORTANT]
-> The project is **pre-alpha**. Local access to Web, RSS/Atom, V2EX, and GitHub works today. The exact remote Connector execution bridge exists, but the default production composition has no Connector bindings or executor; Bitwarden and live Agent-Reach backends remain disabled.
+> The project is **pre-alpha**. Local access to Web, RSS/Atom, V2EX, and GitHub works today. The exact remote Connector bridge and first Reddit read-only executor exist, but the default production composition has no Connector bindings or executor; Bitwarden, OpenCLI browser sessions, and live platform backends remain disabled.
 
 ## The problem Hermes Reach solves
 
@@ -37,7 +37,7 @@ Hermes Reach assumes that an attacker may fully compromise the VPS. Its security
 
 The future Connector runs on your computer or another trusted device. Passwords, cookies, browser sessions, and Bitwarden tokens remain there. The VPS receives only expiring, usage-limited, revocable grants.
 
-The codebase already contains foundations for identity, live authorization, pinned TLS, original-terminal unlock, VPS pairing, local availability snapshots, isolated Bitwarden resolution, and protected-request/result envelopes. The runtime can also deliver one authorized operation to a trusted-device Connector executor through an **explicitly registered exact binding**. **The default runtime registers none of those bindings and the production executor composition is empty; normal `reach_*` requests therefore cannot trigger platform credentials, Bitwarden secrets, or a live Agent-Reach backend, and this remote path is not production-ready.**
+The codebase already contains foundations for identity, live authorization, pinned TLS, original-terminal unlock, VPS pairing, local availability snapshots, isolated Bitwarden resolution, and protected-request/result envelopes. The runtime can also deliver one authorized operation to a trusted-device Connector executor through an **explicitly registered exact binding**. `reddit:read.post` is the first constrained implementation: it extracts a post ID from a canonical Reddit URL and invokes one fixed OpenCLI read command. **The default runtime does not register this binding and the production executor composition is empty; normal `reach_*` requests therefore cannot trigger OpenCLI, a browser session, a Bitwarden secret, or live platform access, and this remote path is not production-ready.**
 
 Before deployment, read the [Connector security and operations guide](docs/connector-security.md) for the network, grant, key-recovery, audit, and rollback boundaries. The guide documents constraints; it does not mean remote execution is available.
 
@@ -72,8 +72,9 @@ The default installation registers five tools, but `reach_status` remains author
 | Available | RSS/Atom | Read feeds and browse entries |
 | Available | V2EX | Browse hot and node topics; read topics and users |
 | Available | GitHub | Search repositories and code; read repositories, issues, pull requests, Actions, and releases |
+| Implemented but unbound | Reddit | `read.post` only; requires explicit trusted-device OpenCLI executor injection and remains unavailable by default |
 | Setup required | Exa, YouTube, and Bilibili | Awaiting reviewed source-specific integrations |
-| Planned | Twitter/X, Reddit, Xiaohongshu, Facebook, Instagram, LinkedIn, Xueqiu, and Xiaoyuzhou | Awaiting the Connector and credential isolation |
+| Planned | Twitter/X, Xiaohongshu, Facebook, Instagram, LinkedIn, Xueqiu, Xiaoyuzhou, and all other Reddit operations | Awaiting per-source Connector review and credential isolation |
 
 The five tools have narrow responsibilities:
 
@@ -115,7 +116,7 @@ The default doctor checks local state only. `hermes reach doctor --upstream` als
 
 ## How the system works
 
-Normal requests currently run through Hermes Reach's own runtime and local adapters. Agent-Reach supplies only the pinned platform catalog, backend metadata, and explicit doctor.
+Normal requests currently run through Hermes Reach's own runtime and local adapters. Agent-Reach supplies the pinned platform catalog, routing evidence, backend metadata, and explicit doctor. Reach uses its OpenCLI-first Reddit route as evidence for one fixed `read.post` executor, but does not compose that executor into the default runtime.
 
 ```mermaid
 flowchart TD
@@ -137,12 +138,13 @@ flowchart TD
 | Pinned version and compatibility checks | Cookies and account sessions for authenticated platforms |
 | Restricted, explicitly triggered doctor | Arbitrary provider commands or the upstream installer |
 | Routing semantics adapted into a Hermes skill | Live platform executors in the production composition (currently empty) |
+| The OpenCLI-first Reddit route narrowed to one fixed `read.post` executor | Automatic OpenCLI installation, browser-session discovery, or a default Connector binding |
 
 The project pins Agent-Reach `1.5.0` at commit `1494c2ab239e7355a77e7cceaf3271453a1f34b5`.
 
 ### Connector path when explicitly composed
 
-An exact binding can execute a reviewed Agent-Reach backend on the trusted device. The VPS cannot select credentials, providers, browser sessions, or local paths. The default production composition supplies neither the bindings nor live backends; each source must pass its own security design and tests before it can be enabled.
+An exact binding can execute a reviewed source backend on the trusted device. The current Reddit slice follows Agent-Reach routing evidence but permits only a fixed OpenCLI post-read argv; the VPS cannot select commands, credentials, providers, browser sessions, or local paths. The default production composition supplies neither the binding nor a live backend; each source must pass its own security design and tests before it can be enabled.
 
 ```mermaid
 flowchart TD
@@ -150,9 +152,9 @@ flowchart TD
     Tools --> Client["ConnectorClient"]
     Client -->|"signed request · WSS · pinned TLS"| Service["Trusted-device Connector"]
     Service --> Grant["Live authorization<br/>scope · expiry · usage · revocation"]
-    Grant --> Binding["Exact Agent-Reach binding"]
+    Grant --> Binding["Exact source-operation binding"]
     Secrets["Bitwarden and local sessions"] --> Binding
-    Binding --> Backend["Agent-Reach backend"]
+    Binding --> Backend["Reviewed backend<br/>Reddit read.post uses fixed OpenCLI argv"]
     Backend --> Platform["Target platform"]
     Backend -->|"normalized result and signed receipt"| Client
 ```
@@ -167,7 +169,8 @@ The roadmap describes development order, not release dates. Incomplete capabilit
 | Complete | Secure pairing and client foundation | ConnectorClient, pinned identity and grants, local availability snapshots, signed requests and receipts |
 | Complete | Isolate credentials and freeze the execution protocol | Bitwarden SecretProvider, protected-request and normalized-result envelopes |
 | Complete | Exact remote execution bridge | Explicit Connector adapters, authorized-operation delivery, receipts, and retries; default composition remains empty |
-| Then | Execute upstream backends | Per-source reviewed exact Agent-Reach bindings, Exa, and media backends |
+| Complete | First source executor | Fixed OpenCLI read, closed YAML mapping, and WSS receipt test for Reddit `read.post`; unbound by default |
+| Then | Execute more upstream backends | Per-source reviewed exact bindings, Exa, and media backends |
 | Later | Support authenticated platforms and production operations | Twitter/X and similar sources, one-step grants, audit export, alerts, upgrades, and rollback |
 
 ## Development

@@ -56,11 +56,32 @@ from hermes_reach.runtime.adapters import AdapterRegistry
 from hermes_reach.runtime.availability import AvailabilityRecord
 from hermes_reach.runtime.dispatcher import RuntimeDispatcher
 from hermes_reach.sources.connector import connector_bindings
+from hermes_reach.sources.reddit import OpenCliRedditReadExecutor
 
 PASSPHRASE = "bridge-e2e-passphrase"
 SCOPE = GrantScope("web", "read.url", "public")
+REDDIT_SCOPE = GrantScope("reddit", "read.post", "public")
 BACKEND = PublicBackendIdentity("reach-bounded-executor-v1", "1")
 CANARY = "BRIDGE_QUERY_CANARY"
+REDDIT_POST_ID = "abc123"
+REDDIT_OUTPUT = """\
+- type: POST
+  author: alice
+  score: 12
+  text: Fixture Reddit post
+  post_hint: self
+  url_overridden_by_dest: ""
+  preview_image_url: ""
+  gallery_urls: []
+- type: L0
+  author: bob
+  score: 3
+  text: Fixture Reddit reply
+  post_hint: ""
+  url_overridden_by_dest: ""
+  preview_image_url: ""
+  gallery_urls: []
+"""
 
 
 def _id(value: int) -> str:
@@ -131,6 +152,15 @@ class _BlockingExecutor:
         self.cleaned.set()
 
 
+class _RedditProcess:
+    def __init__(self) -> None:
+        self.calls: list[tuple[tuple[str, ...], float]] = []
+
+    async def run(self, argv: tuple[str, ...], *, deadline: float) -> str:
+        self.calls.append((argv, deadline))
+        return REDDIT_OUTPUT
+
+
 @dataclass
 class _BridgeHarness:
     service: ConnectorService
@@ -143,7 +173,10 @@ class _BridgeHarness:
 
 
 async def _open_bridge(
-    tmp_path: Path, executor: _FixtureExecutor | _BlockingExecutor
+    tmp_path: Path,
+    executor: _FixtureExecutor | _BlockingExecutor | OpenCliRedditReadExecutor,
+    *,
+    scope: GrantScope = SCOPE,
 ) -> _BridgeHarness:
     now = int(time.time())
     ids = _Ids()
@@ -171,7 +204,7 @@ async def _open_bridge(
         device_label="bridge-e2e-vps",
         endpoint_digest=hashlib.sha256(b"loopback-bridge").hexdigest(),
         vps_nonce=bytes(range(32)),
-        requested_scopes=(SCOPE,),
+        requested_scopes=(scope,),
         grant_expires_at=now + 3_600,
         grant_max_uses=4,
         issued_at=now,
@@ -203,7 +236,7 @@ async def _open_bridge(
             expires_at=now + 3_600,
             policy_revision=1,
             max_uses=4,
-            scopes=(SCOPE,),
+            scopes=(scope,),
         ),
     )
     transcript = pairing_transcript_hash(
@@ -236,7 +269,7 @@ async def _open_bridge(
     )
     assert isinstance(resolution, PairingResolution)
     binding = ConnectorExecutorBinding(
-        SCOPE,
+        scope,
         BACKEND,
         executor,
         getattr(executor, "cleanup", None),
@@ -312,6 +345,21 @@ def _call() -> OperationCall:
     )
 
 
+def _reddit_call() -> OperationCall:
+    return validate_read(
+        {
+            "source": "reddit",
+            "operation": "read.post",
+            "target": {
+                "url": (
+                    "https://www.reddit.com/r/python/comments/"
+                    f"{REDDIT_POST_ID}/fixture_post"
+                )
+            },
+        }
+    )
+
+
 def test_real_wss_bridge_executes_and_verifies_one_exact_operation(
     tmp_path: Path,
 ) -> None:
@@ -354,6 +402,73 @@ def test_real_wss_bridge_executes_and_verifies_one_exact_operation(
                 for path in harness.vps_state.iterdir()
                 if path.is_file()
             )
+        finally:
+            await harness.service.close()
+            harness.lease.close()
+
+    asyncio.run(exercise())
+
+
+def test_real_wss_bridge_executes_reddit_through_one_explicit_binding(
+    tmp_path: Path,
+) -> None:
+    _require_loopback_bind()
+
+    async def exercise() -> None:
+        process = _RedditProcess()
+        executor = OpenCliRedditReadExecutor(process)
+        harness = await _open_bridge(tmp_path, executor, scope=REDDIT_SCOPE)
+        registry = AdapterRegistry()
+        for binding in connector_bindings(
+            harness.client, _available, (("reddit", "read.post"),)
+        ):
+            registry.register(binding)
+        try:
+            result = await RuntimeDispatcher(registry).dispatch(
+                _reddit_call(), trace_id="f" * 32
+            )
+
+            assert result is not None
+            assert [(item.kind, item.text) for item in result.items] == [
+                ("content", "Fixture Reddit post"),
+                ("reply", "Fixture Reddit reply"),
+            ]
+            assert result.items[0].native_id == REDDIT_POST_ID
+            assert result.selected_backend_id == BACKEND.backend_id
+            assert process.calls[0][0] == (
+                "reddit",
+                "read",
+                REDDIT_POST_ID,
+                "--sort",
+                "best",
+                "--limit",
+                "3",
+                "--depth",
+                "2",
+                "--replies",
+                "2",
+                "--max-length",
+                "800",
+                "-f",
+                "yaml",
+            )
+            assert len(process.calls) == 1
+            assert harness.store.inspect_grants()[0].used_count == 1
+            records = harness.receipt_ledger.records()
+            assert len(records) == 1
+            assert records[0].receipt.trace_id == "f" * 32
+            assert records[0].receipt.result_count == 2
+            snapshot = harness.snapshot_store.load()
+            assert snapshot is not None
+            assert snapshot.state == "authenticated"
+            assert snapshot.scopes == (("reddit", "read.post"),)
+            stored = b"".join(
+                path.read_bytes()
+                for path in harness.vps_state.iterdir()
+                if path.is_file()
+            )
+            assert REDDIT_POST_ID.encode() not in stored
+            assert b"Fixture Reddit post" not in stored
         finally:
             await harness.service.close()
             harness.lease.close()
