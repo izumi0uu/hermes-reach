@@ -61,6 +61,7 @@ def test_setup_fails_closed_and_updates_report_local_pins(
             "0.1.0a0",
             "0.19.0",
             "1.5.0",
+            "6.0.12",
             "v1",
             "baseline",
             "Pinned locally.",
@@ -73,6 +74,7 @@ def test_setup_fails_closed_and_updates_report_local_pins(
     assert setup["error"]["code"] == "capability_unavailable"
     assert updates["outcome"] == "ok"
     assert updates["data"]["status"] == "current"
+    assert updates["data"]["feedparser_version"] == "6.0.12"
 
 
 def test_upstream_doctor_is_only_requested_with_the_explicit_cli_flag(

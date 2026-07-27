@@ -67,18 +67,18 @@ Writing and account mutation commands documented by Agent-Reach are excluded.
 | Xiaohongshu | 5 not implemented | OpenCLI, MCP, `xhs-cli` | Frozen before implementation |
 | LinkedIn | 4 not implemented | scraper MCP, Jina fallback | Frozen before implementation |
 | Xiaoyuzhou | 1 not implemented | Agent-Reach transcription scripts | Frozen before implementation |
-| V2EX | 4 Reach reimplementations | Agent-Reach channel methods over public API | Grandfathered; P1 migration/exception review |
+| V2EX | 4 Reach reimplementations | Agent-Reach channel methods over public API | P1 safety/contract exception approved; safe public adapter retained |
 | Xueqiu | 4 not implemented | Agent-Reach cookie-aware API methods | Frozen before implementation |
-| RSS | 2 Reach reimplementations | `feedparser` route | Grandfathered; P1 migration/exception review |
+| RSS | 2 exact backend thin wrappers | `feedparser` route | Migrated to bounded bytes and a killable pinned feedparser worker |
 | Exa | 2 not implemented | Exa through `mcporter` | Generic client removed; exact route blocked by artifact, schema, and query-logging gaps |
 | Web | 1 Hermes-native equivalent | Agent-Reach Jina Reader method | P0 safety exception approved; bounded direct origin reader retained |
 
 | Execution classification | All 63 operations | 24 catalog-implemented operations |
 | --- | ---: | ---: |
 | Direct Agent-Reach execution | 0 (0%) | 0 (0%) |
-| Exact backend thin wrapper | 9 (14.3%) | 9 (37.5%) |
+| Exact backend thin wrapper | 11 (17.5%) | 11 (45.8%) |
 | Hermes-native equivalent | 9 (14.3%) | 9 (37.5%) |
-| Reach reimplementation | 6 (9.5%) | 6 (25.0%) |
+| Reach reimplementation | 4 (6.3%) | 4 (16.7%) |
 | Not implemented | 39 (61.9%) | 0 |
 
 The exact implemented-operation classifications are frozen as follows:
@@ -88,18 +88,19 @@ The exact implemented-operation classifications are frozen as follows:
 | Exact backend thin wrapper | YouTube | `search.videos`, `read.video`, `read.subtitles`, `read.comments` |
 | Exact backend thin wrapper | Reddit | `read.post` |
 | Exact backend thin wrapper | Bilibili | `search.videos`, `read.video`, `browse.hot`, `browse.rank` |
+| Exact backend thin wrapper | RSS | `read.feed`, `browse.entries` |
 | Hermes-native equivalent | GitHub | `search.repositories`, `search.code`, `read.repository`, `read.issue`, `read.pull_request`, `browse.actions`, `read.action_run`, `browse.releases` |
 | Hermes-native equivalent | Web | `read.url` |
 | Reach reimplementation | V2EX | `browse.hot`, `browse.node_topics`, `read.topic`, `read.user` |
-| Reach reimplementation | RSS | `read.feed`, `browse.entries` |
 | Not implemented | Exa | `search.web`, `search.code` |
 
-Only 16 operations currently have a concrete retrieval implementation: 15
-default-bound Web/RSS/V2EX/GitHub operations are Reach-owned and the Reddit
-operation is a fixed upstream-selected OpenCLI wrapper that remains unbound by
-default. The YouTube and Bilibili rows are typed, audited contracts, not
-concrete production backend implementations. Exa is catalog-planned with no
-production backend interface.
+Only 16 operations currently have a concrete retrieval implementation. Thirteen
+default-bound Web/V2EX/GitHub paths remain Reach-owned, two default-bound RSS
+paths invoke the exact Agent-Reach-selected feedparser backend, and Reddit uses
+a fixed upstream-selected OpenCLI wrapper that remains unbound by default. The
+YouTube and Bilibili rows are typed, audited contracts, not concrete production
+backend implementations. Exa is catalog-planned with no production backend
+interface.
 
 ## P0 Review Resolution
 
@@ -120,32 +121,53 @@ the source decisions are:
   mcporter is unpinned, code-search arguments have drifted, and the provider
   logs queries.
 
-This correction removes a dishonest activation surface but does not change
-the 16 concrete retrieval paths. Overall execution-ownership drift therefore
-remains approximately 6.5/10; the difference is that every P0 deviation now
-has evidence, an approval disposition, a rollback, and a review milestone.
+This correction removed a dishonest activation surface but did not change the
+16 concrete retrieval paths. At P0 completion, execution-ownership drift
+remained approximately 6.5/10; every P0 deviation had evidence, an approval
+disposition, a rollback, and a review milestone.
+
+## P1 RSS/V2EX Review Resolution
+
+The two RSS operations now use feedparser 6.0.12, the exact backend selected by
+the pinned Agent-Reach RSS channel and skill route. Hermes retains the secure
+public fetch and passes only bounded bytes to a fixed worker whose actual work
+is terminated on timeout/cancellation. The parser version is a direct exact
+dependency, registration compatibility gate, runtime provenance field, and
+offline release-report field. Full evidence and rollback are recorded in
+[`rss-feedparser-6.0.12.md`](agent-reach-decisions/rss-feedparser-6.0.12.md).
+
+The four V2EX operations retain `v2ex-public-api-v1` as an approved
+reimplementation exception. The pinned Agent-Reach methods perform blocking,
+unbounded `urllib` reads with default proxy/DNS/redirect behavior. They also
+hard-code node page 1, discard topic-list authors and full content, hide reply
+fetch failures, discard reply IDs, and do not correlate returned user identity.
+
+The complete evidence, approval, rollback, and next-pin gate are recorded in
+[`v2ex-1.5.0.md`](agent-reach-decisions/v2ex-1.5.0.md) and in the four V2EX
+rows of the machine-readable review set. This V2EX decision changes no
+production runtime or public contract.
 
 ## Drift Assessment
 
 Relative to the intended `Hermes -> Agent-Reach -> backend` product shape, the
-current overall drift is **medium-high, approximately 6.5/10**. This is a
+current overall drift is **medium, approximately 5.5/10**. This is a
 decision aid, not a code-volume formula:
 
 | Axis | Drift | Evidence |
 | --- | --- | --- |
-| Platform execution ownership | High | No implemented operation calls an Agent-Reach execution path; 15 of 16 concrete paths are Reach-owned |
+| Platform execution ownership | Medium-high | No operation calls a structured Agent-Reach runtime, but 3 of 16 concrete paths now use exact selected backends; 13 remain Reach-owned |
 | Catalog/backend metadata | Low | All 15 channels are projected and compatibility-checked from the pinned upstream registry |
-| Platform logic duplication | Local but material | 6 of 24 implemented rows, all RSS/V2EX, repeat platform logic |
+| Platform logic duplication | Local | 4 of 24 implemented rows, all approved V2EX exceptions, repeat platform logic |
 | Security and control plane | Minimal | Connector, grants, secret isolation, bounds, receipts, and audit have no upstream equivalent |
 
-This is not a claim that 65% of the repository should be removed. Most code is
+This is not a claim that 55% of the repository should be removed. Most code is
 the required security and product control plane. The drift concerns the
 ownership of platform-specific retrieval behavior.
 
 There are two valid baselines. Against the previously written Trellis design,
 implementation drift is low because that design explicitly assigned execution
 to Hermes Reach. Against the user's original product goal of placing
-Agent-Reach inside Hermes and maximizing its reuse, drift is medium-high. The
+Agent-Reach inside Hermes and maximizing its reuse, drift remains material. The
 planning decision itself moved the boundary, which is why normal conformance
 reviews did not flag the product-level change.
 

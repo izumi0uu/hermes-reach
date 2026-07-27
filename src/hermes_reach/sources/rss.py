@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
 import codecs
+import os
 import re
-import xml.etree.ElementTree as ET
+import signal
+import sys
 from collections.abc import Mapping
 from typing import Final
 
-from ..runtime.adapters import AdapterResult, RawItem
+from ..runtime.adapters import AdapterResult, FailureClass, RawItem
 from ..runtime.policy import AuthorizedCall
 from .documents import (
     DocumentError,
@@ -18,6 +21,16 @@ from .documents import (
     sanitize_result_url,
 )
 from .public_http import HttpFailure, PublicHttpClient
+from .rss_worker import (
+    MAX_ENTRIES,
+    MAX_OUTPUT_BYTES,
+    EntryProjection,
+    FeedparserProjection,
+    FeedparserProtocolError,
+    FeedProjection,
+    decode_response,
+    encode_request,
+)
 
 _UNSAFE_DECLARATION: Final = re.compile(r"<!\s*(?:DOCTYPE|ENTITY)\b", re.I)
 _XML_ENCODING: Final = re.compile(
@@ -45,15 +58,86 @@ _SUPPORTED_XML_ENCODINGS: Final = frozenset(
         "utf-32be",
     }
 )
+_WORKER_MODULE: Final = "hermes_reach.sources.rss_worker"
 
 
 class FeedError(Exception):
     """A safe feed parser error without XML or URL content."""
 
 
+class FeedparserWorkerError(Exception):
+    """A classified parser worker failure without process or feed details."""
+
+    def __init__(self, failure_class: FailureClass) -> None:
+        super().__init__("feedparser_worker_failed")
+        self.failure_class = failure_class
+
+
+class FeedparserWorker:
+    """Run feedparser in a fixed isolated process that can be hard-cancelled."""
+
+    async def parse(
+        self,
+        body: bytes,
+        *,
+        content_type: str,
+        content_location: str,
+        max_entries: int,
+    ) -> FeedparserProjection:
+        try:
+            request = encode_request(
+                body,
+                content_type=content_type,
+                content_location=content_location,
+                max_entries=max_entries,
+            )
+        except FeedparserProtocolError:
+            raise FeedparserWorkerError("permanent") from None
+
+        process: asyncio.subprocess.Process | None = None
+        try:
+            try:
+                process = await asyncio.create_subprocess_exec(
+                    sys.executable,
+                    "-I",
+                    "-m",
+                    _WORKER_MODULE,
+                    stdin=asyncio.subprocess.PIPE,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.DEVNULL,
+                    cwd="/",
+                    env={},
+                    close_fds=True,
+                    start_new_session=True,
+                )
+            except asyncio.CancelledError:
+                raise
+            except (OSError, ValueError):
+                raise FeedparserWorkerError("transient") from None
+            output = await _exchange_bounded(process, request)
+            if process.returncode != 0:
+                raise FeedparserWorkerError("permanent")
+            try:
+                return decode_response(output)
+            except FeedparserProtocolError:
+                raise FeedparserWorkerError("permanent") from None
+        except asyncio.CancelledError:
+            raise
+        except FeedparserWorkerError:
+            raise
+        except (BrokenPipeError, ChildProcessError, ConnectionError, OSError):
+            raise FeedparserWorkerError("transient") from None
+        except Exception:
+            raise FeedparserWorkerError("transient") from None
+        finally:
+            if process is not None:
+                await _kill_process_group(process)
+
+
 class RssAdapter:
     def __init__(self, client: PublicHttpClient) -> None:
         self._client = client
+        self._worker = FeedparserWorker()
 
     async def execute(self, authorized: AuthorizedCall) -> AdapterResult:
         target = authorized.call.target
@@ -61,29 +145,62 @@ class RssAdapter:
             return AdapterResult(failure_class="invalid_input")
         try:
             response = await self._client.get(target["url"])
-            root = _parse_xml(response.body, response.content_type)
-            if authorized.operation.name == "read.feed":
-                item = _feed_item(root, response.public_url)
-                return AdapterResult((item,))
-            if authorized.operation.name == "browse.entries":
-                limit = _integer_option(
+            _preflight_xml(response.body, response.content_type)
+            content_location = sanitize_result_url(
+                response.public_url, response.public_url
+            )
+            if content_location is None:
+                raise FeedError("feed_location_invalid")
+            maximum_items = authorized.operation.runtime.maximum_items
+            limit = (
+                _integer_option(
                     authorized.call.options,
                     "limit",
-                    authorized.operation.runtime.maximum_items,
+                    maximum_items,
                 )
+                if authorized.operation.name == "browse.entries"
+                else 1
+            )
+            parsed = await self._worker.parse(
+                response.body,
+                content_type=response.content_type,
+                content_location=content_location,
+                max_entries=min(limit, maximum_items + 1, MAX_ENTRIES),
+            )
+            if authorized.operation.name == "read.feed":
+                item = _feed_item(parsed.feed, content_location)
                 return AdapterResult(
-                    tuple(_entry_items(root, response.public_url)[:limit])
+                    (item,),
+                    partial_failure_class="permanent" if parsed.bozo else None,
+                )
+            if authorized.operation.name == "browse.entries":
+                projected = tuple(
+                    _entry_item(entry, content_location) for entry in parsed.entries
+                )
+                items = tuple(item for item in projected if item is not None)
+                dropped_entries = len(items) != len(parsed.entries)
+                if not items and (parsed.bozo or parsed.entries):
+                    raise FeedError("feed_entries_unusable")
+                return AdapterResult(
+                    items,
+                    partial_failure_class=(
+                        "permanent" if parsed.bozo or dropped_entries else None
+                    ),
                 )
             return AdapterResult(failure_class="invalid_input")
+        except asyncio.CancelledError:
+            raise
         except HttpFailure as error:
             return AdapterResult(failure_class=error.failure_class)
-        except (DocumentError, FeedError, ET.ParseError):
+        except FeedparserWorkerError as error:
+            return AdapterResult(failure_class=error.failure_class)
+        except (DocumentError, FeedError):
             return AdapterResult(failure_class="permanent")
         except Exception:
             return AdapterResult(failure_class="transient")
 
 
-def _parse_xml(body: bytes, content_type: str) -> ET.Element:
+def _preflight_xml(body: bytes, content_type: str) -> None:
     detected = _detected_encoding(body)
     declared = (
         detected or _declared_encoding(body) or _content_type_encoding(content_type)
@@ -106,7 +223,6 @@ def _parse_xml(body: bytes, content_type: str) -> ET.Element:
             raise FeedError("xml_encoding_mismatch")
     if _UNSAFE_DECLARATION.search(text):
         raise FeedError("xml_declaration_denied")
-    return ET.fromstring(text)
 
 
 def _declared_encoding(body: bytes) -> str | None:
@@ -183,91 +299,35 @@ def _encodings_match(actual: str | None, declared: str) -> bool:
     return declared in {"utf-16", "utf-32"} and actual.startswith(f"{declared}-")
 
 
-def _feed_item(root: ET.Element, base_url: str) -> RawItem:
-    container = _feed_container(root)
-    title = _child_text(container, "title")
-    description = _first_text(container, ("description", "subtitle"))
-    text = _content_text(description or title)
+def _feed_item(feed: FeedProjection | None, base_url: str) -> RawItem:
+    if feed is None:
+        raise FeedError("feed_metadata_missing")
+    title = _optional_text(feed.title)
+    text = _content_text(feed.text or title or "")
     if not text:
         raise FeedError("feed_metadata_missing")
     return RawItem(
         text=text,
         kind="content",
-        title=title or None,
-        url=_feed_link(container, base_url),
+        title=title,
+        url=sanitize_result_url(feed.url, base_url),
     )
 
 
-def _entry_items(root: ET.Element, base_url: str) -> list[RawItem]:
-    container = (
-        root if _local_name(root.tag).lower() == "rdf" else _feed_container(root)
-    )
-    entries = [
-        child for child in container if _local_name(child.tag) in {"item", "entry"}
-    ]
-    return [_entry_item(entry, base_url) for entry in entries]
-
-
-def _entry_item(entry: ET.Element, base_url: str) -> RawItem:
-    title = _child_text(entry, "title")
-    content = _first_text(entry, ("description", "summary", "content", "encoded"))
-    text = _content_text(content or title)
-    native_id = _first_text(entry, ("guid", "id")) or None
-    author = _first_text(entry, ("author", "creator")) or None
-    published = _first_text(entry, ("published", "updated", "pubDate", "date"))
+def _entry_item(entry: EntryProjection, base_url: str) -> RawItem | None:
+    title = _optional_text(entry.title)
+    text = _content_text(entry.text or title or "")
+    if not text:
+        return None
     return RawItem(
         text=text,
-        native_id=native_id,
+        native_id=_optional_text(entry.native_id),
         kind="entry",
-        title=title or None,
-        url=_entry_link(entry, base_url),
-        author=author,
-        published_at=published or None,
+        title=title,
+        url=sanitize_result_url(entry.url, base_url),
+        author=_optional_text(entry.author),
+        published_at=_optional_text(entry.published_at),
     )
-
-
-def _feed_container(root: ET.Element) -> ET.Element:
-    root_name = _local_name(root.tag).lower()
-    if root_name == "feed":
-        return root
-    if root_name in {"rss", "rdf"}:
-        channel = next(
-            (child for child in root if _local_name(child.tag) == "channel"), None
-        )
-        return channel if channel is not None else root
-    raise FeedError("feed_root_unsupported")
-
-
-def _feed_link(container: ET.Element, base_url: str) -> str | None:
-    return _entry_link(container, base_url)
-
-
-def _entry_link(element: ET.Element, base_url: str) -> str | None:
-    for child in element:
-        if _local_name(child.tag) != "link":
-            continue
-        href = child.attrib.get("href")
-        rel = child.attrib.get("rel", "alternate")
-        if href and rel in {"", "alternate"}:
-            return sanitize_result_url(href, base_url)
-        if child.text and child.text.strip():
-            return sanitize_result_url(child.text, base_url)
-    return None
-
-
-def _first_text(element: ET.Element, names: tuple[str, ...]) -> str:
-    for name in names:
-        value = _child_text(element, name)
-        if value:
-            return value
-    return ""
-
-
-def _child_text(element: ET.Element, name: str) -> str:
-    for child in element:
-        if _local_name(child.tag) == name:
-            return normalize_whitespace(" ".join(child.itertext()))
-    return ""
 
 
 def _content_text(value: str) -> str:
@@ -277,10 +337,57 @@ def _content_text(value: str) -> str:
     return normalize_whitespace(value)
 
 
-def _local_name(tag: str) -> str:
-    return tag.rsplit("}", 1)[-1]
+def _optional_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    return normalize_whitespace(value) or None
 
 
 def _integer_option(options: Mapping[str, object], name: str, default: int) -> int:
     value = options.get(name, default)
     return value if isinstance(value, int) and not isinstance(value, bool) else default
+
+
+async def _exchange_bounded(
+    process: asyncio.subprocess.Process, request: bytes
+) -> bytes:
+    writer = process.stdin
+    reader = process.stdout
+    if writer is None or reader is None:
+        raise FeedparserWorkerError("transient")
+    writer.write(request)
+    await writer.drain()
+    writer.close()
+
+    output = bytearray()
+    try:
+        while len(output) <= MAX_OUTPUT_BYTES:
+            chunk = await reader.read(min(8192, MAX_OUTPUT_BYTES + 1 - len(output)))
+            if not chunk:
+                break
+            output.extend(chunk)
+            if len(output) > MAX_OUTPUT_BYTES:
+                raise FeedparserWorkerError("permanent")
+        await process.wait()
+        return bytes(output)
+    finally:
+        output[:] = b"\x00" * len(output)
+
+
+async def _kill_process_group(process: asyncio.subprocess.Process) -> None:
+    if process.returncode is not None:
+        return
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    except OSError:
+        if process.returncode is None:
+            try:
+                process.kill()
+            except OSError:
+                pass
+    try:
+        await process.wait()
+    except (BrokenPipeError, ChildProcessError, ConnectionError, OSError):
+        pass

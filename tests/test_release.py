@@ -10,12 +10,14 @@ def test_release_check_reports_current_pins_from_injected_metadata() -> None:
         lambda package: {
             "hermes-agent": "0.19.0",
             "agent-reach": "1.5.0",
+            "feedparser": "6.0.12",
         }.get(package, "0.1.0a0")
     )
 
     assert report.status == "current"
     assert report.hermes_version == "0.19.0"
     assert report.agent_reach_version == "1.5.0"
+    assert report.feedparser_version == "6.0.12"
     assert report.catalog_version == "v1"
 
 
@@ -49,3 +51,33 @@ def test_release_check_reports_an_incompatible_agent_reach_version() -> None:
     assert report.status == "degraded"
     assert report.agent_reach_version == "1.5.1"
     assert "Agent-Reach" in report.reason
+
+
+def test_release_check_reports_an_incompatible_rss_backend_version() -> None:
+    report = check_release_pins(
+        lambda package: {
+            "hermes-agent": "0.19.0",
+            "agent-reach": "1.5.0",
+            "feedparser": "6.0.11",
+        }.get(package, "0.1.0a0")
+    )
+
+    assert report.status == "degraded"
+    assert report.feedparser_version == "6.0.11"
+    assert "feedparser" in report.reason
+
+
+def test_release_check_reports_a_missing_rss_backend() -> None:
+    def versions(package: str) -> str:
+        if package == "feedparser":
+            raise PackageNotFoundError
+        return {
+            "hermes-agent": "0.19.0",
+            "agent-reach": "1.5.0",
+        }.get(package, "0.1.0a0")
+
+    report = check_release_pins(versions)
+
+    assert report.status == "unavailable"
+    assert report.feedparser_version is None
+    assert "RSS backend" in report.reason

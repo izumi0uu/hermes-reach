@@ -100,7 +100,10 @@ def test_rss_adapter_normalizes_atom_entries_in_native_order() -> None:
     result = asyncio.run(RssAdapter(client).execute(ReadOnlyPolicy().authorize(call)))
 
     assert result.is_success
-    assert [item.native_id for item in result.items] == ["entry-2", "entry-1"]
+    assert [item.native_id for item in result.items] == [
+        "https://example.com/entry-2",
+        "https://example.com/entry-1",
+    ]
     assert result.items[0].title == "Second"
     assert result.items[0].url == "https://example.com/second"
     assert result.items[0].author == "Alice"
@@ -238,6 +241,110 @@ def test_rss_adapter_rejects_encoding_that_conflicts_with_bom() -> None:
     result = asyncio.run(RssAdapter(client).execute(ReadOnlyPolicy().authorize(call)))
 
     assert result.failure_class == "permanent"
+
+
+def test_rss_adapter_returns_recovered_feedparser_entries_as_partial() -> None:
+    malformed = (
+        "<rss><channel><title>Feed</title><item><title>Recovered</title>"
+        "<description>Recovered body</description></item>"
+    )
+    client = FixtureHttpClient(
+        _response(
+            malformed,
+            "application/rss+xml",
+            "https://example.com/feed.xml",
+        )
+    )
+    call = validate_browse(
+        {
+            "source": "rss",
+            "operation": "browse.entries",
+            "target": {"url": "https://example.com/feed.xml"},
+        }
+    )
+
+    result = asyncio.run(RssAdapter(client).execute(ReadOnlyPolicy().authorize(call)))
+
+    assert result.partial_failure_class == "permanent"
+    assert [(item.title, item.text) for item in result.items] == [
+        ("Recovered", "Recovered body")
+    ]
+
+
+def test_rss_adapter_rejects_bozo_result_without_usable_data() -> None:
+    client = FixtureHttpClient(
+        _response(
+            "<not-feed",
+            "application/rss+xml",
+            "https://example.com/feed.xml",
+        )
+    )
+    call = validate_browse(
+        {
+            "source": "rss",
+            "operation": "browse.entries",
+            "target": {"url": "https://example.com/feed.xml"},
+        }
+    )
+
+    result = asyncio.run(RssAdapter(client).execute(ReadOnlyPolicy().authorize(call)))
+
+    assert result.failure_class == "permanent"
+    assert result.items == ()
+
+
+def test_rss_adapter_observes_dropped_unusable_entries_as_partial() -> None:
+    feed = """<rss><channel><title>Feed</title>
+    <item><title>Usable</title><description>Visible body</description></item>
+    <item><link>https://example.com/link-only</link></item>
+    </channel></rss>"""
+    client = FixtureHttpClient(
+        _response(
+            feed,
+            "application/rss+xml",
+            "https://example.com/feed.xml",
+        )
+    )
+    call = validate_browse(
+        {
+            "source": "rss",
+            "operation": "browse.entries",
+            "target": {"url": "https://example.com/feed.xml"},
+        }
+    )
+
+    result = asyncio.run(RssAdapter(client).execute(ReadOnlyPolicy().authorize(call)))
+
+    assert result.partial_failure_class == "permanent"
+    assert [item.title for item in result.items] == ["Usable"]
+
+
+def test_rss_runner_keeps_a_single_overflow_sentinel_for_truncation() -> None:
+    entries = "".join(
+        f"<item><title>Entry {index}</title><description>Body</description></item>"
+        for index in range(22)
+    )
+    client = FixtureHttpClient(
+        _response(
+            f"<rss><channel><title>Feed</title>{entries}</channel></rss>",
+            "application/rss+xml",
+            "https://example.com/feed.xml",
+        )
+    )
+    call = validate_browse(
+        {
+            "source": "rss",
+            "operation": "browse.entries",
+            "target": {"url": "https://example.com/feed.xml"},
+            "options": {"limit": 50},
+        }
+    )
+
+    result = asyncio.run(build_alpha1_runtime(client).dispatch(call))
+
+    assert result is not None
+    assert len(result.items) == 20
+    assert result.truncated is True
 
 
 def test_v2ex_adapter_owns_routes_and_reports_reply_failure_as_partial() -> None:

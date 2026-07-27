@@ -125,6 +125,72 @@
       "current_backend": null,
       "review_milestone": "compatible Agent-Reach method schema, pinned executable closure, and approved provider-query retention contract",
       "decision_record": "docs/agent-reach-decisions/exa-mcporter-1.5.0.md"
+    },
+    {
+      "source": "v2ex",
+      "operation": "browse.hot",
+      "upstream_execution": "agent_reach.channels.v2ex.V2EXChannel.get_hot_topics(limit)",
+      "classification": "reach_reimplementation",
+      "semantic_delta": "Retain bounded cancellable public transport and full topic author/content projection; upstream performs unbounded blocking urllib retrieval and truncates content while discarding authors.",
+      "approval": "owner-approved-safety-and-contract-exception-2026-07-27",
+      "current_backend": "v2ex-public-api-v1",
+      "review_milestone": "next Agent-Reach pin with injectable cancellable bounded transport and a compatible typed topic projection",
+      "decision_record": "docs/agent-reach-decisions/v2ex-1.5.0.md"
+    },
+    {
+      "source": "v2ex",
+      "operation": "browse.node_topics",
+      "upstream_execution": "agent_reach.channels.v2ex.V2EXChannel.get_node_topics(node_name, limit)",
+      "classification": "reach_reimplementation",
+      "semantic_delta": "Retain bounded cancellable public transport, author/content projection, and page 1..100; upstream is blocking and unbounded, drops fields, and hard-codes page 1.",
+      "approval": "owner-approved-safety-and-contract-exception-2026-07-27",
+      "current_backend": "v2ex-public-api-v1",
+      "review_milestone": "next Agent-Reach pin with injectable cancellable bounded transport, page input, and a compatible typed topic projection",
+      "decision_record": "docs/agent-reach-decisions/v2ex-1.5.0.md"
+    },
+    {
+      "source": "v2ex",
+      "operation": "read.topic",
+      "upstream_execution": "agent_reach.channels.v2ex.V2EXChannel.get_topic(topic_id)",
+      "classification": "reach_reimplementation",
+      "semantic_delta": "Retain bounded cancellable public transport, not-found semantics, reply IDs, and observable partial reply failures; upstream hides reply failures and discards reply identity.",
+      "approval": "owner-approved-safety-and-contract-exception-2026-07-27",
+      "current_backend": "v2ex-public-api-v1",
+      "review_milestone": "next Agent-Reach pin with injectable cancellable bounded transport and typed not-found, partial, and reply identity fields",
+      "decision_record": "docs/agent-reach-decisions/v2ex-1.5.0.md"
+    },
+    {
+      "source": "v2ex",
+      "operation": "read.user",
+      "upstream_execution": "agent_reach.channels.v2ex.V2EXChannel.get_user(username)",
+      "classification": "reach_reimplementation",
+      "semantic_delta": "Retain bounded cancellable public transport, requested-identity correlation, and canonical profile URLs; upstream trusts returned identity and URL fields.",
+      "approval": "owner-approved-safety-and-contract-exception-2026-07-27",
+      "current_backend": "v2ex-public-api-v1",
+      "review_milestone": "next Agent-Reach pin with injectable cancellable bounded transport and typed identity-correlated user results",
+      "decision_record": "docs/agent-reach-decisions/v2ex-1.5.0.md"
+    },
+    {
+      "source": "rss",
+      "operation": "read.feed",
+      "upstream_execution": "feedparser 6.0.12 parse(BytesIO(bounded_bytes)) selected by Agent-Reach RSSChannel and skill route",
+      "classification": "exact_backend_thin_wrapper",
+      "semantic_delta": "Hermes narrows feedparser to safely fetched bounded bytes in a killable worker, then projects the existing read.feed item contract; no backend substitution.",
+      "approval": "owner-approved-exact-backend-isolation-2026-07-27",
+      "current_backend": "feedparser",
+      "review_milestone": "any Agent-Reach or feedparser pin, RSS worker protocol, fetch-owner, backend identity, or parser invocation change",
+      "decision_record": "docs/agent-reach-decisions/rss-feedparser-6.0.12.md"
+    },
+    {
+      "source": "rss",
+      "operation": "browse.entries",
+      "upstream_execution": "feedparser 6.0.12 parse(BytesIO(bounded_bytes)).entries selected by Agent-Reach RSS skill route",
+      "classification": "exact_backend_thin_wrapper",
+      "semantic_delta": "Hermes narrows feedparser to safely fetched bounded bytes in a killable worker and applies the existing browse limit and RawItem projection; no backend substitution.",
+      "approval": "owner-approved-exact-backend-isolation-2026-07-27",
+      "current_backend": "feedparser",
+      "review_milestone": "any Agent-Reach or feedparser pin, RSS worker protocol, fetch-owner, backend identity, or parser invocation change",
+      "decision_record": "docs/agent-reach-decisions/rss-feedparser-6.0.12.md"
     }
   ]
 }

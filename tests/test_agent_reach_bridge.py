@@ -7,6 +7,8 @@ import pytest
 
 from hermes_reach.agent_reach_bridge import (
     AGENT_REACH_VERSION,
+    FEEDPARSER_DISTRIBUTION,
+    FEEDPARSER_VERSION,
     SAFE_AGENT_REACH_DOCTOR_CHANNELS,
     AgentReachBridgeError,
     AgentReachCatalog,
@@ -42,8 +44,11 @@ def _channels() -> list[FakeChannel]:
     ]
 
 
-def _version(_: str) -> str:
-    return AGENT_REACH_VERSION
+def _version(distribution: str) -> str:
+    return {
+        "agent-reach": AGENT_REACH_VERSION,
+        FEEDPARSER_DISTRIBUTION: FEEDPARSER_VERSION,
+    }[distribution]
 
 
 def test_catalog_reuses_the_actual_pinned_agent_reach_channel_registry() -> None:
@@ -71,6 +76,12 @@ def test_catalog_maps_the_upstream_registry_without_running_a_health_probe() -> 
         (_channels()[:-1], _version),
         (_channels() + [_channels()[0]], _version),
         (_channels(), lambda _: "1.5.1"),
+        (
+            _channels(),
+            lambda distribution: (
+                AGENT_REACH_VERSION if distribution == "agent-reach" else "6.0.11"
+            ),
+        ),
     ],
 )
 def test_catalog_rejects_agent_reach_drift(
