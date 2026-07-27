@@ -51,5 +51,6 @@ parsing, and explicit provider-query retention policy.
 
 ## Rollback
 
-Reverting this decision restores the pre-alpha generic injected-client API and
-its catalog state. There is no persisted data or credential migration.
+Restoring the pre-alpha generic injected-client API requires a coordinated
+rollback of this decision, the Exa catalog/registry changes, and their tests.
+There is no persisted data or credential migration.
