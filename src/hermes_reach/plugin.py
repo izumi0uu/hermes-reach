@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any, Final
 
 from .agent_reach_bridge import load_agent_reach_catalog
+from .bootstrap import runtime_from_environment
+from .cli import _set_runtime as _set_cli_runtime
 from .cli import reach_command, register_cli
 from .schemas import (
     REACH_BROWSE,
@@ -14,6 +17,9 @@ from .schemas import (
     REACH_SEARCH,
     REACH_STATUS,
     REACH_TRANSCRIBE,
+)
+from .tools import (
+    _set_runtime as _set_tool_runtime,
 )
 from .tools import (
     reach_browse,
@@ -48,6 +54,10 @@ def register(ctx: Any) -> None:
         raise RuntimeError("Hermes has no compatible plugin skill API.")
     if not _AGENT_REACH_SKILL_PATH.is_file():
         raise RuntimeError("The Hermes Reach skill resource is missing.")
+
+    runtime = runtime_from_environment(os.environ)
+    _set_tool_runtime(runtime)
+    _set_cli_runtime(runtime)
 
     for name, schema, handler, is_async in _TOOLS:
         description = schema["description"]

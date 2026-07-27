@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import sys
 import time
 from pathlib import Path
@@ -25,6 +26,7 @@ from .connector.client import (
     VpsProfileStore,
 )
 from .connector.errors import ConnectorError, ConnectorErrorCode
+from .connector.execution import ConnectorExecutionComposition
 from .connector.identity import TtyPassphraseReader, VpsKeyStore
 from .connector.limits import DEFAULT_GRANT_TTL_SECONDS, DEFAULT_GRANT_USES
 from .connector.protocol import GrantScope, ProtocolValidationError
@@ -39,8 +41,15 @@ from .contracts import (
     success_response,
     validate_status,
 )
+from .runtime.dispatcher import RuntimeDispatcher
 from .runtime.release import check_release_pins
+from .sources.reddit import (
+    attest_opencli_executable,
+    reddit_opencli_execution_composition,
+)
 from .status import doctor_data, sources_data, status_data, unavailable_command_data
+
+_RUNTIME: RuntimeDispatcher = DEFAULT_RUNTIME
 
 
 def register_cli(subparser: argparse.ArgumentParser) -> None:
@@ -107,6 +116,7 @@ class ConnectorMutationService(Protocol):
         reader: TtyPassphraseReader,
         bind_host: str,
         port: int,
+        execution_composition: ConnectorExecutionComposition | None = None,
     ) -> None: ...
 
 
@@ -129,12 +139,14 @@ class _DefaultConnectorMutationService:
         reader: TtyPassphraseReader,
         bind_host: str,
         port: int,
+        execution_composition: ConnectorExecutionComposition | None = None,
     ) -> None:
         service = ConnectorService.open_state_directory(
             state_directory,
             tty_reader=reader,
             bind_host=bind_host,
             port=port,
+            execution_composition=execution_composition,
         )
         asyncio.run(service.serve_foreground())
 
@@ -198,11 +210,34 @@ def connector_command(
             port = getattr(args, "port", None)
             if type(bind_host) is not str or type(port) is not int:
                 raise ConnectorError(ConnectorErrorCode.CONNECTOR_STATE_INVALID)
+            reddit_opencli = getattr(args, "reddit_opencli", None)
+            if reddit_opencli is None:
+                mutations.serve(
+                    state_directory,
+                    reader=reader,
+                    bind_host=bind_host,
+                    port=port,
+                )
+                return
+            if not isinstance(reddit_opencli, Path):
+                raise ConnectorError(ConnectorErrorCode.CONNECTOR_STATE_INVALID)
+            attestation = attest_opencli_executable(reddit_opencli)
+            reader._write(
+                "Enable trusted-device Connector executor:\n"
+                "scope: reddit:read.post:public\n"
+                f"OpenCLI path: {attestation.canonical_path}\n"
+                f"OpenCLI SHA-256: {attestation.sha256}\n"
+            )
+            if not reader._confirm("Type enable to continue: ", "enable"):
+                raise ConnectorError(ConnectorErrorCode.INTERACTIVE_UNLOCK_REQUIRED)
             mutations.serve(
                 state_directory,
                 reader=reader,
                 bind_host=bind_host,
                 port=port,
+                execution_composition=reddit_opencli_execution_composition(
+                    attestation, environment=os.environ
+                ),
             )
             return
         raise ConnectorError(ConnectorErrorCode.CONNECTOR_STATE_INVALID)
@@ -313,15 +348,13 @@ def command_payload(args: argparse.Namespace) -> dict[str, object]:
                 status_data(
                     request.sources,
                     request.include_planned,
-                    DEFAULT_RUNTIME.operation_availability,
+                    _RUNTIME.operation_availability,
                 ),
             )
         if command == "sources":
             return success_response(trace_id, sources_data(SOURCE_CATALOG))
         if command == "doctor":
-            local_doctor = doctor_data(
-                SOURCE_CATALOG, DEFAULT_RUNTIME.operation_availability
-            )
+            local_doctor = doctor_data(SOURCE_CATALOG, _RUNTIME.operation_availability)
             if not getattr(args, "upstream", False):
                 return success_response(trace_id, local_doctor)
             try:
@@ -365,6 +398,15 @@ def command_payload(args: argparse.Namespace) -> dict[str, object]:
 
 def _add_json_flag(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--json", action="store_true", help="Emit JSON output")
+
+
+def _set_runtime(runtime: RuntimeDispatcher) -> None:
+    """Install the process runtime selected once during plugin registration."""
+
+    if not isinstance(runtime, RuntimeDispatcher):
+        raise TypeError("The Reach CLI runtime is invalid.")
+    global _RUNTIME
+    _RUNTIME = runtime
 
 
 def _unavailable_response(command: str, trace_id: str) -> dict[str, object]:

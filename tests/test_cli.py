@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import json
 from collections.abc import Callable
 from pathlib import Path
@@ -17,6 +18,7 @@ from hermes_reach.cli import (
     render_command,
 )
 from hermes_reach.connector.client import PairingDisplay
+from hermes_reach.connector.execution import ConnectorExecutionComposition
 from hermes_reach.connector.protocol import GrantScope
 from hermes_reach.connector.transport import WssEndpoint
 from hermes_reach.runtime.release import ReleaseReport
@@ -172,6 +174,7 @@ def test_connector_cli_exposes_role_init_pair_and_foreground_serve() -> None:
     assert serve.func is connector_command
     assert serve.bind_host == "100.64.0.9"
     assert serve.port == 8443
+    assert serve.reddit_opencli is None
     assert pair.func is connector_command
     assert pair.connector_endpoint == "wss://100.64.0.9:8443"
     assert pair.scope == [
@@ -194,6 +197,86 @@ def test_connector_cli_exposes_role_init_pair_and_foreground_serve() -> None:
                 "--yes",
             ]
         )
+
+
+def test_connector_serve_reddit_activation_requires_exact_tty_enable(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    executable = tmp_path / "opencli"
+    executable.write_bytes(b"fixture-opencli")
+    executable.chmod(0o700)
+
+    class FakeReader:
+        def __init__(self, enabled: bool) -> None:
+            self.enabled = enabled
+            self.output: list[str] = []
+            self.prompts: list[tuple[str, str]] = []
+            self.closed = False
+
+        def _write(self, value: str) -> None:
+            self.output.append(value)
+
+        def _confirm(self, prompt: str, expected: str) -> bool:
+            self.prompts.append((prompt, expected))
+            return self.enabled
+
+        def close(self) -> None:
+            self.closed = True
+
+    class MutationSpy:
+        def __init__(self) -> None:
+            self.compositions: list[ConnectorExecutionComposition | None] = []
+
+        def serve(
+            self,
+            state_directory: Path,
+            *,
+            reader: object,
+            bind_host: str,
+            port: int,
+            execution_composition: ConnectorExecutionComposition | None = None,
+        ) -> None:
+            assert state_directory == tmp_path / "connector"
+            assert bind_host == "127.0.0.1"
+            assert port == 8443
+            self.compositions.append(execution_composition)
+
+    args = _parser().parse_args(
+        [
+            "connector",
+            "serve",
+            "--state-directory",
+            str(tmp_path / "connector"),
+            "--bind",
+            "127.0.0.1",
+            "--port",
+            "8443",
+            "--reddit-opencli",
+            str(executable),
+        ]
+    )
+    assert args.reddit_opencli == executable
+    mutation = MutationSpy()
+
+    denied = FakeReader(False)
+    monkeypatch.setattr(cli, "TtyPassphraseReader", lambda: denied)
+    connector_command(args, mutation_service=mutation)  # type: ignore[arg-type]
+    assert mutation.compositions == []
+    assert denied.prompts == [("Type enable to continue: ", "enable")]
+    assert denied.closed
+
+    enabled = FakeReader(True)
+    monkeypatch.setattr(cli, "TtyPassphraseReader", lambda: enabled)
+    connector_command(args, mutation_service=mutation)  # type: ignore[arg-type]
+
+    rendered = "".join(enabled.output)
+    assert "scope: reddit:read.post:public" in rendered
+    assert f"OpenCLI path: {executable.resolve()}" in rendered
+    assert hashlib.sha256(b"fixture-opencli").hexdigest() in rendered
+    assert enabled.prompts == [("Type enable to continue: ", "enable")]
+    assert enabled.closed
+    assert len(mutation.compositions) == 1
+    assert repr(mutation.compositions[0]) == "ConnectorExecutionComposition(count=1)"
 
 
 def test_connector_init_dispatches_through_tty_only_service_boundary(

@@ -34,6 +34,15 @@ Validator = Callable[[object], OperationCall | tuple[OperationCall, ...]]
 _RUNTIME: RuntimeDispatcher = DEFAULT_RUNTIME
 
 
+def _set_runtime(runtime: RuntimeDispatcher) -> None:
+    """Install the process runtime selected once during plugin registration."""
+
+    if not isinstance(runtime, RuntimeDispatcher):
+        raise TypeError("The Reach tool runtime is invalid.")
+    global _RUNTIME
+    _RUNTIME = runtime
+
+
 async def reach_search(args: dict[str, object], **kwargs: object) -> str:
     """Validate and execute bounded explicit-source search."""
 

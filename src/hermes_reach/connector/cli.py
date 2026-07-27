@@ -147,6 +147,11 @@ def register_connector_cli(
     _add_state_directory(connector_serve)
     connector_serve.add_argument("--bind", dest="bind_host", required=True)
     connector_serve.add_argument("--port", type=int, required=True)
+    connector_serve.add_argument(
+        "--reddit-opencli",
+        type=Path,
+        help="Enable the exact Reddit read executor with an absolute OpenCLI path",
+    )
     connector_serve.set_defaults(func=handler)
 
     connector_pair = commands.add_parser(
