@@ -5,10 +5,10 @@
 > a Connector executor only through an explicitly registered exact binding.
 > `ConnectorService` authorizes and delivers that fixed operation; it does not
 > select a provider, credential, browser session, or local path. The default
-> production runtime registers no Connector bindings and the production executor
-> composition is empty. Treat the controls below as the boundary for ongoing
-> implementation, not as approval to place production credentials behind the
-> Connector today.
+> runtime remains unbound. The only production composition path is the explicit
+> two-sided activation of Reddit `read.post` through one attested OpenCLI
+> executable. Treat the controls below as approval for that exact pre-alpha
+> slice only, not for arbitrary commands or production credentials.
 
 ## Supported topology
 
@@ -47,10 +47,9 @@ encrypted Bitwarden caches.
 ## Reddit OpenCLI executor boundary
 
 `reddit:read.post` is the only account-session operation with an implemented
-source executor. It is still disabled by default. An owning trusted-device
-application must explicitly compose both the exact `reddit:read.post` Connector
-executor and the matching VPS-side Connector adapter before it can become
-available.
+source executor. It is disabled by default. The trusted device must explicitly
+enable its exact executor and the Hermes process on the VPS must explicitly load
+the matching paired state before it can become available.
 
 The VPS may send only a canonical HTTPS Reddit post URL. The trusted executor
 derives the post ID and invokes the operator-selected absolute OpenCLI binary
@@ -73,6 +72,78 @@ explicit composition decision is therefore also the rollback point: removing
 the binding restores signed `backend_unbound` behavior without changing browser
 or Bitwarden state.
 
+### Exact activation sequence
+
+On the trusted device, initialize the owner-only Connector state once:
+
+```bash
+uv run hermes reach connector init \
+  --role connector \
+  --state-directory /absolute/connector-state
+```
+
+Start the foreground service with one explicit private or loopback address and
+the canonical OpenCLI executable candidate:
+
+```bash
+uv run hermes reach connector serve \
+  --state-directory /absolute/connector-state \
+  --bind 100.64.0.10 \
+  --port 8765 \
+  --reddit-opencli /absolute/path/to/opencli
+```
+
+Before state unlock or listener construction, the original TTY displays
+`reddit:read.post:public`, the resolved path, and its SHA-256. Type exactly
+`enable` to continue. The executable must resolve to a bounded regular file,
+be owned by the current user or root, be executable, have one hard link, and
+not be group- or world-writable. Its metadata and digest are rechecked
+immediately before every spawn. The current implementation does not use
+`fexecve`; replacement in the small interval between recheck and path-based
+spawn remains a trusted-device TOCTOU limitation. For script executables, the
+shebang interpreter and the allowlisted `PATH` are also outside the attested
+file digest and must be controlled by the trusted-device operator.
+
+The service now waits at its original-terminal `Connector>` prompt in the
+locked state. Enter `unlock` and supply the Connector passphrase on that same
+terminal. The WSS listener is constructed only after this unlock succeeds.
+
+Keep the foreground service running. On the VPS, initialize its owner-only
+identity state once and pair it with exactly the public Reddit post-read scope:
+
+```bash
+uv run hermes reach connector init \
+  --role vps \
+  --state-directory /absolute/vps-state
+
+uv run hermes reach connector pair \
+  --state-directory /absolute/vps-state \
+  --connector wss://100.64.0.10:8765 \
+  --device-label hermes-vps \
+  --scope reddit:read.post:public
+```
+
+While the VPS `pair` command waits, enter `pending` at the trusted device's
+`Connector>` prompt. Verify the SAS, identity, scope, expiry, and usage limit
+shown on both original terminals, then enter `approve <pairing-id>` on the
+trusted terminal and type exactly `approve` at its confirmation prompt. After
+the VPS reports `Pairing complete.`, leave the Connector unlocked to execute
+requests. Entering `lock` stops its listener. Then start the normal Hermes
+process on the VPS with:
+
+```bash
+HERMES_REACH_VPS_STATE_DIRECTORY=/absolute/vps-state hermes ...
+```
+
+`HERMES_REACH_VPS_STATE_DIRECTORY` is only a process-start pointer to verified
+owner-only local state. It is not a credential, is never sent in an operation,
+and cannot add a scope absent from the signed grant. If it is absent, plugin
+registration performs no Connector file or network work. If it is invalid,
+only `reddit:read.post` is unavailable; local Web, RSS, V2EX, and GitHub
+adapters continue to load. Pairing or local state changes require restarting
+Hermes because the runtime is composed once at plugin registration. Connector
+startup never persists the OpenCLI path or digest.
+
 ## Foreground lifecycle and availability
 
 Every service process starts locked with no listener. Only `unlock` on the
@@ -83,6 +154,15 @@ discard the in-memory key lease. Device sleep interrupts reachability as well.
 Sleep, lock, or exit therefore makes Connector-backed operations degraded. It
 does not disable credential-free local Web, RSS, V2EX, or GitHub operations.
 Status reads a bounded local snapshot and does not contact the Connector.
+
+A verified paired profile with a valid exact grant but no recent authenticated
+snapshot normally reports `degraded`; this state is dispatchable so the first
+signed success can change it to `available`. Connector-side revocation is
+checked as live authority and applies to the next request without a VPS
+restart. A recent signed `backend_unbound` response is intentionally cached as
+`unavailable` to avoid repeatedly spending grant uses. After the trusted-device
+binding is repaired, that snapshot expires in at most about 60 seconds and the
+operation returns to retryable `degraded`.
 
 There is no Hermes Reach telemetry. Audit export occurs only when an operator
 explicitly composes an operator-owned sink; no exporter, client, or scheduler

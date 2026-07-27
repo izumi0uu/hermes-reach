@@ -7,7 +7,7 @@ Hermes Reach gives Hermes a consistent set of read-only tools for public web and
 It uses [Agent-Reach](https://github.com/Panniantong/Agent-Reach) as its upstream capability source and exposes search, read, browse, transcribe, and status operations through a [Hermes Agent](https://github.com/NousResearch/hermes-agent) plugin.
 
 > [!IMPORTANT]
-> The project is **pre-alpha**. Local access to Web, RSS/Atom, V2EX, and GitHub works today. The exact remote Connector bridge and first Reddit read-only executor exist, but the default production composition has no Connector bindings or executor; Bitwarden, OpenCLI browser sessions, and live platform backends remain disabled.
+> The project is **pre-alpha**. Local access to Web, RSS/Atom, V2EX, and GitHub works today. The remote Connector can explicitly activate the single Reddit `read.post` OpenCLI path at both ends, while a default installation remains unbound; the Bitwarden credential path and other account-backed platform backends remain disabled.
 
 ## The problem Hermes Reach solves
 
@@ -33,13 +33,13 @@ Hermes Reach assumes that an attacker may fully compromise the VPS. Its security
 - Public HTTP requests block local addresses, private addresses, DNS rebinding, proxies, and HTTPS downgrades
 - Unreviewed backends remain disabled instead of falling back to a broader execution path
 
-### Connector work in progress
+### Explicit Connector activation (pre-alpha)
 
-The future Connector runs on your computer or another trusted device. Passwords, cookies, browser sessions, and Bitwarden tokens remain there. The VPS receives only expiring, usage-limited, revocable grants.
+The Connector runs on your computer or another trusted device. Passwords, cookies, browser sessions, and Bitwarden tokens remain there. The VPS receives only expiring, usage-limited, revocable grants.
 
-The codebase already contains foundations for identity, live authorization, pinned TLS, original-terminal unlock, VPS pairing, local availability snapshots, isolated Bitwarden resolution, and protected-request/result envelopes. The runtime can also deliver one authorized operation to a trusted-device Connector executor through an **explicitly registered exact binding**. `reddit:read.post` is the first constrained implementation: it extracts a post ID from a canonical Reddit URL and invokes one fixed OpenCLI read command. **The default runtime does not register this binding and the production executor composition is empty; normal `reach_*` requests therefore cannot trigger OpenCLI, a browser session, a Bitwarden secret, or live platform access, and this remote path is not production-ready.**
+The codebase contains identity, live authorization, pinned TLS, original-terminal unlock, VPS pairing, local availability snapshots, isolated Bitwarden resolution, and protected-request/result envelopes. `reddit:read.post` is the first exact binding that can be activated explicitly: it extracts a post ID from a canonical Reddit URL and invokes one fixed OpenCLI read command. The trusted device must attest the executable through `--reddit-opencli`, and the VPS must explicitly point to paired local state containing the exact `reddit:read.post:public` grant. Either missing gate fails closed, and a default installation never discovers or runs OpenCLI.
 
-Before deployment, read the [Connector security and operations guide](docs/connector-security.md) for the network, grant, key-recovery, audit, and rollback boundaries. The guide documents constraints; it does not mean remote execution is available.
+Before deployment, read the [Connector security and operations guide](docs/connector-security.md) for the network, grant, key-recovery, audit, and rollback boundaries. This activation path remains pre-alpha and does not authorize a generic command, credential, or platform capability.
 
 <details>
 <summary>View the implemented Connector security foundations</summary>
@@ -72,7 +72,7 @@ The default installation registers five tools, but `reach_status` remains author
 | Available | RSS/Atom | Read feeds and browse entries |
 | Available | V2EX | Browse hot and node topics; read topics and users |
 | Available | GitHub | Search repositories and code; read repositories, issues, pull requests, Actions, and releases |
-| Implemented but unbound | Reddit | `read.post` only; requires explicit trusted-device OpenCLI executor injection and remains unavailable by default |
+| Explicitly configurable | Reddit | `read.post` only; requires activation on both the trusted device and VPS and remains unavailable by default |
 | Setup required | Exa, YouTube, and Bilibili | Awaiting reviewed source-specific integrations |
 | Planned | Twitter/X, Xiaohongshu, Facebook, Instagram, LinkedIn, Xueqiu, Xiaoyuzhou, and all other Reddit operations | Awaiting per-source Connector review and credential isolation |
 
@@ -114,9 +114,49 @@ Then find repositories related to Hermes Agent plugin development.
 
 The default doctor checks local state only. `hermes reach doctor --upstream` also runs the restricted and redacted Agent-Reach checks.
 
+### Enable Reddit `read.post`
+
+Initialize state on the trusted device, then start the only permitted OpenCLI executor in the foreground:
+
+```bash
+uv run hermes reach connector init \
+  --role connector \
+  --state-directory /absolute/connector-state
+
+uv run hermes reach connector serve \
+  --state-directory /absolute/connector-state \
+  --bind 100.64.0.10 \
+  --port 8765 \
+  --reddit-opencli /absolute/path/to/opencli
+```
+
+`serve` displays the canonical path, SHA-256, and exact scope on the original terminal and accepts only the literal confirmation `enable`. After confirmation, enter `unlock` at the `Connector>` prompt on that same original terminal and supply the Connector passphrase; the listener starts only after this unlock succeeds. Keep the foreground process running, then initialize and pair the VPS:
+
+```bash
+uv run hermes reach connector init \
+  --role vps \
+  --state-directory /absolute/vps-state
+
+uv run hermes reach connector pair \
+  --state-directory /absolute/vps-state \
+  --connector wss://100.64.0.10:8765 \
+  --device-label hermes-vps \
+  --scope reddit:read.post:public
+```
+
+While `pair` waits, enter `pending` at the trusted device's `Connector>` prompt. After comparing both displays, enter `approve <pairing-id>` and type the literal `approve` at its confirmation prompt. Once pairing completes, `lock` stops the trusted listener; leave it unlocked to execute requests.
+
+Finally, start the Hermes process on the VPS with the same absolute state directory:
+
+```bash
+HERMES_REACH_VPS_STATE_DIRECTORY=/absolute/vps-state hermes ...
+```
+
+This environment value is only a pointer to owner-only local paired state. It is not a secret and cannot widen the grant. Pairing or local state changes require a Hermes restart; server-side revocation takes effect on the next request. A valid grant normally reports `degraded` until the first signed success changes it to `available`. If the VPS recently received signed `backend_unbound`, the local failure snapshot can take up to about 60 seconds after the trusted binding is repaired to return to retryable `degraded`. See the [Connector security and operations guide](docs/connector-security.md) for the full procedure.
+
 ## How the system works
 
-Normal requests currently run through Hermes Reach's own runtime and local adapters. Agent-Reach supplies the pinned platform catalog, routing evidence, backend metadata, and explicit doctor. Reach uses its OpenCLI-first Reddit route as evidence for one fixed `read.post` executor, but does not compose that executor into the default runtime.
+Normal requests currently run through Hermes Reach's own runtime and local adapters. Agent-Reach supplies the pinned platform catalog, routing evidence, backend metadata, and explicit doctor. Reach uses its OpenCLI-first Reddit route as evidence for one fixed `read.post` executor. It is not composed into the default runtime; only the explicit two-sided activation above adds the exact binding.
 
 ```mermaid
 flowchart TD
@@ -153,7 +193,7 @@ The project pins Agent-Reach `1.5.0` at commit `1494c2ab239e7355a77e7cceaf327145
 
 ### Connector path when explicitly composed
 
-An exact binding can execute a reviewed source backend on the trusted device. The current Reddit slice follows Agent-Reach routing evidence but permits only a fixed OpenCLI post-read argv; the VPS cannot select commands, credentials, providers, browser sessions, or local paths. The default production composition supplies neither the binding nor a live backend; each source must pass its own security design and tests before it can be enabled.
+An exact binding can execute a reviewed source backend on the trusted device. The current Reddit slice follows Agent-Reach routing evidence but permits only a fixed OpenCLI post-read argv; the VPS cannot select commands, credentials, providers, browser sessions, or local paths. The default composition supplies no binding; it is added only when `--reddit-opencli` and paired VPS state are both present. Every additional source must still pass its own security design and tests.
 
 ```mermaid
 flowchart TD
@@ -179,6 +219,7 @@ The roadmap describes development order, not release dates. Incomplete capabilit
 | Complete | Isolate credentials and freeze the execution protocol | Bitwarden SecretProvider, protected-request and normalized-result envelopes |
 | Complete | Exact remote execution bridge | Explicit Connector adapters, authorized-operation delivery, receipts, and retries; default composition remains empty |
 | Complete | First source executor | Fixed OpenCLI read, closed YAML mapping, and WSS receipt test for Reddit `read.post`; unbound by default |
+| Complete | Explicit two-sided production composition | Attest and confirm OpenCLI on the trusted device; build the sole Reddit adapter from owner-only paired VPS state |
 | Now | Freeze and correct the reuse boundary | Audit all 63 operations, prioritize GitHub/Web/Exa then RSS/V2EX, and add no platform retrieval logic |
 | Then | Execute more upstream backends | Add only direct reuse or thin wrappers around pinned upstream backends |
 | Later | Support authenticated platforms and production operations | Twitter/X and similar sources, one-step grants, audit export, alerts, upgrades, and rollback |
