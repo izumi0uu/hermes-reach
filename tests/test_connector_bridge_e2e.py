@@ -57,7 +57,7 @@ from hermes_reach.connector.protocol import (
 from hermes_reach.connector.service import ConnectorService
 from hermes_reach.connector.store import AuthorityStore, StoreWriterLease
 from hermes_reach.connector.tls import ConnectorTLSStore
-from hermes_reach.connector.transport import PinnedWssClient, WssEndpoint
+from hermes_reach.connector.transport import PinnedWssClient
 from hermes_reach.contracts import OperationCall, validate_read
 from hermes_reach.runtime.adapters import AdapterRegistry
 from hermes_reach.runtime.availability import AvailabilityRecord
@@ -183,16 +183,7 @@ async def _open_bridge(
     ids = _Ids()
     trusted_state = tmp_path / "connector"
     vps_state = tmp_path / "vps"
-    expected_endpoint: WssEndpoint | None = None
-    service_port = 0
     if persist_vps_profile:
-        port_probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        try:
-            port_probe.bind(("127.0.0.1", 0))
-            service_port = int(port_probe.getsockname()[1])
-        finally:
-            port_probe.close()
-        expected_endpoint = WssEndpoint.parse(f"wss://127.0.0.1:{service_port}")
         vps_key_store = VpsKeyStore(vps_state, _platform="linux")
         vps_key_store.initialize()
         vps = vps_key_store.load()
@@ -212,14 +203,37 @@ async def _open_bridge(
         initial_policy_digest=ModelPolicy.default_deny(1).digest(),
         now=now,
     )
+    if execution_composition is None:
+        assert executor is not None
+        binding = ConnectorExecutorBinding(
+            scope,
+            BACKEND,
+            executor,
+            getattr(executor, "cleanup", None),
+        )
+        execution_composition = ConnectorExecutionComposition((binding,))
+    service = ConnectorService._from_test_dependencies(
+        key_store=key_store,
+        tls_store=tls_store,
+        store=store,
+        authority=GrantAuthority(store, id_factory=ids),
+        tty_reader=_reader(PASSPHRASE),
+        bind_host="127.0.0.1",
+        port=0,
+        id_factory=ids,
+        execution_composition=execution_composition,
+    )
+    await service.unlock()
+    endpoint = service.endpoint
+    assert endpoint is not None
     pairing = create_pairing_init(
         vps,
         message_id=ids(),
         pairing_id=ids(),
         device_label="bridge-e2e-vps",
         endpoint_digest=(
-            _endpoint_digest(expected_endpoint)
-            if expected_endpoint is not None
+            _endpoint_digest(endpoint)
+            if persist_vps_profile
             else hashlib.sha256(b"loopback-bridge").hexdigest()
         ),
         vps_nonce=bytes(range(32)),
@@ -287,31 +301,7 @@ async def _open_bridge(
         pairing_complete=complete,
     )
     assert isinstance(resolution, PairingResolution)
-    if execution_composition is None:
-        assert executor is not None
-        binding = ConnectorExecutorBinding(
-            scope,
-            BACKEND,
-            executor,
-            getattr(executor, "cleanup", None),
-        )
-        execution_composition = ConnectorExecutionComposition((binding,))
-    service = ConnectorService._from_test_dependencies(
-        key_store=key_store,
-        tls_store=tls_store,
-        store=store,
-        authority=GrantAuthority(store, id_factory=ids),
-        tty_reader=_reader(PASSPHRASE),
-        bind_host="127.0.0.1",
-        port=service_port,
-        id_factory=ids,
-        execution_composition=execution_composition,
-    )
-    await service.unlock()
-    endpoint = service.endpoint
-    assert endpoint is not None
-    if expected_endpoint is not None:
-        assert endpoint == expected_endpoint
+    if persist_vps_profile:
         pending = PendingVpsProfile(
             endpoint,
             vps.public_identity.key_id,

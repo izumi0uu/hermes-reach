@@ -201,7 +201,9 @@ class OpenCliSubprocess:
         expected_sha256 = self._expected_sha256
         if expected_sha256 is not None:
             try:
-                observed_sha256 = _opencli_executable_digest(self._executable)
+                observed_sha256 = await asyncio.to_thread(
+                    _opencli_executable_digest, self._executable
+                )
             except ConnectorError:
                 raise
             except (OSError, ValueError):
