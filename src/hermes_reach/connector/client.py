@@ -891,6 +891,8 @@ def _snapshot(
     operation: str,
 ) -> ConnectorSnapshot:
     claims = profile.signed_grant.claims
+    # This is one latest exact-operation projection, not a mutable grant-scope
+    # table; a later operation deliberately replaces an earlier advisory state.
     return ConnectorSnapshot(
         connector_key_id=profile.connector_identity.key_id,
         grant_id=claims.grant_id,

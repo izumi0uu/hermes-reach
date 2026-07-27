@@ -1002,7 +1002,15 @@ def test_connector_client_does_not_retry_after_original_deadline_expires(
 ) -> None:
     profile, vps, connector, _, _, _ = _paired_fixture(tmp_path)
     transport = _DeadlineExhaustingTransport()
-    monotonic_times = iter((20.0, 50.0))
+    monotonic_times = (20.0, 50.0)
+    monotonic_reads = 0
+
+    def monotonic_clock() -> float:
+        nonlocal monotonic_reads
+        value = monotonic_times[min(monotonic_reads, len(monotonic_times) - 1)]
+        monotonic_reads += 1
+        return value
+
     client = ConnectorClient(
         profile,
         vps,
@@ -1014,7 +1022,7 @@ def test_connector_client_does_not_retry_after_original_deadline_expires(
         ),
         ConnectorSnapshotStore(tmp_path / "vps"),
         wall_clock=lambda: NOW + 2,
-        monotonic_clock=lambda: next(monotonic_times),
+        monotonic_clock=monotonic_clock,
         id_factory=_IdFactory(975),
     )
 

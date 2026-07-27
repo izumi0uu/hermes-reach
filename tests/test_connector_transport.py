@@ -510,6 +510,24 @@ def test_exchange_classifies_post_send_receive_failure_as_delivery_unknown() -> 
     asyncio.run(exchange())
 
 
+def test_exchange_classifies_post_send_deadline_as_delivery_unknown() -> None:
+    async def exchange() -> None:
+        connection = _FakeConnection(response=_error_response(), wait_for_receive=True)
+        with pytest.raises(ConnectorDeliveryError) as caught:
+            await _exchange_record(
+                _FakeDialer(connection),
+                WssEndpoint.parse("wss://127.0.0.1:8765"),
+                ssl.create_default_context(),
+                _pairing_init(),
+                deadline=asyncio.get_running_loop().time() + 0.1,
+            )
+        _assert_code(caught, ConnectorErrorCode.CONNECTOR_DEADLINE_EXCEEDED.value)
+        assert caught.value.delivery_state == "delivery_unknown"
+        assert connection.sent == [encode_record(_pairing_init()).decode("ascii")]
+
+    asyncio.run(exchange())
+
+
 def test_exchange_classifies_send_failure_as_delivery_unknown() -> None:
     async def exchange() -> None:
         connection = _FakeConnection(

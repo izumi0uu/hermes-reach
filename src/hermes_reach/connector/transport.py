@@ -656,6 +656,8 @@ class WssServer:
                 self._close_task = close_task
 
         cancelled = False
+        # Shared shutdown must finish even when callers are cancelled; propagate
+        # cancellation only after the close task has released every resource.
         while not close_task.done():
             try:
                 await asyncio.shield(close_task)
@@ -673,6 +675,7 @@ class WssServer:
             self._shutdown_started.set()
             self._server.close(close_connections=True)
             current = asyncio.current_task()
+            # A handler may initiate close, so never cancel the task draining it.
             connection_tasks = tuple(
                 task for task in self._connection_tasks if task is not current
             )
