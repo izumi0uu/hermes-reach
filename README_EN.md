@@ -7,7 +7,7 @@ Hermes Reach gives Hermes a consistent set of read-only tools for public web and
 It uses [Agent-Reach](https://github.com/Panniantong/Agent-Reach) as its upstream capability source and exposes search, read, browse, transcribe, and status operations through a [Hermes Agent](https://github.com/NousResearch/hermes-agent) plugin.
 
 > [!IMPORTANT]
-> The project is **pre-alpha**. Local access to Web, RSS/Atom, V2EX, and GitHub works today. The remote Connector, Bitwarden integration, and Agent-Reach backend execution path are still in development.
+> The project is **pre-alpha**. Local access to Web, RSS/Atom, V2EX, and GitHub works today. The exact remote Connector execution bridge exists, but the default production composition has no Connector bindings or executor; Bitwarden and live Agent-Reach backends remain disabled.
 
 ## The problem Hermes Reach solves
 
@@ -37,7 +37,7 @@ Hermes Reach assumes that an attacker may fully compromise the VPS. Its security
 
 The future Connector runs on your computer or another trusted device. Passwords, cookies, browser sessions, and Bitwarden tokens remain there. The VPS receives only expiring, usage-limited, revocable grants.
 
-The codebase already contains foundations for identity, live authorization, pinned TLS, original-terminal unlock, VPS pairing, local availability snapshots, isolated Bitwarden resolution, and protected-request/result envelopes. **However, the foreground ConnectorService still handles pairing traffic only, no production executor or real backend is enabled, and the VPS client is not connected to normal `reach_*` requests, so this remote security path is not production-ready.**
+The codebase already contains foundations for identity, live authorization, pinned TLS, original-terminal unlock, VPS pairing, local availability snapshots, isolated Bitwarden resolution, and protected-request/result envelopes. The runtime can also deliver one authorized operation to a trusted-device Connector executor through an **explicitly registered exact binding**. **The default runtime registers none of those bindings and the production executor composition is empty; normal `reach_*` requests therefore cannot trigger platform credentials, Bitwarden secrets, or a live Agent-Reach backend, and this remote path is not production-ready.**
 
 Before deployment, read the [Connector security and operations guide](docs/connector-security.md) for the network, grant, key-recovery, audit, and rollback boundaries. The guide documents constraints; it does not mean remote execution is available.
 
@@ -54,7 +54,7 @@ Before deployment, read the [Connector security and operations guide](docs/conne
 | Isolated Bitwarden resolution | Resolve one opaque capability binding in a constrained child process without exposing vault configuration to the VPS |
 | Request/result envelopes | Transport protected requests and bind bounded normalized results into signed receipts |
 | VPS pairing and status snapshots | Persist pinned identity, the first grant, and short-lived no-network health state |
-| Foreground ConnectorService | Activate authorization only after the trusted device completes unlock |
+| Foreground ConnectorService | Activate authorization after trusted-device unlock and deliver an authorized exact operation to an explicitly injected executor |
 
 </details>
 
@@ -126,7 +126,7 @@ flowchart TD
     Guard --> Runtime["Bounded runtime"]
     Runtime --> Adapters["Web · RSS · V2EX · GitHub"]
     Adapters --> Results["Grouped results and source metadata"]
-    Connector["Connector security foundation<br/>not connected to normal requests"] -.-> Runtime
+    Connector["Connector execution bridge<br/>explicit bindings only; production default disabled"] -.-> Runtime
 ```
 
 ### How much of Agent-Reach is reused
@@ -136,13 +136,13 @@ flowchart TD
 | 15-platform catalog and backend metadata | Normal request execution engine |
 | Pinned version and compatibility checks | Cookies and account sessions for authenticated platforms |
 | Restricted, explicitly triggered doctor | Arbitrary provider commands or the upstream installer |
-| Routing semantics adapted into a Hermes skill | Exact backend bindings on the trusted device |
+| Routing semantics adapted into a Hermes skill | Live platform executors in the production composition (currently empty) |
 
 The project pins Agent-Reach `1.5.0` at commit `1494c2ab239e7355a77e7cceaf3271453a1f34b5`.
 
-### Target Connector path
+### Connector path when explicitly composed
 
-The target architecture executes Agent-Reach backends on the trusted device. The VPS cannot select credentials, providers, browser sessions, or local paths.
+An exact binding can execute a reviewed Agent-Reach backend on the trusted device. The VPS cannot select credentials, providers, browser sessions, or local paths. The default production composition supplies neither the bindings nor live backends; each source must pass its own security design and tests before it can be enabled.
 
 ```mermaid
 flowchart TD
@@ -166,8 +166,8 @@ The roadmap describes development order, not release dates. Incomplete capabilit
 | Complete | Stabilize public retrieval | Five tools, local adapters, read-only policy, Agent-Reach catalog |
 | Complete | Secure pairing and client foundation | ConnectorClient, pinned identity and grants, local availability snapshots, signed requests and receipts |
 | Complete | Isolate credentials and freeze the execution protocol | Bitwarden SecretProvider, protected-request and normalized-result envelopes |
-| Current | Constrain execution authorization | Model policy, single-file grants, and an exact executor seam with no default implementation |
-| Then | Execute upstream backends | Exact Agent-Reach bindings, Exa, and media backends |
+| Complete | Exact remote execution bridge | Explicit Connector adapters, authorized-operation delivery, receipts, and retries; default composition remains empty |
+| Then | Execute upstream backends | Per-source reviewed exact Agent-Reach bindings, Exa, and media backends |
 | Later | Support authenticated platforms and production operations | Twitter/X and similar sources, one-step grants, audit export, alerts, upgrades, and rollback |
 
 ## Development

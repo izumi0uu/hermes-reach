@@ -1,11 +1,14 @@
 # Connector security and operations
 
 > [!IMPORTANT]
-> Hermes Reach is pre-alpha. Normal `reach_*` requests are not remotely wired
-> to the Connector. `ConnectorService` handles pairing traffic only, and the
-> production package registers no live Connector backend or executor. Treat the
-> controls below as the boundary for ongoing implementation, not as approval to
-> place production credentials behind the Connector today.
+> Hermes Reach is pre-alpha. The runtime can deliver an authorized operation to
+> a Connector executor only through an explicitly registered exact binding.
+> `ConnectorService` authorizes and delivers that fixed operation; it does not
+> select a provider, credential, browser session, or local path. The default
+> production runtime registers no Connector bindings and the production executor
+> composition is empty. Treat the controls below as the boundary for ongoing
+> implementation, not as approval to place production credentials behind the
+> Connector today.
 
 ## Supported topology
 
