@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import errno
 import hashlib
 import io
 import socket
@@ -289,6 +290,18 @@ def _available(_: str, __: str) -> AvailabilityRecord:
     return AvailabilityRecord("available", "Fixture Connector is available.")
 
 
+def _require_loopback_bind() -> None:
+    probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        probe.bind(("127.0.0.1", 0))
+    except OSError as error:
+        if error.errno in {errno.EACCES, errno.EPERM}:
+            pytest.skip("The execution sandbox forbids loopback listener binds.")
+        raise
+    finally:
+        probe.close()
+
+
 def _call() -> OperationCall:
     return validate_read(
         {
@@ -302,12 +315,7 @@ def _call() -> OperationCall:
 def test_real_wss_bridge_executes_and_verifies_one_exact_operation(
     tmp_path: Path,
 ) -> None:
-    try:
-        probe = socket.socket()
-        probe.bind(("127.0.0.1", 0))
-        probe.close()
-    except PermissionError:
-        pytest.skip("The execution sandbox forbids loopback listener binds.")
+    _require_loopback_bind()
 
     async def exercise() -> None:
         executor = _FixtureExecutor()
@@ -356,6 +364,8 @@ def test_real_wss_bridge_executes_and_verifies_one_exact_operation(
 def test_service_lock_cancels_real_wss_executor_and_awaits_cleanup(
     tmp_path: Path,
 ) -> None:
+    _require_loopback_bind()
+
     async def exercise() -> None:
         executor = _BlockingExecutor()
         harness = await _open_bridge(tmp_path, executor)
@@ -389,6 +399,8 @@ def test_service_lock_cancels_real_wss_executor_and_awaits_cleanup(
 def test_client_cancellation_closes_wss_and_cancels_remote_executor(
     tmp_path: Path,
 ) -> None:
+    _require_loopback_bind()
+
     async def exercise() -> None:
         executor = _BlockingExecutor()
         harness = await _open_bridge(tmp_path, executor)
