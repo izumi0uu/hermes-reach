@@ -192,8 +192,11 @@ def test_connector_factory_rejects_duplicate_unknown_and_planned_operations() ->
         )
     with pytest.raises(ValueError, match="selection"):
         connector_bindings(client, _availability, (("web", "read.unknown"),))
+    assert (
+        len(connector_bindings(client, _availability, (("reddit", "read.post"),))) == 1
+    )
     with pytest.raises(ValueError, match="selection"):
-        connector_bindings(client, _availability, (("reddit", "read.post"),))
+        connector_bindings(client, _availability, (("reddit", "browse.hot"),))
 
 
 def test_multi_source_tool_trace_reaches_each_connector_binding(

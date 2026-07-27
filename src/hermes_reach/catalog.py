@@ -17,6 +17,7 @@ StringFormat = Literal[
     "positive_integer",
     "github_repository",
     "github_resource",
+    "reddit_post_url",
     "youtube_video_url",
     "bilibili_video_url",
 ]
@@ -119,6 +120,9 @@ YOUTUBE_VIDEO_TARGET: Final = TargetSpec(
 )
 BILIBILI_VIDEO_TARGET: Final = TargetSpec(
     "url", maximum=128, string_format="bilibili_video_url"
+)
+REDDIT_POST_TARGET: Final = TargetSpec(
+    "url", maximum=320, string_format="reddit_post_url"
 )
 
 
@@ -358,7 +362,15 @@ SOURCE_CATALOG: Final[tuple[SourceSpec, ...]] = (
             _operation(
                 "reddit", "search.posts", "search", 2, "account_session", (LIMIT,)
             ),
-            _operation("reddit", "read.post", "read", 2, "account_session"),
+            _operation(
+                "reddit",
+                "read.post",
+                "read",
+                2,
+                "account_session",
+                targets=(REDDIT_POST_TARGET,),
+                implementation_state="implemented",
+            ),
             _operation(
                 "reddit", "browse.subreddit", "browse", 2, "account_session", (LIMIT,)
             ),
