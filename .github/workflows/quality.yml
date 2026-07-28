@@ -1,0 +1,165 @@
+name: Reusable quality gate
+
+on:
+  workflow_call:
+    inputs:
+      release:
+        description: Validate and retain artifacts for a tag release.
+        type: boolean
+        required: false
+        default: false
+    outputs:
+      artifact_name:
+        description: Closed Actions artifact name for a release run.
+        value: ${{ jobs.build.outputs.artifact_name }}
+      checksum_name:
+        description: Checksum manifest filename.
+        value: ${{ jobs.build.outputs.checksum_name }}
+      sdist_name:
+        description: Validated source distribution filename.
+        value: ${{ jobs.build.outputs.sdist_name }}
+      tag:
+        description: Validated release tag.
+        value: ${{ jobs.build.outputs.tag }}
+      version:
+        description: Validated package version.
+        value: ${{ jobs.build.outputs.version }}
+      wheel_name:
+        description: Validated wheel filename.
+        value: ${{ jobs.build.outputs.wheel_name }}
+
+permissions:
+  contents: read
+
+env:
+  UV_VERSION: "0.9.11"
+  UV_LINUX_X86_64_SHA256: "817c0722b437b4b45b9a7e0231616a09db76bab1b8d178ba7a9680c690db19f0"
+
+jobs:
+  tests:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - name: Check out the reviewed revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Set up pinned uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          checksum: ${{ env.UV_LINUX_X86_64_SHA256 }}
+          python-version: ${{ matrix.python-version }}
+          download-from-astral-mirror: false
+          enable-cache: true
+          cache-suffix: py${{ matrix.python-version }}
+      - name: Install the locked project
+        run: uv sync --locked --all-groups
+      - name: Check the lockfile
+        if: matrix.python-version == '3.12'
+        run: uv lock --check
+      - name: Lint
+        if: matrix.python-version == '3.12'
+        run: uv run ruff check .
+      - name: Check formatting
+        if: matrix.python-version == '3.12'
+        run: uv run ruff format --check .
+      - name: Type-check
+        if: matrix.python-version == '3.12'
+        run: uv run mypy
+      - name: Test
+        run: uv run pytest
+
+  build:
+    name: Build and inspect exact artifacts
+    needs: tests
+    runs-on: ubuntu-24.04
+    outputs:
+      artifact_name: ${{ steps.artifacts.outputs.artifact_name }}
+      checksum_name: ${{ steps.artifacts.outputs.checksum_name }}
+      sdist_name: ${{ steps.artifacts.outputs.sdist_name }}
+      tag: ${{ steps.artifacts.outputs.tag }}
+      version: ${{ steps.artifacts.outputs.version }}
+      wheel_name: ${{ steps.artifacts.outputs.wheel_name }}
+    steps:
+      - name: Check out complete reviewed history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Set up pinned uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          checksum: ${{ env.UV_LINUX_X86_64_SHA256 }}
+          python-version: "3.12"
+          download-from-astral-mirror: false
+          enable-cache: true
+          cache-suffix: build-py3.12
+      - name: Install the locked project
+        run: uv sync --locked --all-groups
+      - name: Validate release tag and main ancestry
+        if: inputs.release
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REF_TYPE}" = "tag"
+          test "$(git cat-file -t "refs/tags/${RELEASE_TAG}")" = "commit"
+          tag_commit="$(git rev-parse "refs/tags/${RELEASE_TAG}^{commit}")"
+          event_commit="$(git rev-parse "${GITHUB_SHA}^{commit}")"
+          test "${tag_commit}" = "${event_commit}"
+          git merge-base --is-ancestor "${event_commit}" refs/remotes/origin/main
+      - name: Validate release version
+        if: inputs.release
+        id: version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: >-
+          uv run python scripts/prepare_release.py
+          --github-output "${GITHUB_OUTPUT}"
+          version --tag "${RELEASE_TAG}"
+      - name: Build distributions once
+        run: >-
+          uv build --clear --no-create-gitignore
+          --out-dir "${GITHUB_WORKSPACE}/dist"
+      - name: Test the exact built distributions
+        run: >-
+          uv run pytest tests/test_connector_release_security.py
+          --release-dist "${GITHUB_WORKSPACE}/dist"
+      - name: Validate and checksum release artifacts
+        if: inputs.release
+        id: artifacts
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: >-
+          uv run python scripts/prepare_release.py
+          --github-output "${GITHUB_OUTPUT}"
+          artifacts --tag "${RELEASE_TAG}"
+          --dist-dir "${GITHUB_WORKSPACE}/dist"
+      - name: Retain exact release artifacts
+        if: inputs.release
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ steps.artifacts.outputs.artifact_name }}
+          path: |
+            dist/${{ steps.artifacts.outputs.wheel_name }}
+            dist/${{ steps.artifacts.outputs.sdist_name }}
+            dist/${{ steps.artifacts.outputs.checksum_name }}
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+          overwrite: false
+          include-hidden-files: false

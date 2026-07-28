@@ -99,8 +99,13 @@ def _is_export_call(node: ast.AST) -> TypeGuard[ast.Call]:
 
 @pytest.fixture(scope="module")
 def built_archives(
+    request: pytest.FixtureRequest,
     tmp_path_factory: pytest.TempPathFactory,
 ) -> tuple[Path, Path]:
+    release_dist = request.config.getoption("--release-dist")
+    if release_dist is not None:
+        return _existing_release_archives(release_dist)
+
     root = Path(__file__).resolve().parents[1]
     temporary_root = tmp_path_factory.mktemp("connector-release-package")
     source = temporary_root / "source"
@@ -146,6 +151,23 @@ def built_archives(
     source_distributions = tuple(output.glob("*.tar.gz"))
     assert len(wheels) == 1
     assert len(source_distributions) == 1
+    return wheels[0], source_distributions[0]
+
+
+def _existing_release_archives(dist_directory: Path) -> tuple[Path, Path]:
+    assert dist_directory.is_absolute(), "--release-dist must be an absolute path"
+    assert dist_directory.is_dir(), "--release-dist must name a directory"
+    assert not dist_directory.is_symlink(), "--release-dist cannot be a symlink"
+
+    wheels = tuple(sorted(dist_directory.glob("*.whl")))
+    source_distributions = tuple(sorted(dist_directory.glob("*.tar.gz")))
+    assert len(wheels) == 1, "--release-dist must contain exactly one wheel"
+    assert len(source_distributions) == 1, (
+        "--release-dist must contain exactly one source distribution"
+    )
+    for archive in (*wheels, *source_distributions):
+        assert archive.is_file()
+        assert not archive.is_symlink()
     return wheels[0], source_distributions[0]
 
 
