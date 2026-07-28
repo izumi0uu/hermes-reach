@@ -387,7 +387,7 @@ def _project_video(
         "title": title,
         "description": description,
         "uploader": _optional_projected_text(uploader_value, 1024),
-        "duration_seconds": _optional_integer(info.get("duration")),
+        "duration_seconds": _optional_duration_seconds(info.get("duration")),
         "view_count": _optional_integer(info.get("view_count")),
         "comment_count": _optional_integer(info.get("comment_count")),
         "upload_date": _upload_date(info.get("upload_date")),
@@ -446,9 +446,9 @@ def _select_language(requested: Mapping[str, object], language: str | None) -> s
 
 
 def _read_subtitle_file(path: Path, root: Path) -> tuple[str, bool]:
-    root = root.absolute()
     candidate = path.absolute()
     try:
+        resolved_root = root.resolve(strict=True)
         details = candidate.lstat()
         resolved = candidate.resolve(strict=True)
     except OSError:
@@ -456,8 +456,7 @@ def _read_subtitle_file(path: Path, root: Path) -> tuple[str, bool]:
     if (
         not stat.S_ISREG(details.st_mode)
         or details.st_nlink != 1
-        or resolved != candidate
-        or not resolved.is_relative_to(root)
+        or not resolved.is_relative_to(resolved_root)
         or details.st_size > MAX_SUBTITLE_FILE_BYTES
     ):
         raise YouTubeProtocolError("backend_subtitle_path_invalid")
@@ -490,7 +489,7 @@ def _read_subtitle_file(path: Path, root: Path) -> tuple[str, bool]:
         if descriptor >= 0:
             os.close(descriptor)
         try:
-            candidate.unlink()
+            resolved.unlink()
         except OSError:
             pass
     if len(data) > MAX_SUBTITLE_FILE_BYTES:
@@ -520,6 +519,7 @@ def _execute_request(
             executable=executable,
             root=root,
         )
+        return _success_response(request.operation, data)
     except YouTubeSetupError:
         return _error_response(request.operation, "setup_required")
     except YouTubeNotFoundError:
@@ -528,7 +528,6 @@ def _execute_request(
         return _error_response(request.operation, "permanent")
     except Exception as error:
         return _error_response(request.operation, _backend_error_code(error))
-    return _success_response(request.operation, data)
 
 
 def _backend_error_code(error: Exception) -> str:
@@ -848,6 +847,14 @@ def _optional_integer(value: object) -> int | None:
     ):
         raise YouTubeProtocolError("backend_integer_invalid")
     return value
+
+
+def _optional_duration_seconds(value: object) -> int | None:
+    if isinstance(value, float):
+        if not value.is_integer():
+            raise YouTubeProtocolError("backend_integer_invalid")
+        value = int(value)
+    return _optional_integer(value)
 
 
 def _upload_date(value: object) -> str | None:
