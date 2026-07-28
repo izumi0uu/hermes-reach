@@ -230,11 +230,11 @@ def _encode_frame(value: Mapping[str, object], maximum: int) -> bytes:
     try:
         payload = json.dumps(
             value,
-            ensure_ascii=True,
+            ensure_ascii=False,
             allow_nan=False,
             separators=(",", ":"),
             sort_keys=True,
-        ).encode("ascii", errors="strict")
+        ).encode("utf-8", errors="strict")
     except (TypeError, ValueError, UnicodeError, RecursionError):
         raise BilibiliProtocolError("worker_frame_invalid") from None
     if not 0 < len(payload) <= maximum:

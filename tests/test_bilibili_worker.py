@@ -240,6 +240,46 @@ def test_worker_rejects_unknown_fields_trailing_data_and_version_drift() -> None
         )
 
 
+def test_frames_keep_bounded_cjk_as_utf8() -> None:
+    payload = {"text": "中文边界"}
+    expected = json.dumps(
+        payload,
+        ensure_ascii=False,
+        allow_nan=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    ascii_expansion = json.dumps(
+        payload,
+        ensure_ascii=True,
+        allow_nan=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("ascii")
+
+    framed = worker._encode_frame(payload, len(expected))
+
+    assert framed[4:] == expected
+    assert worker._decode_frame(framed, len(expected)) == payload
+    assert len(expected) < len(ascii_expansion)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://www.bilibili.com/video/BV1xx411c7mD",
+        "https://evil.test/video/BV1xx411c7mD",
+        "https://www.bilibili.com/video/BV1xx411c7mD?x=1",
+        "https://www.bilibili.com/video/BV1xx411c7mD#fragment",
+        "https://www.bilibili.com/video/BV1xx411c7mD/extra",
+        "https://www.bilibili.com/video/NOTABVID12",
+    ],
+)
+def test_read_video_rejects_non_canonical_urls(url: str) -> None:
+    with pytest.raises(worker.BilibiliProtocolError):
+        worker.encode_request("read.video", url=url)
+
+
 def test_real_worker_module_rejects_empty_input_without_output() -> None:
     completed = subprocess.run(
         [sys.executable, "-I", "-m", "hermes_reach.sources.bilibili_worker"],
