@@ -3,10 +3,11 @@ from __future__ import annotations
 import asyncio
 import io
 import json
+import os
 import signal
 import subprocess
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
@@ -78,6 +79,15 @@ class FakeDownloader:
         self.closed = True
 
 
+@pytest.fixture(autouse=True)
+def _reset_fake_downloader() -> Iterator[None]:
+    FakeDownloader.instances.clear()
+    FakeDownloader.response = _backend_video()
+    yield
+    FakeDownloader.instances.clear()
+    FakeDownloader.response = _backend_video()
+
+
 def _modules(plugin_dirs: SimpleNamespace) -> object:
     def load(name: str) -> object:
         if name == "yt_dlp":
@@ -116,7 +126,6 @@ def test_worker_uses_exact_structured_routes_and_closed_options(
     response: object,
     expected_call: tuple[str, bool, str],
 ) -> None:
-    FakeDownloader.instances.clear()
     FakeDownloader.response = response
     plugin_dirs = SimpleNamespace(value=["ambient"])
 
@@ -153,7 +162,6 @@ def test_worker_uses_exact_structured_routes_and_closed_options(
 def test_subtitle_route_prefers_manual_vtt_and_removes_the_file(
     tmp_path: Path,
 ) -> None:
-    FakeDownloader.instances.clear()
     subtitle = tmp_path / f"{VIDEO_ID}.en.vtt"
     subtitle.write_text("WEBVTT\n\n00:00.000 --> 00:01.000\nHello", encoding="utf-8")
     FakeDownloader.response = {
@@ -195,7 +203,6 @@ def test_subtitle_route_prefers_manual_vtt_and_removes_the_file(
 def test_subtitle_route_uses_default_order_automatic_origin_and_truncation(
     tmp_path: Path,
 ) -> None:
-    FakeDownloader.instances.clear()
     subtitle = tmp_path / f"{VIDEO_ID}.zh-Hans.vtt"
     subtitle.write_text(
         "WEBVTT\n\n" + ("line\n" * (worker.MAX_SUBTITLE_TEXT_BYTES // 5)),
@@ -255,6 +262,41 @@ def test_subtitle_projection_rejects_paths_outside_private_root(
     assert outside.exists() is True
 
 
+def test_subtitle_projection_accepts_resolved_private_root_prefix(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "private"
+    root.mkdir()
+    alias = tmp_path / "private-alias"
+    alias.symlink_to(root, target_is_directory=True)
+    subtitle = root / f"{VIDEO_ID}.en.vtt"
+    subtitle.write_text("WEBVTT\n\n00:00.000 --> 00:01.000\nHello", encoding="utf-8")
+
+    text, truncated = worker._read_subtitle_file(
+        alias / subtitle.name,
+        alias,
+    )
+
+    assert text.endswith("Hello")
+    assert truncated is False
+    assert subtitle.exists() is False
+
+
+def test_subtitle_projection_rejects_final_symlink(tmp_path: Path) -> None:
+    root = tmp_path / "private"
+    root.mkdir()
+    target = root / "target.vtt"
+    target.write_text("WEBVTT\n", encoding="utf-8")
+    subtitle = root / f"{VIDEO_ID}.en.vtt"
+    subtitle.symlink_to(target)
+
+    with pytest.raises(worker.YouTubeProtocolError):
+        worker._read_subtitle_file(subtitle, root)
+
+    assert subtitle.is_symlink()
+    assert target.exists()
+
+
 def test_no_subtitles_and_dependency_drift_return_closed_errors(tmp_path: Path) -> None:
     FakeDownloader.response = {**_backend_video(), "requested_subtitles": None}
     plugin_dirs = SimpleNamespace(value=[])
@@ -292,6 +334,76 @@ def test_backend_projection_rejects_identity_date_and_progress_drift() -> None:
         worker._bounded_progress(
             {"downloaded_bytes": worker.MAX_SUBTITLE_FILE_BYTES + 1}
         )
+
+
+def test_backend_projection_normalizes_integral_float_duration() -> None:
+    assert (
+        worker._project_video(
+            {**_backend_video(), "duration": 300.0},
+            expected_id=VIDEO_ID,
+        )["duration_seconds"]
+        == 300
+    )
+
+    with pytest.raises(worker.YouTubeProtocolError):
+        worker._project_video(
+            {**_backend_video(), "duration": 300.5},
+            expected_id=VIDEO_ID,
+        )
+
+
+def test_success_projection_failure_returns_closed_permanent_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        worker,
+        "_invoke_backend",
+        lambda *_args, **_kwargs: {"unexpected": True},
+    )
+
+    response = worker._execute_request(
+        worker.WorkerRequest("read.video", url=VIDEO_URL)
+    )
+
+    assert response == {
+        "protocol_version": "v1",
+        "operation": "read.video",
+        "ok": False,
+        "error": {"code": "permanent"},
+    }
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX executable shape checks")
+@pytest.mark.parametrize(
+    "mode", ["missing", "directory", "symlink", "hardlink", "not_executable"]
+)
+def test_deno_gate_rejects_unexpected_executable_shapes(
+    tmp_path: Path,
+    mode: str,
+) -> None:
+    scripts = tmp_path / "bin"
+    scripts.mkdir()
+    python = scripts / "python"
+    python.write_bytes(b"")
+    deno = scripts / "deno"
+    if mode == "directory":
+        deno.mkdir()
+    elif mode == "symlink":
+        target = tmp_path / "real-deno"
+        target.write_bytes(b"deno")
+        target.chmod(0o700)
+        deno.symlink_to(target)
+    elif mode == "hardlink":
+        target = tmp_path / "real-deno"
+        target.write_bytes(b"deno")
+        target.chmod(0o700)
+        os.link(target, deno)
+    elif mode == "not_executable":
+        deno.write_bytes(b"deno")
+        deno.chmod(0o600)
+
+    with pytest.raises(worker.YouTubeSetupError):
+        worker._deno_executable(str(python))
 
 
 def test_request_frames_reject_authority_fields_duplicate_keys_and_constants() -> None:
