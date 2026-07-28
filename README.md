@@ -94,7 +94,7 @@ VPS 会看到它获准处理的查询和结果。如果 VPS 在授权有效期�
 
 ```bash
 uv sync --all-groups
-uv run hermes plugins enable reach
+uv run hermes plugins enable reach --no-allow-tool-override
 ```
 
 Hermes 的第三方插件默认关闭。启用后请重新启动 Hermes，再检查本地能力：
@@ -104,6 +104,33 @@ uv run hermes reach status --json
 uv run hermes reach sources --json
 uv run hermes reach doctor --json
 ```
+
+要停用插件，请先更新 Hermes 配置，再启动一个新会话：
+
+```bash
+uv run hermes plugins disable reach
+```
+
+停用不会删除已安装的包。对于当前源码检出流程，项目环境默认位于 `.venv`，
+可以这样卸载：
+
+```bash
+uv pip uninstall --python .venv/bin/python hermes-reach
+```
+
+Windows 下将解释器路径替换为 `.venv\Scripts\python.exe`。如果 wheel 安装在
+其他环境中，必须指定实际运行 Hermes 的解释器，不能照搬项目 `.venv`：
+
+```bash
+uv pip uninstall --python /absolute/path/to/hermes-python hermes-reach
+```
+
+Hermes 自带的
+`plugins remove`、`plugins rm` 和 `plugins uninstall` 只删除
+`HERMES_HOME/plugins` 下的目录插件，不能卸载 pip wheel。先停用再卸载可以
+避免遗留的启用配置在以后重装同名插件时自动生效。在源码检出目录再次运行
+`uv sync` 会重新安装当前项目；如果只是希望长期关闭插件，保持 disabled
+状态即可。
 
 启动会话时加载 `reach:agent-reach` 路由规则，并启用 `reach` 工具组。然后可以直接描述任务：
 

@@ -693,6 +693,7 @@ def main() -> None:
 
             tool_names = tuple(registry.get_tool_names_for_toolset("reach"))
             assert tool_names == EXPECTED_TOOLS
+            assert tuple(manager._cli_commands) == ("reach",)
             skill_path = manager.find_plugin_skill("reach:agent-reach")
             assert skill_path is not None
             assert skill_path.is_file()

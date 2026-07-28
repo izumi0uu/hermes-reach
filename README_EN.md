@@ -94,7 +94,7 @@ Install dependencies and enable the plugin from the repository root:
 
 ```bash
 uv sync --all-groups
-uv run hermes plugins enable reach
+uv run hermes plugins enable reach --no-allow-tool-override
 ```
 
 Hermes disables third-party plugins by default. Restart Hermes after enabling the plugin, then inspect local capabilities:
@@ -104,6 +104,37 @@ uv run hermes reach status --json
 uv run hermes reach sources --json
 uv run hermes reach doctor --json
 ```
+
+To deactivate the plugin, update Hermes' configuration first and then start a
+new session:
+
+```bash
+uv run hermes plugins disable reach
+```
+
+Disabling does not remove the installed package. For the current source
+checkout flow, the project environment is normally `.venv`; uninstall it with:
+
+```bash
+uv pip uninstall --python .venv/bin/python hermes-reach
+```
+
+On Windows, replace the interpreter path with
+`.venv\Scripts\python.exe`. If the wheel is installed in another environment,
+name the interpreter that actually runs Hermes instead of copying the project
+`.venv` path:
+
+```bash
+uv pip uninstall --python /absolute/path/to/hermes-python hermes-reach
+```
+
+Hermes' own `plugins remove`, `plugins rm`, and
+`plugins uninstall` commands remove directory plugins under
+`HERMES_HOME/plugins`; they do not uninstall pip wheels. Disabling before
+uninstalling also prevents a stale enabled entry from activating a future
+installation with the same plugin key. Running `uv sync` again in the source
+checkout reinstalls the current project; leave it disabled when the goal is to
+keep the installed plugin inactive.
 
 Load the `reach:agent-reach` skill and enable the `reach` toolset when starting a session. Then describe the retrieval task:
 

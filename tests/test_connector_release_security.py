@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 import json
 import os
 import re
@@ -14,6 +15,7 @@ from pathlib import Path, PurePosixPath
 from typing import TypeGuard
 
 import pytest
+import yaml
 
 _CONNECTOR_MODULES = frozenset(
     {
@@ -152,6 +154,8 @@ def _run_acceptance_command(
     *,
     cwd: Path,
     environment: dict[str, str],
+    phase: str = "acceptance",
+    expected_returncode: int = 0,
 ) -> subprocess.CompletedProcess[str]:
     completed = subprocess.run(
         tuple(command),
@@ -161,8 +165,9 @@ def _run_acceptance_command(
         capture_output=True,
         text=True,
     )
-    assert completed.returncode == 0, (
-        f"Acceptance command failed: {tuple(command)!r}\n"
+    assert completed.returncode == expected_returncode, (
+        f"{phase} command returned {completed.returncode}, expected "
+        f"{expected_returncode}: {tuple(command)!r}\n"
         f"stdout:\n{completed.stdout}\n"
         f"stderr:\n{completed.stderr}"
     )
@@ -175,7 +180,112 @@ def _virtual_environment_python(environment: Path) -> Path:
     return environment / "bin" / "python"
 
 
-def test_built_wheel_loads_through_the_real_hermes_plugin_host(
+def _virtual_environment_script(environment: Path, name: str) -> Path:
+    if os.name == "nt":
+        return environment / "Scripts" / f"{name}.exe"
+    return environment / "bin" / name
+
+
+def _required_platform_environment() -> dict[str, str]:
+    if os.name != "nt":
+        return {}
+    required = {
+        name: value
+        for name in ("SystemRoot", "WINDIR")
+        if (value := os.environ.get(name))
+    }
+    assert "SystemRoot" in required or "WINDIR" in required
+    return required
+
+
+def _tree_snapshot(
+    root: Path,
+    *,
+    exclude: Collection[Path] = (),
+) -> dict[str, tuple[object, ...]]:
+    excluded = {path.resolve() for path in exclude}
+    snapshot: dict[str, tuple[object, ...]] = {}
+    for path in (root, *sorted(root.rglob("*"))):
+        if path.resolve() in excluded:
+            continue
+        relative = "." if path == root else path.relative_to(root).as_posix()
+        if path.is_symlink():
+            snapshot[relative] = ("symlink", os.readlink(path))
+        elif path.is_file():
+            content = path.read_bytes()
+            snapshot[relative] = (
+                "file",
+                len(content),
+                hashlib.sha256(content).hexdigest(),
+            )
+        elif path.is_dir():
+            snapshot[relative] = ("directory",)
+        else:
+            snapshot[relative] = ("other",)
+    return snapshot
+
+
+def _optional_file_bytes(path: Path) -> bytes:
+    return path.read_bytes() if path.is_file() else b""
+
+
+def _assert_plugin_discovery_log_append(
+    path: Path,
+    before: bytes,
+    *,
+    enabled: int,
+) -> None:
+    after = path.read_bytes()
+    assert after.startswith(before)
+    appended = after[len(before) :].decode("utf-8")
+    assert re.fullmatch(
+        rf"\d{{4}}-\d{{2}}-\d{{2}} \d{{2}}:\d{{2}}:\d{{2}},\d{{3}} "
+        rf"INFO hermes_cli\.plugins: Plugin discovery complete: 1 found, "
+        rf"{enabled} enabled\n",
+        appended,
+    )
+
+
+def _run_json_probe(
+    command: Collection[str],
+    *,
+    cwd: Path,
+    environment: dict[str, str],
+    phase: str,
+) -> object:
+    completed = _run_acceptance_command(
+        command,
+        cwd=cwd,
+        environment=environment,
+        phase=phase,
+    )
+    output_lines = [line for line in completed.stdout.splitlines() if line]
+    assert len(output_lines) == 1, (
+        f"{phase} probe returned unexpected stdout:\n{completed.stdout}\n"
+        f"stderr:\n{completed.stderr}"
+    )
+    return json.loads(output_lines[0])
+
+
+def _assert_reach_cli_absent(
+    executable: Path,
+    *,
+    cwd: Path,
+    environment: dict[str, str],
+    phase: str,
+) -> None:
+    completed = _run_acceptance_command(
+        (str(executable), "reach", "--help"),
+        cwd=cwd,
+        environment=environment,
+        phase=phase,
+        expected_returncode=2,
+    )
+    assert completed.stdout == ""
+    assert "invalid choice: 'reach'" in completed.stderr
+
+
+def test_built_wheel_follows_the_real_hermes_plugin_lifecycle(
     built_archives: tuple[Path, Path],
     tmp_path: Path,
 ) -> None:
@@ -183,18 +293,79 @@ def test_built_wheel_loads_through_the_real_hermes_plugin_host(
     wheel, _ = built_archives
     virtual_environment = tmp_path / "venv"
     isolated_python = _virtual_environment_python(virtual_environment)
+    isolated_hermes = _virtual_environment_script(virtual_environment, "hermes")
     uv = shutil.which("uv")
     assert uv is not None, "Plugin acceptance requires the project's uv tool."
 
-    bootstrap_environment = os.environ.copy()
-    bootstrap_environment.update(
-        {
-            "PIP_NO_INDEX": "1",
-            "UV_OFFLINE": "1",
-            "UV_PYTHON_DOWNLOADS": "never",
-            "VIRTUAL_ENV": str(virtual_environment),
-        }
-    )
+    acceptance_root = tmp_path / "probe-state"
+    hermes_home = acceptance_root / "hermes-home"
+    hermes_logs = hermes_home / "logs"
+    host_log_path = hermes_logs / "agent.log"
+    host_error_log_path = hermes_logs / "errors.log"
+    bundled_plugins = acceptance_root / "bundled-plugins"
+    temporary_directory = acceptance_root / "tmp"
+    xdg_config = acceptance_root / "xdg-config"
+    xdg_cache = acceptance_root / "xdg-cache"
+    xdg_data = acceptance_root / "xdg-data"
+    for directory in (
+        hermes_home,
+        hermes_logs,
+        hermes_home / "plugins",
+        bundled_plugins,
+        temporary_directory,
+        xdg_config,
+        xdg_cache,
+        xdg_data,
+    ):
+        directory.mkdir(parents=True, exist_ok=True)
+    host_log_path.write_bytes(b"")
+    host_error_log_path.write_bytes(b"")
+
+    cache_discovery_environment = {
+        "LANG": "C",
+        "LC_ALL": "C",
+        "PATH": str(Path(uv).parent),
+        "TMPDIR": str(temporary_directory),
+    }
+    for name in ("HOME", "USERPROFILE", "UV_CACHE_DIR", "XDG_CACHE_HOME"):
+        if value := os.environ.get(name):
+            cache_discovery_environment[name] = value
+    cache_discovery_environment.update(_required_platform_environment())
+    cache_directory = Path(
+        _run_acceptance_command(
+            (uv, "cache", "dir", "--no-config"),
+            cwd=tmp_path,
+            environment=cache_discovery_environment,
+            phase="offline cache discovery",
+        ).stdout.strip()
+    ).resolve()
+    assert cache_directory.is_absolute()
+
+    isolated_environment = {
+        "HOME": str(hermes_home),
+        "HERMES_BUNDLED_PLUGINS": str(bundled_plugins),
+        "HERMES_HOME": str(hermes_home),
+        "LANG": "C",
+        "LC_ALL": "C",
+        "PATH": str(isolated_python.parent),
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONHASHSEED": "0",
+        "PYTHONUTF8": "1",
+        "TMPDIR": str(temporary_directory),
+        "USERPROFILE": str(hermes_home),
+        "XDG_CACHE_HOME": str(xdg_cache),
+        "XDG_CONFIG_HOME": str(xdg_config),
+        "XDG_DATA_HOME": str(xdg_data),
+    }
+    isolated_environment.update(_required_platform_environment())
+    bootstrap_environment = {
+        **isolated_environment,
+        "PIP_NO_INDEX": "1",
+        "UV_CACHE_DIR": str(cache_directory),
+        "UV_OFFLINE": "1",
+        "UV_PYTHON_DOWNLOADS": "never",
+        "VIRTUAL_ENV": str(virtual_environment),
+    }
     _run_acceptance_command(
         (
             sys.executable,
@@ -237,6 +408,7 @@ def test_built_wheel_loads_through_the_real_hermes_plugin_host(
         ),
         cwd=tmp_path,
         environment=bootstrap_environment,
+        phase="wheel install",
     )
     _run_acceptance_command(
         (
@@ -250,62 +422,114 @@ def test_built_wheel_loads_through_the_real_hermes_plugin_host(
         ),
         cwd=tmp_path,
         environment=bootstrap_environment,
+        phase="installed dependency check",
     )
+    assert isolated_hermes.is_file()
 
-    acceptance_root = tmp_path / "probe-state"
-    hermes_home = acceptance_root / "hermes-home"
-    bundled_plugins = acceptance_root / "bundled-plugins"
-    temporary_directory = acceptance_root / "tmp"
-    xdg_config = acceptance_root / "xdg-config"
-    xdg_cache = acceptance_root / "xdg-cache"
-    xdg_data = acceptance_root / "xdg-data"
-    for directory in (
-        hermes_home,
-        hermes_home / "plugins",
-        bundled_plugins,
-        temporary_directory,
-        xdg_config,
-        xdg_cache,
-        xdg_data,
-    ):
-        directory.mkdir(parents=True, exist_ok=True)
-    (hermes_home / "config.yaml").write_text(
-        "plugins:\n  enabled:\n    - reach\n",
-        encoding="utf-8",
-    )
-
-    probe_environment = {
-        "HOME": str(hermes_home),
-        "HERMES_BUNDLED_PLUGINS": str(bundled_plugins),
-        "HERMES_HOME": str(hermes_home),
-        "LANG": "C",
-        "LC_ALL": "C",
-        "PATH": str(isolated_python.parent),
-        "PYTHONDONTWRITEBYTECODE": "1",
-        "PYTHONHASHSEED": "0",
-        "PYTHONUTF8": "1",
-        "TMPDIR": str(temporary_directory),
-        "USERPROFILE": str(hermes_home),
-        "XDG_CACHE_HOME": str(xdg_cache),
-        "XDG_CONFIG_HOME": str(xdg_config),
-        "XDG_DATA_HOME": str(xdg_data),
+    probe_environment = isolated_environment
+    source_root = root / "src"
+    lifecycle_probe = root / "tests" / "fixtures" / "hermes_plugin_lifecycle_probe.py"
+    disabled_summary = {
+        "cli_commands": [],
+        "distribution": "installed",
+        "entry_points": 1,
+        "module": "not_imported",
+        "plugin_record": "disabled",
+        "skill": False,
+        "state": "disabled",
+        "tools": [],
     }
-    probe = root / "tests" / "fixtures" / "hermes_plugin_probe.py"
-    completed = _run_acceptance_command(
+    assert (
+        _run_json_probe(
+            (
+                str(isolated_python),
+                "-I",
+                str(lifecycle_probe),
+                "disabled",
+                str(acceptance_root),
+                str(source_root),
+            ),
+            cwd=acceptance_root,
+            environment=probe_environment,
+            phase="initial disabled-state",
+        )
+        == disabled_summary
+    )
+
+    config_path = hermes_home / "config.yaml"
+    assert not config_path.exists()
+    before_initial_cli = _tree_snapshot(
+        acceptance_root,
+        exclude=(host_log_path,),
+    )
+    initial_log = _optional_file_bytes(host_log_path)
+    _assert_reach_cli_absent(
+        isolated_hermes,
+        cwd=acceptance_root,
+        environment=probe_environment,
+        phase="initial disabled CLI",
+    )
+    assert not config_path.exists()
+    assert (
+        _tree_snapshot(acceptance_root, exclude=(host_log_path,)) == before_initial_cli
+    )
+    _assert_plugin_discovery_log_append(host_log_path, initial_log, enabled=0)
+    before_enable = _tree_snapshot(acceptance_root, exclude=(config_path,))
+    enabled = _run_acceptance_command(
         (
-            str(isolated_python),
-            "-I",
-            str(probe),
-            str(acceptance_root),
-            str(root / "src"),
+            str(isolated_hermes),
+            "plugins",
+            "enable",
+            "reach",
+            "--no-allow-tool-override",
         ),
         cwd=acceptance_root,
         environment=probe_environment,
+        phase="plugin enable",
     )
-    output_lines = [line for line in completed.stdout.splitlines() if line]
-    assert len(output_lines) == 1, completed.stdout
-    summary = json.loads(output_lines[0])
-    assert summary == {
+    assert "Plugin reach enabled." in enabled.stdout
+    assert "Takes effect on next session." in enabled.stdout
+    enabled_config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    assert enabled_config["plugins"]["enabled"] == ["reach"]
+    assert enabled_config["plugins"]["disabled"] == []
+    assert enabled_config["plugins"]["entries"]["reach"] == {
+        "allow_tool_override": False
+    }
+    assert _tree_snapshot(acceptance_root, exclude=(config_path,)) == before_enable
+
+    before_enabled_cli = _tree_snapshot(
+        acceptance_root,
+        exclude=(host_log_path,),
+    )
+    enabled_log = host_log_path.read_bytes()
+    enabled_cli = _run_acceptance_command(
+        (str(isolated_hermes), "reach", "status", "--json"),
+        cwd=acceptance_root,
+        environment=probe_environment,
+        phase="enabled plugin CLI",
+    )
+    enabled_cli_status = json.loads(enabled_cli.stdout)
+    assert enabled_cli_status["protocol_version"] == "v1"
+    assert enabled_cli_status["outcome"] == "ok"
+    assert len(enabled_cli_status["data"]["sources"]) == 15
+    assert (
+        _tree_snapshot(acceptance_root, exclude=(host_log_path,)) == before_enabled_cli
+    )
+    _assert_plugin_discovery_log_append(host_log_path, enabled_log, enabled=1)
+
+    enabled_probe = root / "tests" / "fixtures" / "hermes_plugin_probe.py"
+    assert _run_json_probe(
+        (
+            str(isolated_python),
+            "-I",
+            str(enabled_probe),
+            str(acceptance_root),
+            str(source_root),
+        ),
+        cwd=acceptance_root,
+        environment=probe_environment,
+        phase="enabled plugin host",
+    ) == {
         "frozen_operations": 13,
         "hermes_agent_version": "0.19.0",
         "hermes_reach_version": "0.1.0a0",
@@ -320,6 +544,119 @@ def test_built_wheel_loads_through_the_real_hermes_plugin_host(
             "reach_transcribe",
         ],
     }
+
+    before_disable = _tree_snapshot(acceptance_root, exclude=(config_path,))
+    disabled = _run_acceptance_command(
+        (str(isolated_hermes), "plugins", "disable", "reach"),
+        cwd=acceptance_root,
+        environment=probe_environment,
+        phase="plugin disable",
+    )
+    assert "Plugin reach disabled." in disabled.stdout
+    assert "Takes effect on next session." in disabled.stdout
+    disabled_config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    disabled_config_bytes = config_path.read_bytes()
+    assert disabled_config["plugins"]["enabled"] == []
+    assert disabled_config["plugins"]["disabled"] == ["reach"]
+    assert disabled_config["plugins"]["entries"]["reach"] == {
+        "allow_tool_override": False
+    }
+    assert _tree_snapshot(acceptance_root, exclude=(config_path,)) == before_disable
+    assert (
+        _run_json_probe(
+            (
+                str(isolated_python),
+                "-I",
+                str(lifecycle_probe),
+                "disabled",
+                str(acceptance_root),
+                str(source_root),
+            ),
+            cwd=acceptance_root,
+            environment=probe_environment,
+            phase="disabled plugin host",
+        )
+        == disabled_summary
+    )
+    before_disabled_cli = _tree_snapshot(
+        acceptance_root,
+        exclude=(host_log_path,),
+    )
+    disabled_log = host_log_path.read_bytes()
+    _assert_reach_cli_absent(
+        isolated_hermes,
+        cwd=acceptance_root,
+        environment=probe_environment,
+        phase="disabled plugin CLI",
+    )
+    assert (
+        _tree_snapshot(acceptance_root, exclude=(host_log_path,)) == before_disabled_cli
+    )
+    _assert_plugin_discovery_log_append(host_log_path, disabled_log, enabled=0)
+
+    before_uninstall = _tree_snapshot(acceptance_root)
+    _run_acceptance_command(
+        (
+            uv,
+            "pip",
+            "uninstall",
+            "--offline",
+            "--no-python-downloads",
+            "--python",
+            str(isolated_python),
+            "hermes-reach",
+        ),
+        cwd=tmp_path,
+        environment=bootstrap_environment,
+        phase="wheel uninstall",
+    )
+    _run_acceptance_command(
+        (
+            uv,
+            "pip",
+            "check",
+            "--offline",
+            "--no-python-downloads",
+            "--python",
+            str(isolated_python),
+        ),
+        cwd=tmp_path,
+        environment=bootstrap_environment,
+        phase="removed dependency check",
+    )
+    assert _tree_snapshot(acceptance_root) == before_uninstall
+    assert _run_json_probe(
+        (
+            str(isolated_python),
+            "-I",
+            str(lifecycle_probe),
+            "removed",
+            str(acceptance_root),
+            str(source_root),
+        ),
+        cwd=acceptance_root,
+        environment=probe_environment,
+        phase="removed plugin host",
+    ) == {
+        "cli_commands": [],
+        "distribution": "absent",
+        "entry_points": 0,
+        "module": "absent",
+        "plugin_record": "absent",
+        "skill": False,
+        "state": "removed",
+        "tools": [],
+    }
+    before_removed_cli = _tree_snapshot(acceptance_root)
+    _assert_reach_cli_absent(
+        isolated_hermes,
+        cwd=acceptance_root,
+        environment=probe_environment,
+        phase="removed plugin CLI",
+    )
+    assert _tree_snapshot(acceptance_root) == before_removed_cli
+    assert config_path.read_bytes() == disabled_config_bytes
+    assert host_error_log_path.read_bytes() == b""
 
 
 def test_built_distributions_include_every_connector_module(
