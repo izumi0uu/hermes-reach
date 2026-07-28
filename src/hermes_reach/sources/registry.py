@@ -21,6 +21,7 @@ from .public_http import PublicHttpClient, PublicHttpTransport
 from .rss import RssAdapter
 from .v2ex import V2exAdapter
 from .web import WebAdapter
+from .youtube import production_youtube_backend
 
 
 def build_alpha1_registry(
@@ -153,23 +154,31 @@ def _register_media_backends(
     bilibili_backend: AuditedBilibiliBackend | None,
 ) -> None:
     if youtube_backend is None:
+        youtube_backend = production_youtube_backend()
+    if youtube_backend_is_eligible(youtube_backend):
+        for binding in youtube_bindings(youtube_backend):
+            registry.register(binding)
         _mark_media(
             registry,
             "youtube",
-            ("search.videos", "read.video", "read.subtitles", "read.comments"),
+            ("read.comments",),
             "setup_required",
-            "Configure an audited YouTube backend through operator setup.",
+            "The yt-dlp backend cannot satisfy stable comment pagination.",
         )
-    elif youtube_backend_is_eligible(youtube_backend):
-        for binding in youtube_bindings(youtube_backend):
-            registry.register(binding)
     else:
         _mark_media(
             registry,
             "youtube",
-            ("search.videos", "read.video", "read.subtitles", "read.comments"),
+            ("search.videos", "read.video", "read.subtitles"),
             "unavailable",
             "The configured YouTube backend failed the exact safety gate.",
+        )
+        _mark_media(
+            registry,
+            "youtube",
+            ("read.comments",),
+            "setup_required",
+            "The yt-dlp backend cannot satisfy stable comment pagination.",
         )
 
     if bilibili_backend is None:

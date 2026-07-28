@@ -18,6 +18,12 @@ BILIBILI_CLI_DISTRIBUTION: Final = "bilibili-cli"
 BILIBILI_CLI_VERSION: Final = "0.6.2"
 FEEDPARSER_DISTRIBUTION: Final = "feedparser"
 FEEDPARSER_VERSION: Final = "6.0.12"
+YTDLP_DISTRIBUTION: Final = "yt-dlp"
+YTDLP_VERSION: Final = "2026.7.4"
+YTDLP_EJS_DISTRIBUTION: Final = "yt-dlp-ejs"
+YTDLP_EJS_VERSION: Final = "0.8.0"
+DENO_DISTRIBUTION: Final = "deno"
+DENO_VERSION: Final = "2.8.3"
 SAFE_AGENT_REACH_DOCTOR_CHANNELS: Final[frozenset[str]] = frozenset(
     {"web", "rss", "v2ex", "youtube"}
 )

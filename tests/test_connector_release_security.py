@@ -187,6 +187,8 @@ def test_source_distribution_includes_agent_reach_decision_evidence(
         "docs/agent-reach-decisions/github-gh-2.95.0.md",
         "docs/agent-reach-decisions/rss-feedparser-6.0.12.md",
         "docs/agent-reach-decisions/v2ex-1.5.0.md",
+        "docs/agent-reach-decisions/bilibili-cli-0.6.2.md",
+        "docs/agent-reach-decisions/youtube-yt-dlp-2026.7.4.md",
     )
 
     for suffix in suffixes:

@@ -63,6 +63,9 @@ def test_setup_fails_closed_and_updates_report_local_pins(
             "1.5.0",
             "6.0.12",
             "0.6.2",
+            "2026.7.4",
+            "0.8.0",
+            "2.8.3",
             "v1",
             "baseline",
             "Pinned locally.",
@@ -77,6 +80,9 @@ def test_setup_fails_closed_and_updates_report_local_pins(
     assert updates["data"]["status"] == "current"
     assert updates["data"]["feedparser_version"] == "6.0.12"
     assert updates["data"]["bilibili_cli_version"] == "0.6.2"
+    assert updates["data"]["yt_dlp_version"] == "2026.7.4"
+    assert updates["data"]["yt_dlp_ejs_version"] == "0.8.0"
+    assert updates["data"]["deno_version"] == "2.8.3"
 
 
 def test_upstream_doctor_is_only_requested_with_the_explicit_cli_flag(

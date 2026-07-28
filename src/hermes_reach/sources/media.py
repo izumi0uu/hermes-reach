@@ -3,21 +3,17 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Final, Protocol
 
 from ..runtime.adapters import (
     AdapterBinding,
     AdapterCallable,
     AdapterResult,
-    MediaMetadata,
-    RawItem,
 )
 from ..runtime.policy import AuthorizedCall
 
-_YOUTUBE_OPERATIONS: Final = frozenset(
-    {"search.videos", "read.video", "read.subtitles", "read.comments"}
-)
+YOUTUBE_OPERATIONS: Final = frozenset({"search.videos", "read.video", "read.subtitles"})
 BILIBILI_OPERATIONS: Final = frozenset(
     {"search.videos", "read.video", "browse.hot", "browse.rank"}
 )
@@ -33,10 +29,6 @@ class YouTubeMediaClient(Protocol):
 
     async def read_subtitles(
         self, video_url: str, language: str | None
-    ) -> AdapterResult: ...
-
-    async def read_comments(
-        self, video_url: str, limit: int, page: int
     ) -> AdapterResult: ...
 
 
@@ -88,7 +80,7 @@ def youtube_backend_is_eligible(bundle: AuditedYouTubeBackend) -> bool:
     """Require a complete exact attestation without probing the backend."""
 
     return _attestation_is_eligible(
-        bundle.attestation, provider_id="yt-dlp", operations=_YOUTUBE_OPERATIONS
+        bundle.attestation, provider_id="yt-dlp", operations=YOUTUBE_OPERATIONS
     )
 
 
@@ -110,8 +102,8 @@ def youtube_bindings(
     adapter = _YouTubeAdapter(bundle.client)
     return _bindings(
         "youtube",
-        _YOUTUBE_OPERATIONS,
-        "youtube-audited-backend",
+        YOUTUBE_OPERATIONS,
+        "yt-dlp",
         bundle.attestation,
         adapter.execute,
     )
@@ -202,15 +194,6 @@ class _YouTubeAdapter:
                     )
                 )
                 return _subtitle_result(result)
-            if operation == "read.comments":
-                result = _result(
-                    await self._client.read_comments(
-                        video_url,
-                        _limit(authorized),
-                        _integer_option(authorized, "page", 1),
-                    )
-                )
-                return _comments_result(result)
             return AdapterResult(failure_class="invalid_input")
         except Exception:
             return AdapterResult(failure_class="transient")
@@ -259,22 +242,6 @@ def _subtitle_result(result: AdapterResult) -> AdapterResult:
     ):
         return AdapterResult(failure_class="permanent")
     return result
-
-
-def _comments_result(result: AdapterResult) -> AdapterResult:
-    if not result.is_success:
-        return result
-    items = tuple(_partial_comment(item) for item in result.items)
-    return AdapterResult(items, partial_failure_class=result.partial_failure_class)
-
-
-def _partial_comment(item: RawItem) -> RawItem:
-    media = item.media
-    if media is None:
-        return replace(item, media=MediaMetadata(coverage="partial"))
-    if media.coverage == "unknown":
-        return replace(item, media=replace(media, coverage="partial"))
-    return item
 
 
 def _query(authorized: AuthorizedCall) -> str:
