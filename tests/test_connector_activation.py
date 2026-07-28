@@ -188,7 +188,7 @@ def test_invalid_configured_state_preserves_alpha1_and_creates_nothing(
 
     runtime = runtime_from_environment({VPS_STATE_DIRECTORY_ENVIRONMENT: str(missing)})
 
-    assert runtime.operation_availability("web", "read.url").state == "available"
+    assert runtime.operation_availability("rss", "read.feed").state == "available"
     assert runtime.operation_availability("reddit", "read.post").state == "unavailable"
     assert not missing.exists()
 
@@ -207,7 +207,7 @@ def test_unpaired_or_malformed_configured_state_closes_only_reddit(
     monkeypatch.setattr(connector_identity.sys, "platform", "linux")
     runtime = build_vps_runtime(state_directory)
 
-    assert runtime.operation_availability("web", "read.url").state == "available"
+    assert runtime.operation_availability("rss", "read.feed").state == "available"
     assert runtime.operation_availability("reddit", "read.post").state == "unavailable"
     assert not (state_directory / "receipts.jsonl").exists()
     assert not (state_directory / "vps-connector-snapshot.json").exists()
@@ -228,7 +228,7 @@ def test_wrong_vps_key_closes_only_reddit(
     monkeypatch.setattr(connector_identity.sys, "platform", "linux")
     runtime = build_vps_runtime(state_directory)
 
-    assert runtime.operation_availability("web", "read.url").state == "available"
+    assert runtime.operation_availability("rss", "read.feed").state == "available"
     assert runtime.operation_availability("reddit", "read.post").state == "unavailable"
     assert not (state_directory / "receipts.jsonl").exists()
     assert not (state_directory / "vps-connector-snapshot.json").exists()
@@ -248,7 +248,7 @@ def test_expired_grant_closes_only_reddit_without_startup_dial(
     monkeypatch.setattr(connector_client.time, "time", lambda: expires_at + 1)
     runtime = build_vps_runtime(state_directory)
 
-    assert runtime.operation_availability("web", "read.url").state == "available"
+    assert runtime.operation_availability("rss", "read.feed").state == "available"
     reddit = runtime.operation_availability("reddit", "read.post")
     assert reddit.state == "unavailable"
     assert reddit.cause_code == "grant_expired"
@@ -266,7 +266,7 @@ def test_verified_reddit_pairing_builds_one_degraded_connector_adapter(
     monkeypatch.setattr(connector_identity.sys, "platform", "linux")
     runtime = build_vps_runtime(state_directory)
 
-    assert runtime.operation_availability("web", "read.url").state == "available"
+    assert runtime.operation_availability("rss", "read.feed").state == "available"
     reddit = runtime.operation_availability("reddit", "read.post")
     assert reddit.state == "degraded"
     assert reddit.cause_code == "connector_offline"

@@ -33,8 +33,8 @@ async def _successful_adapter(_: object) -> AdapterResult:
 def _binding(
     backend_id: str,
     *,
-    source: str = "github",
-    operation: str = "search.repositories",
+    source: str = "youtube",
+    operation: str = "search.videos",
     required_scope: str = "public",
 ) -> AdapterBinding:
     return AdapterBinding(
@@ -151,6 +151,14 @@ def test_registry_rejects_unknown_duplicate_and_scope_widening_bindings() -> Non
 
     with pytest.raises(ValueError, match="catalog operation"):
         registry.register(_binding("unknown", operation="search.unknown"))
+    with pytest.raises(ValueError, match="implemented catalog operation"):
+        registry.register(
+            _binding(
+                "planned",
+                source="github",
+                operation="search.repositories",
+            )
+        )
 
     registry.register(_binding("backend-one"))
     with pytest.raises(ValueError, match="only once"):
@@ -167,8 +175,8 @@ def test_registry_returns_deterministically_sorted_candidates() -> None:
         {
             "requests": [
                 {
-                    "source": "github",
-                    "operation": "search.repositories",
+                    "source": "youtube",
+                    "operation": "search.videos",
                     "query": "public",
                 }
             ]
@@ -197,18 +205,18 @@ def test_dispatcher_authorizes_before_executing_registered_bindings() -> None:
         {
             "requests": [
                 {
-                    "source": "github",
-                    "operation": "search.repositories",
+                    "source": "youtube",
+                    "operation": "search.videos",
                     "query": "public",
                 }
             ]
         }
     )[0]
-    github = get_source("github")
     youtube = get_source("youtube")
-    assert github is not None
+    github = get_source("github")
     assert youtube is not None
-    forged = OperationCall(youtube, call.operation, {}, query="public")
+    assert github is not None
+    forged = OperationCall(github, call.operation, {}, query="public")
 
     with pytest.raises(RuntimePolicyError):
         asyncio.run(dispatcher.dispatch(forged))
@@ -250,20 +258,20 @@ def test_dispatcher_propagates_trace_and_registry_projects_local_availability() 
         {
             "requests": [
                 {
-                    "source": "github",
-                    "operation": "search.repositories",
+                    "source": "youtube",
+                    "operation": "search.videos",
                     "query": "public",
                 }
             ]
         }
     )[0]
 
-    projected = dispatcher.operation_availability("github", "search.repositories")
+    projected = dispatcher.operation_availability("youtube", "search.videos")
     result = asyncio.run(dispatcher.dispatch(call, trace_id="b" * 32))
 
     assert projected.state == "degraded"
     assert projected.cause_code == "connector_offline"
     assert projected.snapshot_at == 123
-    assert availability_calls == [("github", "search.repositories")]
+    assert availability_calls == [("youtube", "search.videos")]
     assert result is not None
     assert traces == ["b" * 32]

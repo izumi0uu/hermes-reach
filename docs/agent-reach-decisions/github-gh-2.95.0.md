@@ -1,6 +1,17 @@
-# GitHub gh decision for Agent-Reach 1.5.0
+# GitHub gh disabled-path decision for Agent-Reach 1.5.0
 
-Status: owner-approved public-authority exception on 2026-07-27.
+- Status: disabled
+- Date: 2026-07-28
+- Historical exception review: 2026-07-27
+- Operations: `github:search.repositories`, `github:search.code`,
+  `github:read.repository`, `github:read.issue`, `github:read.pull_request`,
+  `github:browse.actions`, `github:read.action_run`,
+  `github:browse.releases`
+- Classification: `not_implemented`
+- Current backend: none
+
+The public-authority exception approved on 2026-07-27 is retained below only
+as historical evidence.
 
 ## Context
 
@@ -18,20 +29,26 @@ credential-free and public.
 
 ## Decision
 
-Retain the fixed anonymous `github-public-rest-v1` adapter at public scope as
-an explicit authority-narrowing exception. Do not inherit `GH_TOKEN`,
-`GITHUB_TOKEN`, GitHub CLI configuration, keychain state, enterprise hosts, or
-workspace repository context, and do not compose `gh` in the current runtime.
+Disable the fixed anonymous `github-public-rest-v1` adapter and classify all
+eight GitHub operations as `not_implemented`. They remain discoverable in the
+stable Hermes catalog as planned/unavailable, with no current backend. Do not
+inherit `GH_TOKEN`, `GITHUB_TOKEN`, GitHub CLI configuration, keychain state,
+enterprise hosts, or workspace repository context, and do not compose `gh` in
+the current runtime.
+
+The earlier anonymous REST exception narrowed authority safely, but it still
+made Hermes own GitHub endpoints and parsing. Strict adapter purity closes that
+exception rather than moving it into a local or maintained-fork runtime.
 
 The reviewed read-only command families are `gh search repos`,
 `gh search code`, `gh repo view`, `gh issue view`, `gh pr view`,
 `gh run list`, `gh run view`, and `gh release list`. Request data may never
 select flags, executable paths, commands, endpoints, credentials, or fallback.
 
-## Semantic delta
+## Historical semantic delta
 
-The exception preserves anonymous public authority, DNS-pinned proxy-free
-transport, bounded streaming, and the current normalized response contract.
+The former exception preserved anonymous public authority, DNS-pinned
+proxy-free transport, bounded streaming, and the normalized response contract.
 The upstream CLI would require authentication, changes repository-search
 ordering, loses release fields, collapses the existing HTTP error taxonomy,
 and owns different DNS/TLS behavior. Those differences prevent an honest
@@ -48,6 +65,9 @@ requires a separate account-visible catalog and grant design.
 
 ## Rollback
 
-This decision changes no runtime behavior. Reverting its record and CI rows
-returns the exception to unresolved status; it does not authorize a `gh`
-migration.
+Operational rollback keeps all eight GitHub operations planned and
+unavailable. Execution may return only through a reviewed official Agent-Reach
+callable or exact Agent-Reach-selected backend with the required safety
+properties; the former REST adapter cannot be restored as an exception. This
+record alone does not authorize a `gh` migration, and no data migration is
+required.

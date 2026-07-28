@@ -44,7 +44,7 @@ class _FixtureHttpClient:
         return self.response
 
 
-def test_github_execution_uses_the_injected_public_http_client_without_process(
+def test_disabled_github_search_fails_closed_without_http_execution(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(socket, "create_connection", _unexpected_side_effect)
@@ -73,12 +73,12 @@ def test_github_execution_uses_the_injected_public_http_client_without_process(
         )
     )
 
-    assert response["outcome"] == "ok"
-    assert response["groups"][0]["availability"] == "available"
-    assert response["groups"][0]["items"] == []
-    assert client.calls == [
-        "https://api.github.com/search/repositories?q=private-query-token&per_page=20"
-    ]
+    assert response["outcome"] == "error"
+    assert response["error"]["code"] == "all_sources_failed"
+    assert response["groups"][0]["availability"] == "unavailable"
+    assert response["groups"][0]["error"]["code"] == "capability_unavailable"
+    assert response["groups"][0]["attempts"] == []
+    assert client.calls == []
     assert "private-query-token" not in json.dumps(response)
 
 
@@ -140,7 +140,7 @@ def test_unbound_or_planned_non_search_tools_return_unavailable(
     assert response["groups"][0]["availability"] == "unavailable"
 
 
-def test_reach_read_executes_injected_web_runtime_end_to_end(
+def test_disabled_web_read_fails_closed_without_http_execution(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     private_url = "https://example.com/article?private=token"
@@ -164,13 +164,15 @@ def test_reach_read_executes_injected_web_runtime_end_to_end(
         )
     )
 
-    assert client.calls == [private_url]
-    assert response["outcome"] == "ok"
+    assert client.calls == []
+    assert response["outcome"] == "error"
+    assert response["error"]["code"] == "all_sources_failed"
     group = response["groups"][0]
     assert group["source"] == "web"
-    assert group["provenance"]["backend_id"] == "web-public-http-v1"
-    assert group["items"][0]["title"] == "Fixture"
-    assert group["items"][0]["url"] == "https://example.com/article"
+    assert group["availability"] == "unavailable"
+    assert group["error"]["code"] == "capability_unavailable"
+    assert group["attempts"] == []
+    assert group["items"] == []
     assert private_url not in json.dumps(response)
 
 
@@ -183,11 +185,11 @@ def test_status_is_local_and_lists_all_sources() -> None:
         source["source"]: source["availability"]
         for source in response["data"]["sources"]
     }
-    assert availability["web"] == "available"
+    assert availability["web"] == "unavailable"
     assert availability["rss"] == "available"
-    assert availability["v2ex"] == "available"
+    assert availability["v2ex"] == "unavailable"
     assert availability["exa"] == "setup_required"
-    assert availability["github"] == "available"
+    assert availability["github"] == "unavailable"
     assert availability["youtube"] == "available"
     assert availability["bilibili"] == "available"
 
@@ -196,13 +198,19 @@ def test_status_can_filter_planned_operations_without_hiding_released_rows() -> 
     response = json.loads(reach_status({"include_planned": False}))
     sources = {source["source"]: source for source in response["data"]["sources"]}
 
-    assert [operation["name"] for operation in sources["web"]["operations"]] == [
-        "read.url"
-    ]
+    assert sources["web"]["operations"] == []
+    assert sources["web"]["availability"] == "unavailable"
     assert sources["exa"]["operations"] == []
     assert sources["exa"]["availability"] == "unavailable"
-    assert len(sources["github"]["operations"]) == 8
-    assert sources["github"]["availability"] == "available"
+    assert sources["github"]["operations"] == []
+    assert sources["github"]["availability"] == "unavailable"
+    assert sources["v2ex"]["operations"] == []
+    assert sources["v2ex"]["availability"] == "unavailable"
+    assert [operation["name"] for operation in sources["rss"]["operations"]] == [
+        "read.feed",
+        "browse.entries",
+    ]
+    assert sources["rss"]["availability"] == "available"
     assert [operation["name"] for operation in sources["youtube"]["operations"]] == [
         "search.videos",
         "read.video",

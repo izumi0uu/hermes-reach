@@ -1,26 +1,27 @@
-# V2EX Agent-Reach 1.5.0 Safety And Contract Exception
+# V2EX Agent-Reach 1.5.0 Disabled Path Decision
 
-- Status: approved
-- Date: 2026-07-27
+- Status: disabled
+- Date: 2026-07-28
+- Historical exception review: 2026-07-27
 - Operations: `v2ex:browse.hot`, `v2ex:browse.node_topics`,
   `v2ex:read.topic`, `v2ex:read.user`
-- Classification: `reach_reimplementation`
-- Current backend: `v2ex-public-api-v1` (version `1`)
-- Current runtime: `V2exAdapter(PublicHttpClient)`
+- Classification: `not_implemented`
+- Current backend: none
+- Current runtime: none
 - Agent-Reach pin: `1.5.0` at commit
   `1494c2ab239e7355a77e7cceaf3271453a1f34b5`
 
 ## Decision
 
-Retain the current safe V2EX adapter for all four implemented operations. Do
-not compose the pinned `V2EXChannel` methods into production execution,
-registration, or availability checks.
+Disable the former safe V2EX adapter for all four operations. Keep their names
+in the stable Hermes catalog as planned/unavailable, with no production
+binding or local platform implementation. Do not compose the pinned
+`V2EXChannel` methods because they still fail the reviewed safety and contract
+gates below.
 
-The project owner approved preserving the established security boundary while
-maximizing honest Agent-Reach reuse. For this pin, direct V2EX reuse would
-weaken cancellation and network bounds and would silently narrow or corrupt
-published operation behavior. The exception is therefore preferable to a
-misleading direct-runtime classification.
+The owner selected strict adapter purity on 2026-07-28. The earlier exception
+approval is preserved only as historical evidence; it no longer grants
+production authority to `v2ex-public-api-v1`.
 
 ## Pinned Evidence
 
@@ -44,7 +45,7 @@ network request and is excluded from registration and status.
 
 ## Safety Delta
 
-| Boundary | Current Hermes backend | Pinned Agent-Reach methods |
+| Boundary | Former Hermes backend | Pinned Agent-Reach methods |
 | --- | --- | --- |
 | Cancellation | Async transport closes work on cancellation | A thread wrapper cannot terminate blocking `urllib`; topic can perform two sequential calls |
 | Raw size | Rejects declared or streamed responses above 1 MiB before full allocation | Unbounded `resp.read()`, decode, and JSON allocation happen before item slicing |
@@ -62,7 +63,8 @@ pin would add control-plane code without removing the decisive semantic gaps.
 - `browse.hot` truncates topic content to 200 characters and discards author
   identity before Hermes can normalize it.
 - `browse.node_topics` has the same projection loss and hard-codes `page=1`,
-  while Hermes accepts and currently honors pages 1 through 100.
+  while the Hermes v1 contract accepts pages 1 through 100 and the former
+  adapter honored that range.
 - `read.topic` swallows every reply-fetch failure as an empty successful reply
   list, discards reply IDs and canonical reply anchors, and turns an absent
   topic into a blank success-shaped mapping.
@@ -75,14 +77,15 @@ would violate the current public v1 operation contract and audit claims.
 
 ## Consequences
 
-The exception preserves bounded, proxy-free and DNS-pinned public retrieval,
-strict JSON/identity validation, node pagination, observable partial reply
-failure, canonical result URLs, cancellation, redaction, and current
-provenance. It knowingly leaves four operations in the least preferred
-implemented reuse class.
+V2EX retrieval is no longer executable in this release. The four operations
+remain discoverable and fail closed instead of using either unsafe direct
+callables or a Hermes-owned reimplementation. This removes all four platform
+reimplementation exceptions without changing public request/result schemas,
+database state, grants, or stored data.
 
-This decision adds no endpoint, parser, process, operation, fallback,
-credential, database, grant, or response migration.
+The former implementation remains useful evidence for the controls and
+operation semantics an official callable must satisfy, but it is not a
+fallback and must not be silently recomposed.
 
 ## Review Milestone
 
@@ -97,6 +100,8 @@ and a response contract that retains the fields already promised by Hermes.
 
 ## Rollback
 
-There is no runtime change to roll back. Reverting this record and its
-manifest/test rows is valid only together with an approved direct migration or
-with making all four V2EX catalog operations planned and unavailable.
+Operational rollback keeps all four V2EX operations planned and unavailable.
+Execution may return only through a reviewed official Agent-Reach callable or
+exact Agent-Reach-selected backend with the required safety properties; the
+former Hermes adapter cannot be restored as an exception. No data migration
+is required.

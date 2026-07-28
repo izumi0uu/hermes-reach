@@ -92,7 +92,7 @@ def test_catalog_covers_every_parent_matrix_source_and_operation() -> None:
     } == EXPECTED_OPERATIONS
 
 
-def test_catalog_marks_released_alpha1_source_boundaries_implemented() -> None:
+def test_catalog_marks_only_reviewed_backend_paths_implemented() -> None:
     operations = all_operations()
 
     assert operations
@@ -101,15 +101,13 @@ def test_catalog_marks_released_alpha1_source_boundaries_implemented() -> None:
         for operation in operations
         if operation.implementation_state == "implemented"
     }
+    assert len(operations) == 63
+    assert len(implemented) == 11
+    assert (
+        sum(operation.implementation_state == "planned" for operation in operations)
+        == 52
+    )
     assert implemented == {
-        ("github", "search.repositories"),
-        ("github", "search.code"),
-        ("github", "read.repository"),
-        ("github", "read.issue"),
-        ("github", "read.pull_request"),
-        ("github", "browse.actions"),
-        ("github", "read.action_run"),
-        ("github", "browse.releases"),
         ("youtube", "search.videos"),
         ("youtube", "read.video"),
         ("youtube", "read.subtitles"),
@@ -119,13 +117,8 @@ def test_catalog_marks_released_alpha1_source_boundaries_implemented() -> None:
         ("bilibili", "read.video"),
         ("bilibili", "browse.hot"),
         ("bilibili", "browse.rank"),
-        ("web", "read.url"),
         ("rss", "read.feed"),
         ("rss", "browse.entries"),
-        ("v2ex", "browse.hot"),
-        ("v2ex", "browse.node_topics"),
-        ("v2ex", "read.topic"),
-        ("v2ex", "read.user"),
     }
     assert all(operation.unavailable_reason for operation in operations)
 

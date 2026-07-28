@@ -8,7 +8,6 @@ from ..runtime.adapters import AdapterBinding, AdapterCallable, AdapterRegistry
 from ..runtime.availability import Availability
 from ..runtime.dispatcher import RuntimeDispatcher
 from .bilibili import production_bilibili_backend
-from .github import GitHubAdapter
 from .media import (
     AuditedBilibiliBackend,
     AuditedYouTubeBackend,
@@ -19,8 +18,6 @@ from .media import (
 )
 from .public_http import PublicHttpClient, PublicHttpTransport
 from .rss import RssAdapter
-from .v2ex import V2exAdapter
-from .web import WebAdapter
 from .youtube import production_youtube_backend
 
 
@@ -36,12 +33,8 @@ def build_alpha1_registry(
         raise TypeError("Exa client injection is no longer supported.")
     registry = AdapterRegistry()
     client = http_client if http_client is not None else PublicHttpTransport()
-    web = WebAdapter(client)
     rss = RssAdapter(client)
-    v2ex = V2exAdapter(client)
-    github = GitHubAdapter(client)
 
-    _register(registry, "web", "read.url", "web-public-http-v1", web.execute)
     _register(
         registry,
         "rss",
@@ -58,37 +51,6 @@ def build_alpha1_registry(
         rss.execute,
         backend_version=FEEDPARSER_VERSION,
     )
-    for operation in (
-        "browse.hot",
-        "browse.node_topics",
-        "read.topic",
-        "read.user",
-    ):
-        _register(
-            registry,
-            "v2ex",
-            operation,
-            "v2ex-public-api-v1",
-            v2ex.execute,
-        )
-
-    for operation in (
-        "search.repositories",
-        "search.code",
-        "read.repository",
-        "read.issue",
-        "read.pull_request",
-        "browse.actions",
-        "read.action_run",
-        "browse.releases",
-    ):
-        _register(
-            registry,
-            "github",
-            operation,
-            "github-public-rest-v1",
-            github.execute,
-        )
 
     _mark_exa(
         registry,

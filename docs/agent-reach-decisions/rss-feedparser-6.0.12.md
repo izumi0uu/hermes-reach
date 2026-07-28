@@ -91,7 +91,9 @@ operations.
 
 ## Rollback
 
-Restore `rss-atom-parser-v1` and the ElementTree implementation, remove the
-direct feedparser pin and worker, and return both RSS rows to an approved
-`reach_reimplementation` classification. No database, grant, wire, or stored
-content migration is required.
+Remove the feedparser binding, direct pin, and worker, then keep both RSS rows
+planned/unavailable until an official callable or another exact
+Agent-Reach-selected backend passes review. Do not restore
+`rss-atom-parser-v1`, the ElementTree implementation, or any other local
+platform parser. No database, grant, wire, or stored-content migration is
+required.

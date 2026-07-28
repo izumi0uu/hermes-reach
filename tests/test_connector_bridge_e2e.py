@@ -66,7 +66,7 @@ from hermes_reach.sources.connector import connector_bindings
 from hermes_reach.sources.reddit import build_reddit_opencli_execution_composition
 
 PASSPHRASE = "bridge-e2e-passphrase"
-SCOPE = GrantScope("web", "read.url", "public")
+SCOPE = GrantScope("rss", "read.feed", "public")
 REDDIT_SCOPE = GrantScope("reddit", "read.post", "public")
 BACKEND = PublicBackendIdentity("reach-bounded-executor-v1", "1")
 CANARY = "BRIDGE_QUERY_CANARY"
@@ -129,7 +129,8 @@ class _FixtureExecutor:
         environment: Mapping[str, str],
     ) -> OperationResultV1:
         self.calls += 1
-        assert execution.operation_call().source.name == "web"
+        call = execution.operation_call()
+        assert (call.source.name, call.operation.name) == ("rss", "read.feed")
         assert dict(environment) == {}
         return OperationResultV1(
             (OperationResultItemV1("content", "real WSS fixture result"),), False
@@ -364,8 +365,8 @@ def _require_loopback_bind() -> None:
 def _call() -> OperationCall:
     return validate_read(
         {
-            "source": "web",
-            "operation": "read.url",
+            "source": "rss",
+            "operation": "read.feed",
             "target": {"url": f"https://example.com/article?query={CANARY}"},
         }
     )
@@ -396,7 +397,7 @@ def test_real_wss_bridge_executes_and_verifies_one_exact_operation(
         harness = await _open_bridge(tmp_path, executor)
         registry = AdapterRegistry()
         for binding in connector_bindings(
-            harness.client, _available, (("web", "read.url"),)
+            harness.client, _available, (("rss", "read.feed"),)
         ):
             registry.register(binding)
         try:
@@ -415,7 +416,7 @@ def test_real_wss_bridge_executes_and_verifies_one_exact_operation(
             snapshot = harness.snapshot_store.load()
             assert snapshot is not None
             assert snapshot.state == "authenticated"
-            assert snapshot.scopes == (("web", "read.url"),)
+            assert snapshot.scopes == (("rss", "read.feed"),)
             stored = b"".join(
                 path.read_bytes()
                 for path in harness.vps_state.iterdir()
@@ -544,7 +545,7 @@ def test_service_lock_cancels_real_wss_executor_and_awaits_cleanup(
         harness = await _open_bridge(tmp_path, executor)
         registry = AdapterRegistry()
         for binding in connector_bindings(
-            harness.client, _available, (("web", "read.url"),)
+            harness.client, _available, (("rss", "read.feed"),)
         ):
             registry.register(binding)
         try:
@@ -579,7 +580,7 @@ def test_client_cancellation_closes_wss_and_cancels_remote_executor(
         harness = await _open_bridge(tmp_path, executor)
         registry = AdapterRegistry()
         for binding in connector_bindings(
-            harness.client, _available, (("web", "read.url"),)
+            harness.client, _available, (("rss", "read.feed"),)
         ):
             registry.register(binding)
         try:

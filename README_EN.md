@@ -4,10 +4,10 @@
 
 Hermes Reach gives Hermes a consistent set of read-only tools for public web and platform data while preserving a clear security boundary for remote VPS hosts.
 
-It uses [Agent-Reach](https://github.com/Panniantong/Agent-Reach) as its upstream capability source and exposes search, read, browse, transcribe, and status operations through a [Hermes Agent](https://github.com/NousResearch/hermes-agent) plugin.
+It embeds the official pinned [Agent-Reach](https://github.com/Panniantong/Agent-Reach) dependency as the channel, backend-routing, and compatibility authority, then exposes search, read, browse, transcribe, and status operations through a [Hermes Agent](https://github.com/NousResearch/hermes-agent) plugin.
 
 > [!IMPORTANT]
-> The project is **pre-alpha**. Local access to Web, RSS/Atom, V2EX, and GitHub works today. The remote Connector can explicitly activate the single Reddit `read.post` OpenCLI path at both ends, while a default installation remains unbound; the Bitwarden credential path and other account-backed platform backends remain disabled.
+> The project is **pre-alpha**. Nine fixed backend paths for RSS/Atom, Bilibili, and YouTube work locally today. The remote Connector can explicitly activate the single Reddit `read.post` OpenCLI path at both ends, while default Connector composition remains empty; Web, GitHub, V2EX, and other unaudited platforms remain planned and unavailable.
 
 ## The problem Hermes Reach solves
 
@@ -19,7 +19,7 @@ Hermes Reach separates that problem into three parts:
 - Every request names an explicit source and read-only operation
 - Account-backed operations are intended to run on your trusted device instead of copying credentials to the VPS
 
-For example, Hermes can search GitHub repositories, read a web page, or summarize an RSS feed. Those tasks do not grant permission to publish content, modify an account, or call arbitrary platform backends.
+For example, Hermes can summarize an RSS feed, search Bilibili videos, or read YouTube subtitles. Those tasks do not grant permission to publish content, modify an account, or call arbitrary platform backends.
 
 ## When Hermes runs on a VPS
 
@@ -30,7 +30,7 @@ Hermes Reach assumes that an attacker may fully compromise the VPS. Its security
 - Tools support retrieval only, with no publishing, comments, likes, or other external mutations
 - Requests must name a source and never fan out to every platform automatically
 - The runtime limits time, response size, result count, and pagination
-- Public HTTP requests block local addresses, private addresses, DNS rebinding, proxies, and HTTPS downgrades
+- Public HTTP retrieval used by RSS blocks local/private addresses, DNS rebinding, proxies, and HTTPS downgrades
 - Unreviewed backends remain disabled instead of falling back to a broader execution path
 
 ### Explicit Connector activation (pre-alpha)
@@ -68,13 +68,13 @@ The default installation registers five tools, but `reach_status` remains author
 
 | State | Sources | Available operations |
 | --- | --- | --- |
-| Available | Web | Read public web pages |
-| Available | RSS/Atom | Read feeds and browse entries |
-| Available | V2EX | Browse hot and node topics; read topics and users |
-| Available | GitHub | Search repositories and code; read repositories, issues, pull requests, Actions, and releases |
+| Locally available | RSS/Atom | Read feeds and browse entries through two fixed `feedparser` paths |
+| Locally available | Bilibili | Search/read videos and browse hot/rank through four fixed `bili-cli` paths |
+| Locally available | YouTube | Search/read videos and read subtitles through three fixed `yt-dlp` paths |
 | Explicitly configurable | Reddit | `read.post` only; requires activation on both the trusted device and VPS and remains unavailable by default |
-| Setup required | Exa, YouTube, and Bilibili | Awaiting reviewed source-specific integrations |
-| Planned | Twitter/X, Xiaohongshu, Facebook, Instagram, LinkedIn, Xueqiu, Xiaoyuzhou, and all other Reddit operations | Awaiting per-source Connector review and credential isolation |
+| Implemented, unbound | YouTube | `read.comments` remains `setup_required` and performs no backend call |
+| Planned, unbound | Exa | `reach_status` reports `setup_required` with no binding; the closed contracts await a pinned `mcporter` closure and retention review |
+| Planned, unavailable | Web, GitHub, V2EX, Twitter/X, Xiaohongshu, Facebook, Instagram, LinkedIn, Xueqiu, Xiaoyuzhou, and all other Reddit operations | Await an official callable or a safe exact Agent-Reach-selected backend |
 
 The five tools have narrow responsibilities:
 
@@ -108,8 +108,8 @@ uv run hermes reach doctor --json
 Load the `reach:agent-reach` skill and enable the `reach` toolset when starting a session. Then describe the retrieval task:
 
 ```text
-Check whether GitHub repository search is available.
-Then find repositories related to Hermes Agent plugin development.
+Check whether YouTube subtitle reading is available.
+Then read Chinese subtitles from the specified video.
 ```
 
 The default doctor checks local state only. `hermes reach doctor --upstream` also runs the restricted and redacted Agent-Reach checks.
@@ -156,38 +156,47 @@ This environment value is only a pointer to owner-only local paired state. It is
 
 ## How the system works
 
-Normal requests currently run through Hermes Reach's own runtime and local adapters. Agent-Reach supplies the pinned platform catalog, routing evidence, backend metadata, and explicit doctor. Reach uses its OpenCLI-first Reddit route as evidence for one fixed `read.post` executor. It is not composed into the default runtime; only the explicit two-sided activation above adds the exact binding.
+Hermes Reach embeds the official pinned Agent-Reach dependency through `hermes_reach.register`. Agent-Reach supplies its 15-channel registry, backend-routing evidence, compatibility metadata, and restricted doctor. Hermes Reach supplies the five closed tools, security policy, Connector, normalization, and audit. Platform retrieval belongs to an official callable, when one exists and passes review, or to the exact backend selected by Agent-Reach.
 
 ```mermaid
 flowchart TD
     Hermes["Hermes Agent"] --> Plugin["Hermes Reach<br/>five reach_* tools"]
-    Upstream["Agent-Reach 1.5.0<br/>platform catalog and doctor"] --> Bridge["Compatibility checks"]
+    Upstream["Official Agent-Reach 1.5.0<br/>15 channels · backend evidence · restricted doctor"] --> Bridge["Pinned compatibility bridge"]
     Bridge --> Plugin
-    Plugin --> Guard["Input validation and read-only policy"]
-    Guard --> Runtime["Bounded runtime"]
-    Runtime --> Adapters["Web · RSS · V2EX · GitHub"]
-    Adapters --> Results["Grouped results and source metadata"]
-    Connector["Connector execution bridge<br/>explicit bindings only; production default disabled"] -.-> Runtime
+    Plugin --> Guard["Hermes security and control plane<br/>validation · grants · isolation · bounds · audit"]
+    Guard --> Local["9 default-local bindings<br/>RSS · Bilibili · YouTube"]
+    Guard --> Connector["1 explicit Connector binding<br/>Reddit read.post"]
+    Local --> Backends["Exact backends<br/>feedparser · bili-cli · yt-dlp"]
+    Connector --> OpenCLI["Fixed OpenCLI read"]
+    Backends --> Results["Bounded v1 results and provenance"]
+    OpenCLI --> Results
 ```
 
 ### How much of Agent-Reach is reused
 
-The 15-platform catalog, backend metadata, version compatibility, and
-restricted doctor come directly from Agent-Reach. Normal requests do not pass
-through an Agent-Reach execution path. Of 26 operations marked implemented,
-none directly reuses Agent-Reach execution, 9 thinly wrap the same external
-backend, 11 use a Hermes-native replacement mechanism, and 6 reimplement
-platform logic. Another 37 operations remain unimplemented. Only 16 of the 26
-have a concrete retrieval implementation; the 8 YouTube/Bilibili rows and 2
-Exa rows are still unbound audited interfaces, not production executors.
+The 15-channel registry, backend metadata, version compatibility, and restricted
+doctor come directly from official Agent-Reach. The Hermes product catalog has
+63 read-only operations: 11 are marked implemented and 52 are planned. Ten
+have concrete exact-backend executors: nine default-local bindings and one
+Connector-only Reddit binding. One additional contract,
+`youtube:read.comments`, is implemented but unbound and is not counted as a
+concrete executor.
 
-The boundary is therefore frozen: Hermes Reach owns protocol, authorization,
-safe invocation, normalization, bounds, redaction, receipts, and audit.
-Platform knowledge, backend selection, and retrieval implementation belong to
-Agent-Reach or its pinned backend. New platform adapters are paused, and a
-native replacement or reimplementation requires a separately approved
-exception. See the full matrix, accounting rules, and migration priorities in
-the [Agent-Reach reuse boundary](docs/agent-reach-reuse-boundary.md).
+Agent-Reach 1.5.0 has no unified structured operation execution API, so the
+number of direct official Agent-Reach runtime calls is zero. This is an
+upstream boundary, not a runtime that Hermes or a personal fork should fill.
+Fixed wrappers around exact Agent-Reach-selected backends are the normal
+integration. The 13 former Hermes platform implementations for Web, GitHub,
+and V2EX are disabled; Hermes-native and reimplementation exceptions are now
+both zero.
+
+Hermes Reach owns protocol, authorization, safe invocation, normalization,
+bounds, redaction, receipts, and audit. Platform knowledge, backend selection,
+and retrieval semantics stay in official Agent-Reach or its exact backend. See
+[Agent-Reach as a Hermes plugin](docs/agent-reach-plugin-boundary.md) for the
+canonical architecture and the
+[Agent-Reach reuse boundary](docs/agent-reach-reuse-boundary.md) for the
+operation matrix and reactivation gates.
 
 The project pins Agent-Reach `1.5.0` at commit `1494c2ab239e7355a77e7cceaf3271453a1f34b5`.
 
@@ -202,7 +211,8 @@ flowchart TD
     Client -->|"signed request · WSS · pinned TLS"| Service["Trusted-device Connector"]
     Service --> Grant["Live authorization<br/>scope · expiry · usage · revocation"]
     Grant --> Binding["Exact source-operation binding"]
-    Secrets["Bitwarden and local sessions"] --> Binding
+    Session["Existing trusted-device browser session"] --> Binding
+    Secrets["Bitwarden SecretProvider<br/>isolated control; unused by Reddit"] -.-> Service
     Binding --> Backend["Reviewed backend<br/>Reddit read.post uses fixed OpenCLI argv"]
     Backend --> Platform["Target platform"]
     Backend -->|"normalized result and signed receipt"| Client
@@ -214,15 +224,16 @@ The roadmap describes development order, not release dates. Incomplete capabilit
 
 | Stage | Goal | Main work |
 | --- | --- | --- |
-| Complete | Stabilize public retrieval | Five tools, local adapters, read-only policy, Agent-Reach catalog |
+| Complete | Stabilize public retrieval | Five tools, the 63-operation Hermes product catalog, read-only policy, and official Agent-Reach registry bridge |
 | Complete | Secure pairing and client foundation | ConnectorClient, pinned identity and grants, local availability snapshots, signed requests and receipts |
 | Complete | Isolate credentials and freeze the execution protocol | Bitwarden SecretProvider, protected-request and normalized-result envelopes |
 | Complete | Exact remote execution bridge | Explicit Connector adapters, authorized-operation delivery, receipts, and retries; default composition remains empty |
 | Complete | First source executor | Fixed OpenCLI read, closed YAML mapping, and WSS receipt test for Reddit `read.post`; unbound by default |
 | Complete | Explicit two-sided production composition | Attest and confirm OpenCLI on the trusted device; build the sole Reddit adapter from owner-only paired VPS state |
-| Complete | Correct the P0 reuse boundary | Audit all 63 operations; approve bounded Web/GitHub exceptions, remove generic Exa activation, and freeze evidence in a machine-readable manifest |
-| Now | Resolve RSS/V2EX P1 drift | Prefer fixed upstream callables; record time-bounded exceptions where the safety boundary cannot be preserved, and add no platform retrieval logic |
-| Then | Execute more upstream backends | Add only direct reuse or thin wrappers around pinned upstream backends |
+| Complete | Exact local backends | Two RSS, four Bilibili, and three YouTube default-local wrappers; YouTube comments remains unbound |
+| Complete | Freeze strict plugin boundary | Disable 13 Web/GitHub/V2EX platform exceptions while retaining catalog discovery and historical evidence |
+| Now | Review official execution evidence | Accept only official callables or exact Agent-Reach backends for planned operations; build no local or fork runtime |
+| Then | Expand proven thin wrappers | Activate operations individually after pins, closed input, isolation, bounds, and rollback pass review |
 | Later | Support authenticated platforms and production operations | Twitter/X and similar sources, one-step grants, audit export, alerts, upgrades, and rollback |
 
 ## Development
@@ -231,9 +242,11 @@ The project uses `uv` for its environment and lockfile:
 
 ```bash
 uv sync --all-groups
-uv run ruff check src tests
+uv run ruff check .
+uv run ruff format --check .
 uv run mypy src
 uv run pytest
+uv lock --check
 uv build
 ```
 
