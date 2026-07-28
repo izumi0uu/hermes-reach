@@ -6,6 +6,7 @@ from pathlib import Path
 from hermes_reach.agent_reach_bridge import (
     AGENT_REACH_COMMIT,
     AGENT_REACH_VERSION,
+    BILIBILI_CLI_VERSION,
     FEEDPARSER_VERSION,
 )
 from hermes_reach.catalog import all_operations
@@ -82,6 +83,15 @@ P1_RSS_EXACT_WRAPPERS = frozenset(
     }
 )
 
+P2_BILIBILI_EXACT_WRAPPERS = frozenset(
+    {
+        ("bilibili", "search.videos"),
+        ("bilibili", "read.video"),
+        ("bilibili", "browse.hot"),
+        ("bilibili", "browse.rank"),
+    }
+)
+
 REACH_REIMPLEMENTATION = frozenset(
     {
         ("v2ex", "browse.hot"),
@@ -146,6 +156,7 @@ def test_review_decisions_are_pinned_to_catalog_and_runtime_state() -> None:
         | P0_BLOCKED_NOT_IMPLEMENTED
         | P1_V2EX_EXCEPTIONS
         | P1_RSS_EXACT_WRAPPERS
+        | P2_BILIBILI_EXACT_WRAPPERS
     )
     assert {
         key
@@ -166,7 +177,7 @@ def test_review_decisions_are_pinned_to_catalog_and_runtime_state() -> None:
         key
         for key, review in keyed.items()
         if review["classification"] == "exact_backend_thin_wrapper"
-    } == P1_RSS_EXACT_WRAPPERS
+    } == P1_RSS_EXACT_WRAPPERS | P2_BILIBILI_EXACT_WRAPPERS
 
     catalog = {
         (operation.source, operation.name): operation for operation in all_operations()
@@ -192,3 +203,5 @@ def test_review_decisions_are_pinned_to_catalog_and_runtime_state() -> None:
             assert availability.backend_id == review["current_backend"]
             if key in P1_RSS_EXACT_WRAPPERS:
                 assert availability.backend_version == FEEDPARSER_VERSION
+            if key in P2_BILIBILI_EXACT_WRAPPERS:
+                assert availability.backend_version == BILIBILI_CLI_VERSION

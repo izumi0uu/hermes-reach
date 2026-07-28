@@ -7,6 +7,7 @@ from ..catalog import EXA_SETUP_REQUIRED_REASON
 from ..runtime.adapters import AdapterBinding, AdapterCallable, AdapterRegistry
 from ..runtime.availability import Availability
 from ..runtime.dispatcher import RuntimeDispatcher
+from .bilibili import production_bilibili_backend
 from .github import GitHubAdapter
 from .media import (
     AuditedBilibiliBackend,
@@ -172,13 +173,8 @@ def _register_media_backends(
         )
 
     if bilibili_backend is None:
-        _mark_media(
-            registry,
-            "bilibili",
-            ("search.videos", "read.video", "browse.hot", "browse.rank"),
-            "setup_required",
-            "Configure an audited Bilibili backend through operator setup.",
-        )
+        for binding in bilibili_bindings(production_bilibili_backend()):
+            registry.register(binding)
     elif bilibili_backend_is_eligible(bilibili_backend):
         for binding in bilibili_bindings(bilibili_backend):
             registry.register(binding)

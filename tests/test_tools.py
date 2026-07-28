@@ -189,7 +189,7 @@ def test_status_is_local_and_lists_all_sources() -> None:
     assert availability["exa"] == "setup_required"
     assert availability["github"] == "available"
     assert availability["youtube"] == "setup_required"
-    assert availability["bilibili"] == "setup_required"
+    assert availability["bilibili"] == "available"
 
 
 def test_status_can_filter_planned_operations_without_hiding_released_rows() -> None:

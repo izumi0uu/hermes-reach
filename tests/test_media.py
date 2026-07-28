@@ -129,7 +129,7 @@ def _unexpected_side_effect(*args: object, **kwargs: object) -> None:
     )
 
 
-def test_media_default_availability_keeps_connector_rows_closed() -> None:
+def test_media_default_availability_activates_only_public_bilibili_rows() -> None:
     runtime = build_alpha1_runtime()
 
     assert (
@@ -144,10 +144,7 @@ def test_media_default_availability_keeps_connector_rows_closed() -> None:
         runtime.operation_availability("youtube", "transcribe.video").state
         == "unavailable"
     )
-    assert (
-        runtime.operation_availability("bilibili", "read.video").state
-        == "setup_required"
-    )
+    assert runtime.operation_availability("bilibili", "read.video").state == "available"
     assert (
         runtime.operation_availability("bilibili", "read.subtitles").state
         == "unavailable"
