@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import builtins
-import json
 import socket
 import subprocess
 from collections.abc import Callable
@@ -14,11 +13,9 @@ import hermes_reach.sources.registry as source_registry
 from hermes_reach.contracts import validate_browse, validate_read, validate_search
 from hermes_reach.runtime.adapters import AdapterRegistry
 from hermes_reach.runtime.policy import ReadOnlyPolicy
-from hermes_reach.sources.public_http import HttpFailure, HttpResponse
+from hermes_reach.sources.public_http import HttpResponse
 from hermes_reach.sources.registry import build_alpha1_registry, build_alpha1_runtime
 from hermes_reach.sources.rss import RssAdapter
-from hermes_reach.sources.v2ex import V2exAdapter
-from hermes_reach.sources.web import WebAdapter
 
 
 class FixtureHttpClient:
@@ -41,36 +38,6 @@ class FalsyFixtureHttpClient(FixtureHttpClient):
 
 def _response(body: str, content_type: str, url: str) -> HttpResponse:
     return HttpResponse(200, content_type, body.encode(), url)
-
-
-def test_web_adapter_extracts_visible_text_without_hidden_content() -> None:
-    client = FixtureHttpClient(
-        _response(
-            """
-            <html><head><title>Useful title</title><style>hidden-style</style></head>
-            <body><main>Hello <strong>world</strong></main>
-            <script>hidden-script</script></body></html>
-            """,
-            "text/html; charset=utf-8",
-            "https://example.com/article",
-        )
-    )
-    call = validate_read(
-        {
-            "source": "web",
-            "operation": "read.url",
-            "target": {"url": "https://example.com/article?private=value"},
-        }
-    )
-
-    result = asyncio.run(WebAdapter(client).execute(ReadOnlyPolicy().authorize(call)))
-
-    assert result.is_success
-    assert result.items[0].title == "Useful title"
-    assert "Hello world" in result.items[0].text
-    assert "hidden-style" not in result.items[0].text
-    assert "hidden-script" not in result.items[0].text
-    assert result.items[0].url == "https://example.com/article"
 
 
 def test_rss_adapter_normalizes_atom_entries_in_native_order() -> None:
@@ -347,89 +314,67 @@ def test_rss_runner_keeps_a_single_overflow_sentinel_for_truncation() -> None:
     assert result.truncated is True
 
 
-def test_v2ex_adapter_owns_routes_and_reports_reply_failure_as_partial() -> None:
-    topic = json.dumps(
-        [
+def test_web_and_v2ex_rows_fail_closed_without_http_execution() -> None:
+    client = FixtureHttpClient()
+    registry = build_alpha1_registry(client)
+    runtime = build_alpha1_runtime(client)
+    calls = (
+        validate_read(
             {
-                "id": 42,
-                "title": "Topic",
-                "content": "Topic body",
-                "created": 1_700_000_000,
-                "member": {"username": "alice"},
+                "source": "web",
+                "operation": "read.url",
+                "target": {"url": "https://example.com/article"},
             }
-        ]
-    )
-    client = FixtureHttpClient(
-        _response(topic, "application/json", "https://www.v2ex.com/t/42"),
-        HttpFailure("transient", "reply_timeout"),
-    )
-    call = validate_read(
-        {
-            "source": "v2ex",
-            "operation": "read.topic",
-            "target": {"native_id": "42"},
-        }
-    )
-
-    result = asyncio.run(V2exAdapter(client).execute(ReadOnlyPolicy().authorize(call)))
-
-    assert result.partial_failure_class == "transient"
-    assert result.items[0].native_id == "42"
-    assert result.items[0].url == "https://www.v2ex.com/t/42"
-    assert client.calls == [
-        "https://www.v2ex.com/api/topics/show.json?id=42",
-        "https://www.v2ex.com/api/replies/show.json?topic_id=42&page=1",
-    ]
-
-
-def test_v2ex_keeps_topic_when_reply_client_raises_unexpected_error() -> None:
-    topic = json.dumps(
-        [
+        ),
+        validate_browse({"source": "v2ex", "operation": "browse.hot"}),
+        validate_browse(
             {
-                "id": 42,
-                "title": "Topic",
-                "content": "Topic body",
-                "created": 1_700_000_000,
-                "member": {"username": "alice"},
+                "source": "v2ex",
+                "operation": "browse.node_topics",
+                "options": {"node": "python", "page": 3, "limit": 5},
             }
-        ]
+        ),
+        validate_read(
+            {
+                "source": "v2ex",
+                "operation": "read.topic",
+                "target": {"native_id": "42"},
+            }
+        ),
+        validate_read(
+            {
+                "source": "v2ex",
+                "operation": "read.user",
+                "target": {"native_id": "alice"},
+            }
+        ),
     )
-    client = FixtureHttpClient(
-        _response(topic, "application/json", "https://www.v2ex.com/t/42"),
-        RuntimeError("private-upstream-error"),
-    )
-    call = validate_read(
-        {
-            "source": "v2ex",
-            "operation": "read.topic",
-            "target": {"native_id": "42"},
-        }
-    )
+    expected_reasons = {
+        "web": (
+            "The pinned Agent-Reach Web callable remains frozen pending a bounded, "
+            "cancellable execution review."
+        ),
+        "v2ex": (
+            "The pinned Agent-Reach V2EX callables remain frozen pending a bounded, "
+            "cancellable execution review."
+        ),
+    }
 
-    result = asyncio.run(V2exAdapter(client).execute(ReadOnlyPolicy().authorize(call)))
+    for call in calls:
+        source = call.source.name
+        operation = call.operation
+        record = registry.availability(source, operation.name)
 
-    assert result.partial_failure_class == "transient"
-    assert [item.native_id for item in result.items] == ["42"]
+        assert operation.implementation_state == "planned"
+        assert operation.unavailable_reason == expected_reasons[source]
+        assert record.state == "unavailable"
+        assert record.reason == operation.unavailable_reason
+        assert record.backend_id is None
+        assert record.backend_version is None
+        assert registry.has_binding(source, operation.name) is False
+        assert asyncio.run(runtime.dispatch(call)) is None
 
-
-def test_v2ex_node_route_uses_only_validated_query_values() -> None:
-    client = FixtureHttpClient(
-        _response("[]", "application/json", "https://www.v2ex.com/")
-    )
-    call = validate_browse(
-        {
-            "source": "v2ex",
-            "operation": "browse.node_topics",
-            "options": {"node": "python", "page": 3, "limit": 5},
-        }
-    )
-
-    result = asyncio.run(V2exAdapter(client).execute(ReadOnlyPolicy().authorize(call)))
-
-    assert result.is_success
-    assert client.calls == [
-        "https://www.v2ex.com/api/topics/show.json?node_name=python&page=3"
-    ]
+    assert client.calls == []
 
 
 def test_exa_is_planned_setup_required_and_has_no_runtime_binding() -> None:
@@ -510,25 +455,27 @@ def test_exa_registry_construction_performs_no_process_network_or_file_io(
     assert registry.has_binding("exa", "search.code") is False
 
 
-def test_registry_preserves_a_falsy_injected_http_client() -> None:
+def test_registry_preserves_a_falsy_injected_http_client_for_rss() -> None:
     client = FalsyFixtureHttpClient(
         _response(
-            "<html><body>Injected response</body></html>",
-            "text/html; charset=utf-8",
-            "https://example.com/article",
+            "<rss><channel><title>Injected feed</title>"
+            "<description>Injected response</description></channel></rss>",
+            "application/rss+xml",
+            "https://example.com/feed.xml",
         )
     )
     runtime = build_alpha1_runtime(client)
     call = validate_read(
         {
-            "source": "web",
-            "operation": "read.url",
-            "target": {"url": "https://example.com/article"},
+            "source": "rss",
+            "operation": "read.feed",
+            "target": {"url": "https://example.com/feed.xml"},
         }
     )
 
     result = asyncio.run(runtime.dispatch(call))
 
     assert result is not None
+    assert result.items[0].title == "Injected feed"
     assert result.items[0].text == "Injected response"
-    assert client.calls == ["https://example.com/article"]
+    assert client.calls == ["https://example.com/feed.xml"]

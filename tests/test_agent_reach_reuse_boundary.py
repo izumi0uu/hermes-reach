@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from hermes_reach.agent_reach_bridge import (
     AGENT_REACH_COMMIT,
     AGENT_REACH_VERSION,
@@ -11,6 +13,7 @@ from hermes_reach.agent_reach_bridge import (
     YTDLP_VERSION,
 )
 from hermes_reach.catalog import all_operations
+from hermes_reach.runtime.adapters import AdapterBinding, AdapterRegistry, AdapterResult
 from hermes_reach.sources.registry import build_alpha1_registry
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -38,7 +41,6 @@ EXACT_BACKEND_THIN_WRAPPER = frozenset(
         ("youtube", "search.videos"),
         ("youtube", "read.video"),
         ("youtube", "read.subtitles"),
-        ("youtube", "read.comments"),
         ("reddit", "read.post"),
         ("bilibili", "search.videos"),
         ("bilibili", "read.video"),
@@ -47,7 +49,18 @@ EXACT_BACKEND_THIN_WRAPPER = frozenset(
     }
 )
 
-HERMES_NATIVE_EQUIVALENT = frozenset(
+IMPLEMENTED_BUT_UNBOUND = frozenset({("youtube", "read.comments")})
+
+HERMES_NATIVE_EQUIVALENT: frozenset[tuple[str, str]] = frozenset()
+
+P0_BLOCKED_NOT_IMPLEMENTED = frozenset(
+    {
+        ("exa", "search.web"),
+        ("exa", "search.code"),
+    }
+)
+
+CLOSED_PLATFORM_EXCEPTIONS = frozenset(
     {
         ("github", "search.repositories"),
         ("github", "search.code"),
@@ -58,18 +71,6 @@ HERMES_NATIVE_EQUIVALENT = frozenset(
         ("github", "read.action_run"),
         ("github", "browse.releases"),
         ("web", "read.url"),
-    }
-)
-
-P0_BLOCKED_NOT_IMPLEMENTED = frozenset(
-    {
-        ("exa", "search.web"),
-        ("exa", "search.code"),
-    }
-)
-
-P1_V2EX_EXCEPTIONS = frozenset(
-    {
         ("v2ex", "browse.hot"),
         ("v2ex", "browse.node_topics"),
         ("v2ex", "read.topic"),
@@ -101,21 +102,21 @@ P2_YOUTUBE_EXACT_WRAPPERS = frozenset(
     }
 )
 
-REACH_REIMPLEMENTATION = frozenset(
-    {
-        ("v2ex", "browse.hot"),
-        ("v2ex", "browse.node_topics"),
-        ("v2ex", "read.topic"),
-        ("v2ex", "read.user"),
-    }
-)
+REDDIT_CONNECTOR_EXACT_WRAPPER = frozenset({("reddit", "read.post")})
+
+REACH_REIMPLEMENTATION: frozenset[tuple[str, str]] = frozenset()
 
 FROZEN_IMPLEMENTED_CLASSIFICATIONS = (
     DIRECT_AGENT_REACH_RUNTIME,
     EXACT_BACKEND_THIN_WRAPPER,
+    IMPLEMENTED_BUT_UNBOUND,
     HERMES_NATIVE_EQUIVALENT,
     REACH_REIMPLEMENTATION,
 )
+
+
+async def _unexpected_closed_platform_execution(_: object) -> AdapterResult:
+    raise AssertionError("a closed platform operation reached execution")
 
 
 def test_every_implemented_operation_has_one_frozen_reuse_classification() -> None:
@@ -138,13 +139,48 @@ def test_frozen_reuse_audit_counts_are_review_visible() -> None:
 
     assert len(operations) == 63
     assert len(DIRECT_AGENT_REACH_RUNTIME) == 0
-    assert len(EXACT_BACKEND_THIN_WRAPPER) == 11
-    assert len(HERMES_NATIVE_EQUIVALENT) == 9
-    assert len(REACH_REIMPLEMENTATION) == 4
+    assert EXACT_BACKEND_THIN_WRAPPER == (
+        P1_RSS_EXACT_WRAPPERS
+        | P2_BILIBILI_EXACT_WRAPPERS
+        | P2_YOUTUBE_EXACT_WRAPPERS
+        | REDDIT_CONNECTOR_EXACT_WRAPPER
+    )
+    assert len(EXACT_BACKEND_THIN_WRAPPER) == 10
+    assert IMPLEMENTED_BUT_UNBOUND == {("youtube", "read.comments")}
+    assert HERMES_NATIVE_EQUIVALENT == frozenset()
+    assert REACH_REIMPLEMENTATION == frozenset()
+    assert (
+        sum(operation.implementation_state == "implemented" for operation in operations)
+        == 11
+    )
     assert (
         sum(operation.implementation_state == "planned" for operation in operations)
-        == 39
+        == 52
     )
+
+
+@pytest.mark.parametrize(("source", "operation"), sorted(CLOSED_PLATFORM_EXCEPTIONS))
+def test_closed_platform_exceptions_cannot_be_rebound(
+    source: str,
+    operation: str,
+) -> None:
+    registry = AdapterRegistry()
+
+    with pytest.raises(ValueError, match="implemented catalog operation"):
+        registry.register(
+            AdapterBinding(
+                source=source,
+                operation=operation,
+                backend_id="forbidden-platform-backend",
+                backend_version="1",
+                priority=10,
+                required_scope="public",
+                equivalence_group="forbidden-platform-exception",
+                execute=_unexpected_closed_platform_execution,
+            )
+        )
+
+    assert registry.has_binding(source, operation) is False
 
 
 def test_review_decisions_are_pinned_to_catalog_and_runtime_state() -> None:
@@ -161,9 +197,8 @@ def test_review_decisions_are_pinned_to_catalog_and_runtime_state() -> None:
     keyed = {(review["source"], review["operation"]): review for review in reviews}
     assert len(keyed) == len(reviews)
     assert set(keyed) == (
-        HERMES_NATIVE_EQUIVALENT
+        CLOSED_PLATFORM_EXCEPTIONS
         | P0_BLOCKED_NOT_IMPLEMENTED
-        | P1_V2EX_EXCEPTIONS
         | P1_RSS_EXACT_WRAPPERS
         | P2_BILIBILI_EXACT_WRAPPERS
         | P2_YOUTUBE_EXACT_WRAPPERS
@@ -172,17 +207,17 @@ def test_review_decisions_are_pinned_to_catalog_and_runtime_state() -> None:
         key
         for key, review in keyed.items()
         if review["classification"] == "hermes_native_equivalent"
-    } == HERMES_NATIVE_EQUIVALENT
+    } == set()
     assert {
         key
         for key, review in keyed.items()
         if review["classification"] == "not_implemented"
-    } == P0_BLOCKED_NOT_IMPLEMENTED
+    } == (CLOSED_PLATFORM_EXCEPTIONS | P0_BLOCKED_NOT_IMPLEMENTED)
     assert {
         key
         for key, review in keyed.items()
         if review["classification"] == "reach_reimplementation"
-    } == P1_V2EX_EXCEPTIONS
+    } == set()
     assert {
         key
         for key, review in keyed.items()
@@ -204,11 +239,18 @@ def test_review_decisions_are_pinned_to_catalog_and_runtime_state() -> None:
         assert (ROOT / review["decision_record"]).is_file()
         assert catalog[key].runtime.data_scope == "public"
         availability = registry.availability(*key)
-        if key in P0_BLOCKED_NOT_IMPLEMENTED:
+        if key in CLOSED_PLATFORM_EXCEPTIONS:
+            assert catalog[key].implementation_state == "planned"
+            assert review["current_backend"] is None
+            assert availability.state == "unavailable"
+            assert availability.backend_id is None
+            assert registry.has_binding(*key) is False
+        elif key in P0_BLOCKED_NOT_IMPLEMENTED:
             assert catalog[key].implementation_state == "planned"
             assert review["current_backend"] is None
             assert availability.state == "setup_required"
             assert availability.backend_id is None
+            assert registry.has_binding(*key) is False
         else:
             assert catalog[key].implementation_state == "implemented"
             assert availability.state == "available"
@@ -219,6 +261,17 @@ def test_review_decisions_are_pinned_to_catalog_and_runtime_state() -> None:
                 assert availability.backend_version == BILIBILI_CLI_VERSION
             if key in P2_YOUTUBE_EXACT_WRAPPERS:
                 assert availability.backend_version == YTDLP_VERSION
+
+    default_local_exact_wrappers = (
+        EXACT_BACKEND_THIN_WRAPPER - REDDIT_CONNECTOR_EXACT_WRAPPER
+    )
+    assert len(default_local_exact_wrappers) == 9
+    assert all(registry.has_binding(*key) for key in default_local_exact_wrappers)
+
+    reddit = registry.availability("reddit", "read.post")
+    assert reddit.state == "unavailable"
+    assert reddit.backend_id is None
+    assert registry.has_binding("reddit", "read.post") is False
 
     comments = registry.availability("youtube", "read.comments")
     assert comments.state == "setup_required"

@@ -4,10 +4,10 @@
 
 Hermes Reach 让 Hermes 通过一组统一的只读工具读取网页和公开平台，同时为远程 VPS 保留清晰的安全边界。
 
-它参考 [Agent-Reach](https://github.com/Panniantong/Agent-Reach) 支持的平台，通过 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 插件提供搜索、读取、浏览、转写和状态查询。
+它固定引入官方 [Agent-Reach](https://github.com/Panniantong/Agent-Reach) 作为 channel、backend 路由与兼容性证据来源，并通过 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 插件提供搜索、读取、浏览、转写和状态查询。
 
 > [!IMPORTANT]
-> 项目目前处于 **Pre-Alpha**。Web、RSS/Atom、V2EX 和 GitHub 已可本地使用。远程 Connector 可以通过双端显式配置启用唯一的 Reddit `read.post` OpenCLI 路径，但默认安装仍然不绑定 Connector；Bitwarden 凭据路径和其他账号平台后端仍未启用。
+> 项目目前处于 **Pre-Alpha**。RSS/Atom、Bilibili 和 YouTube 的 9 条固定后端路径已可本地使用。远程 Connector 可以通过双端显式配置启用唯一的 Reddit `read.post` OpenCLI 路径，但默认 Connector 构成仍然为空；Web、GitHub、V2EX 和其他未审计平台保持规划/不可用。
 
 ## 它解决什么问题
 
@@ -19,7 +19,7 @@ Hermes Reach 将这个问题拆成三个部分：
 - 每个请求都必须指定来源和只读操作
 - 需要账号的能力计划在你的可信设备上执行，而不是把凭据复制到 VPS
 
-例如，你可以让 Hermes 搜索 GitHub 仓库、读取网页或整理 RSS 订阅。它不会因此获得发布内容、修改账号或任意调用平台执行后端的能力。
+例如，你可以让 Hermes 整理 RSS、搜索 Bilibili 视频或读取 YouTube 字幕。它不会因此获得发布内容、修改账号或任意调用平台执行后端的能力。
 
 ## 如果 Hermes 运行在 VPS 上
 
@@ -30,7 +30,7 @@ Hermes Reach 假设 VPS 可能被完全攻破。安全设计的目标是限制�
 - 工具只支持读取，不提供发布、评论、点赞或其他外部修改操作
 - 请求必须点名来源，不会自动访问全部平台
 - 运行时限制超时、响应大小、结果数量和分页
-- 网页请求会阻止本地地址、私有地址、域名重绑定、代理，以及从 HTTPS 跳回不安全 HTTP
+- RSS 等公共 HTTP 获取会阻止本地地址、私有地址、域名重绑定、代理，以及从 HTTPS 跳回不安全 HTTP
 - 没有经过审查的执行后端默认关闭，不会自动选择更宽松的替代方案
 
 ### 显式启用的 Connector（Pre-Alpha）
@@ -68,13 +68,13 @@ VPS 会看到它获准处理的查询和结果。如果 VPS 在授权有效期�
 
 | 状态 | 来源 | 可以做什么 |
 | --- | --- | --- |
-| 可用 | Web | 读取公开网页 |
-| 可用 | RSS/Atom | 读取 feed 和浏览条目 |
-| 可用 | V2EX | 浏览热门与节点主题，读取主题和用户 |
-| 可用 | GitHub | 搜索仓库和代码，读取仓库、Issue、Pull Request、Actions 和 Releases |
+| 本地可用 | RSS/Atom | 读取 feed 和浏览条目；2 条固定 `feedparser` 路径 |
+| 本地可用 | Bilibili | 搜索和读取视频，浏览热门与排行榜；4 条固定 `bili-cli` 路径 |
+| 本地可用 | YouTube | 搜索和读取视频、读取字幕；3 条固定 `yt-dlp` 路径 |
 | 可显式配置 | Reddit | 仅 `read.post`；需要可信设备和 VPS 双端显式激活，默认仍不可用 |
-| 需要配置 | Exa、YouTube、Bilibili | 等待经过审查的来源专用执行后端 |
-| 规划中 | Twitter/X、小红书、Facebook、Instagram、LinkedIn、雪球、小宇宙，以及 Reddit 其余操作 | 等待逐来源 Connector 审核和凭据隔离 |
+| 已实现、未绑定 | YouTube | `read.comments` 保持 `setup_required`，没有 backend 调用 |
+| 规划/未绑定 | Exa | `reach_status` 报告 `setup_required`，无 binding；等待固定 `mcporter` 执行闭包和留存审核 |
+| 规划/不可用 | Web、GitHub、V2EX、Twitter/X、小红书、Facebook、Instagram、LinkedIn、雪球、小宇宙，以及 Reddit 其余操作 | 等待官方 callable 或 Agent-Reach 精确选定 backend 的安全审核 |
 
 五个工具的职责如下：
 
@@ -108,8 +108,8 @@ uv run hermes reach doctor --json
 启动会话时加载 `reach:agent-reach` 路由规则，并启用 `reach` 工具组。然后可以直接描述任务：
 
 ```text
-先检查 GitHub 仓库搜索是否可用，
-再查找与 Hermes Agent 插件开发相关的仓库。
+先检查 YouTube 字幕读取是否可用，
+再读取指定视频的中文字幕。
 ```
 
 默认的 `doctor` 只检查本地状态。`hermes reach doctor --upstream` 会额外运行经过限制和脱敏的 Agent-Reach 上游检查。
@@ -156,33 +156,40 @@ HERMES_REACH_VPS_STATE_DIRECTORY=/absolute/vps-state hermes ...
 
 ## 系统如何工作
 
-普通请求目前由 Hermes Reach 自己的运行时和本地适配器执行。Agent-Reach 提供固定版本的平台目录、路由证据、执行后端信息和显式检查；Reach 根据它为 Reddit 选择的 OpenCLI 路线实现了一个固定的 `read.post` executor。默认运行时不会自动组成它，只有上述双端显式激活才会加入精确绑定。
+Hermes Reach 通过 `hermes_reach.register` 把官方固定版本的 Agent-Reach 嵌入 Hermes。Agent-Reach 提供 15-channel registry、backend 路由证据、兼容性元数据和受限 doctor；Hermes Reach 提供五个封闭工具、安全策略、Connector、规范化和审计。平台读取由官方 callable（存在且通过审核时）或 Agent-Reach 精确选定的 backend 负责。
 
 ```mermaid
 flowchart TD
     Hermes["Hermes Agent"] --> Plugin["Hermes Reach<br/>5 个 reach_* 工具"]
-    Upstream["Agent-Reach 1.5.0<br/>平台目录与上游检查"] --> Bridge["兼容性检查"]
+    Upstream["官方 Agent-Reach 1.5.0<br/>15-channel 目录 · backend 证据 · 受限 doctor"] --> Bridge["固定版本兼容性桥"]
     Bridge --> Plugin
-    Plugin --> Guard["输入校验与只读策略"]
-    Guard --> Runtime["有界运行时"]
-    Runtime --> Adapters["Web · RSS · V2EX · GitHub"]
-    Adapters --> Results["分组结果与来源信息"]
-    Connector["Connector 执行桥<br/>仅显式绑定；生产默认关闭"] -.-> Runtime
+    Plugin --> Guard["Hermes 安全与控制平面<br/>校验 · 授权 · 隔离 · 限制 · 审计"]
+    Guard --> Local["9 条默认本地绑定<br/>RSS · Bilibili · YouTube"]
+    Guard --> Connector["1 条显式 Connector 绑定<br/>Reddit read.post"]
+    Local --> Backends["精确 backend<br/>feedparser · bili-cli · yt-dlp"]
+    Connector --> OpenCLI["固定 OpenCLI 读取"]
+    Backends --> Results["有界 v1 结果与来源证据"]
+    OpenCLI --> Results
 ```
 
 ### Agent-Reach 用到了什么程度
 
-15 个平台的目录、backend 元数据、版本兼容性和受限 doctor 直接来自
-Agent-Reach。普通请求没有经过 Agent-Reach 的执行路径：26 个已标记实现的
-operation 中，0 个直接复用 Agent-Reach execution，9 个保留了相同外部
-backend 的薄适配，11 个采用 Hermes-native 替代机制，6 个重写了平台逻辑，
-另有 37 个仍未实现。26 项中只有 16 项已有具体读取实现；YouTube、Bilibili
-的 8 项和 Exa 的 2 项仍只是未绑定的审计接口，不是可用的生产 executor。
+15-channel registry、backend 元数据、版本兼容性和受限 doctor 直接来自官方
+Agent-Reach。当前 Hermes 产品目录有 63 个只读 operation：11 个标记已实现，
+52 个规划中；10 个有具体的精确 backend executor，其中 9 个默认本地绑定、
+1 个是 Connector-only Reddit 绑定。另有 1 个 `youtube:read.comments` 已实现但
+未绑定，因此不计入 concrete executor。
 
-因此当前边界已经冻结：Hermes Reach 只拥有协议、授权、安全调用、规范化、
-限制、脱敏、回执和审计；平台知识、backend 选择和读取实现应留在
-Agent-Reach 或其固定 backend。新增平台 adapter 暂停，native 替代或重复
-实现必须经过单独例外审批。完整矩阵、口径和迁移优先级见
+Agent-Reach 1.5.0 没有统一、结构化的 operation execution API，所以直接
+调用官方 Agent-Reach runtime 的数量是 0。这是上游边界，不是需要在 Hermes
+或个人 fork 中补齐的工作。正常集成方式是固定包装 Agent-Reach 精确选择的
+backend。Web、GitHub、V2EX 的 13 条 Hermes 平台实现已经关闭；当前
+Hermes-native 和重复实现例外均为 0。
+
+Hermes Reach 只拥有协议、授权、安全调用、规范化、限制、脱敏、回执和审计；
+平台知识、backend 选择和读取语义留在官方 Agent-Reach 或其精确 backend。
+完整架构见 [Agent-Reach 插件边界](docs/agent-reach-plugin-boundary.md)，
+操作矩阵和重新启用条件见
 [Agent-Reach 复用边界](docs/agent-reach-reuse-boundary.md)。
 
 项目固定使用 Agent-Reach `1.5.0` 和 commit `1494c2ab239e7355a77e7cceaf3271453a1f34b5`。
@@ -198,7 +205,8 @@ flowchart TD
     Client -->|"签名请求 · WSS · 固定 TLS"| Service["可信设备 Connector"]
     Service --> Grant["在线授权<br/>范围 · 期限 · 次数 · 撤销"]
     Grant --> Binding["精确来源操作绑定"]
-    Secrets["Bitwarden 与本地会话"] --> Binding
+    Session["可信设备已有浏览器会话"] --> Binding
+    Secrets["Bitwarden SecretProvider<br/>隔离能力；Reddit 路径不使用"] -.-> Service
     Binding --> Backend["已审查平台后端<br/>Reddit read.post 使用固定 OpenCLI argv"]
     Backend --> Platform["目标平台"]
     Backend -->|"规范化结果与签名回执"| Client
@@ -210,15 +218,16 @@ Roadmap 表示开发顺序，不承诺发布日期。未完成的能力会保持
 
 | 阶段 | 目标 | 主要工作 |
 | --- | --- | --- |
-| 已完成 | 稳定公共读取面 | 五个工具、本地适配器、只读策略、Agent-Reach 目录 |
+| 已完成 | 稳定公共读取面 | 五个工具、63-operation Hermes 产品目录、只读策略、官方 Agent-Reach registry 桥 |
 | 已完成 | 安全配对与客户端基础 | ConnectorClient、固定身份与授权、本地可用性快照、签名请求和回执 |
 | 已完成 | 隔离凭据并冻结执行协议 | Bitwarden SecretProvider、受保护请求与规范化结果 envelope |
 | 已完成 | 精确远程执行桥 | 显式 Connector 适配器、已授权操作交付、回执与重试；默认构成仍为空 |
 | 已完成 | 首个来源 executor | Reddit `read.post` 的固定 OpenCLI 读取、封闭 YAML 映射和 WSS 回执测试；默认未绑定 |
 | 已完成 | 双端显式生产组成 | 可信设备证明 OpenCLI 并确认启用；VPS 从 owner-only 配对状态组成唯一 Reddit adapter |
-| 已完成 | P0 复用边界校正 | 审计 63 个 operation；批准 Web/GitHub 安全例外，移除 Exa 泛化激活，并用机器清单冻结证据 |
-| 现在 | 处理 RSS/V2EX P1 偏移 | 优先迁回固定上游 callable；无法保留边界时形成有期限的明确例外，不新增平台抓取逻辑 |
-| 随后 | 执行更多上游后端 | 只增加直接复用或固定 upstream backend 的薄适配 |
+| 已完成 | 精确本地 backend | RSS 2、Bilibili 4、YouTube 3 条默认本地薄包装；YouTube comments 保持未绑定 |
+| 已完成 | 冻结严格插件边界 | 关闭 Web/GitHub/V2EX 共 13 条平台例外，保留目录可发现性和历史审核证据 |
+| 现在 | 审核官方执行证据 | 对规划 operation 只接受官方 callable 或 Agent-Reach 精确 backend，不建立本地或 fork runtime |
+| 随后 | 扩展经过证明的薄包装 | 在固定依赖、封闭输入、隔离、限制和回滚均通过审核后逐项启用 |
 | 后续 | 支持认证平台和生产运维 | Twitter/X 等平台、一键授权、审计导出、告警、升级与回滚 |
 
 ## 开发
@@ -227,9 +236,11 @@ Roadmap 表示开发顺序，不承诺发布日期。未完成的能力会保持
 
 ```bash
 uv sync --all-groups
-uv run ruff check src tests
+uv run ruff check .
+uv run ruff format --check .
 uv run mypy src
 uv run pytest
+uv lock --check
 uv build
 ```
 

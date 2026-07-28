@@ -29,6 +29,18 @@ PROTOCOL_VERSION: Final = "v1"
 EXA_SETUP_REQUIRED_REASON: Final = (
     "Exact Agent-Reach-selected mcporter execution remains frozen pending review."
 )
+WEB_UNAVAILABLE_REASON: Final = (
+    "The pinned Agent-Reach Web callable remains frozen pending a bounded, "
+    "cancellable execution review."
+)
+GITHUB_UNAVAILABLE_REASON: Final = (
+    "The Agent-Reach-selected gh backend remains frozen pending a credential-free, "
+    "read-only execution review."
+)
+V2EX_UNAVAILABLE_REASON: Final = (
+    "The pinned Agent-Reach V2EX callables remain frozen pending a bounded, "
+    "cancellable execution review."
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -206,7 +218,7 @@ SOURCE_CATALOG: Final[tuple[SourceSpec, ...]] = (
                 1,
                 "credential_free",
                 (LIMIT,),
-                implementation_state="implemented",
+                unavailable_reason=GITHUB_UNAVAILABLE_REASON,
             ),
             _operation(
                 "github",
@@ -215,7 +227,7 @@ SOURCE_CATALOG: Final[tuple[SourceSpec, ...]] = (
                 1,
                 "credential_free",
                 (LIMIT,),
-                implementation_state="implemented",
+                unavailable_reason=GITHUB_UNAVAILABLE_REASON,
             ),
             _operation(
                 "github",
@@ -224,7 +236,7 @@ SOURCE_CATALOG: Final[tuple[SourceSpec, ...]] = (
                 1,
                 "credential_free",
                 targets=(GITHUB_REPOSITORY_TARGET,),
-                implementation_state="implemented",
+                unavailable_reason=GITHUB_UNAVAILABLE_REASON,
             ),
             _operation(
                 "github",
@@ -233,7 +245,7 @@ SOURCE_CATALOG: Final[tuple[SourceSpec, ...]] = (
                 1,
                 "credential_free",
                 targets=(GITHUB_RESOURCE_TARGET,),
-                implementation_state="implemented",
+                unavailable_reason=GITHUB_UNAVAILABLE_REASON,
             ),
             _operation(
                 "github",
@@ -242,7 +254,7 @@ SOURCE_CATALOG: Final[tuple[SourceSpec, ...]] = (
                 1,
                 "credential_free",
                 targets=(GITHUB_RESOURCE_TARGET,),
-                implementation_state="implemented",
+                unavailable_reason=GITHUB_UNAVAILABLE_REASON,
             ),
             _operation(
                 "github",
@@ -252,7 +264,7 @@ SOURCE_CATALOG: Final[tuple[SourceSpec, ...]] = (
                 "credential_free",
                 (LIMIT,),
                 targets=(GITHUB_REPOSITORY_TARGET,),
-                implementation_state="implemented",
+                unavailable_reason=GITHUB_UNAVAILABLE_REASON,
             ),
             _operation(
                 "github",
@@ -261,7 +273,7 @@ SOURCE_CATALOG: Final[tuple[SourceSpec, ...]] = (
                 1,
                 "credential_free",
                 targets=(GITHUB_RESOURCE_TARGET,),
-                implementation_state="implemented",
+                unavailable_reason=GITHUB_UNAVAILABLE_REASON,
             ),
             _operation(
                 "github",
@@ -271,7 +283,7 @@ SOURCE_CATALOG: Final[tuple[SourceSpec, ...]] = (
                 "credential_free",
                 (LIMIT,),
                 targets=(GITHUB_REPOSITORY_TARGET,),
-                implementation_state="implemented",
+                unavailable_reason=GITHUB_UNAVAILABLE_REASON,
             ),
         ),
     ),
@@ -580,7 +592,7 @@ SOURCE_CATALOG: Final[tuple[SourceSpec, ...]] = (
                 1,
                 "credential_free",
                 (LIMIT,),
-                implementation_state="implemented",
+                unavailable_reason=V2EX_UNAVAILABLE_REASON,
             ),
             _operation(
                 "v2ex",
@@ -589,7 +601,7 @@ SOURCE_CATALOG: Final[tuple[SourceSpec, ...]] = (
                 1,
                 "credential_free",
                 (NODE, LIMIT, PAGE),
-                implementation_state="implemented",
+                unavailable_reason=V2EX_UNAVAILABLE_REASON,
             ),
             _operation(
                 "v2ex",
@@ -598,7 +610,7 @@ SOURCE_CATALOG: Final[tuple[SourceSpec, ...]] = (
                 1,
                 "credential_free",
                 targets=(POSITIVE_ID_TARGET,),
-                implementation_state="implemented",
+                unavailable_reason=V2EX_UNAVAILABLE_REASON,
             ),
             _operation(
                 "v2ex",
@@ -607,7 +619,7 @@ SOURCE_CATALOG: Final[tuple[SourceSpec, ...]] = (
                 1,
                 "credential_free",
                 targets=(USERNAME_TARGET,),
-                implementation_state="implemented",
+                unavailable_reason=V2EX_UNAVAILABLE_REASON,
             ),
         ),
     ),
@@ -695,7 +707,7 @@ SOURCE_CATALOG: Final[tuple[SourceSpec, ...]] = (
                 1,
                 "credential_free",
                 targets=(URL_TARGET,),
-                implementation_state="implemented",
+                unavailable_reason=WEB_UNAVAILABLE_REASON,
             ),
         ),
     ),

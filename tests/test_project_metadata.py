@@ -1,41 +1,111 @@
 from __future__ import annotations
 
+import ast
+import re
 import tomllib
 from importlib.metadata import entry_points
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parents[1]
+AGENT_REACH_COMMIT = "1494c2ab239e7355a77e7cceaf3271453a1f34b5"
+OFFICIAL_AGENT_REACH_DEPENDENCY = (
+    "agent-reach @ git+https://github.com/Panniantong/Agent-Reach.git@"
+    f"{AGENT_REACH_COMMIT}"
+)
+OFFICIAL_AGENT_REACH_LOCK_SOURCE = (
+    "https://github.com/Panniantong/Agent-Reach.git"
+    f"?rev={AGENT_REACH_COMMIT}#{AGENT_REACH_COMMIT}"
+)
+_REQUIREMENT_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*")
+
+
+def _normalized_requirement_name(requirement: str) -> str:
+    match = _REQUIREMENT_NAME.match(requirement)
+    assert match is not None
+    return match.group().replace("_", "-").lower()
+
+
+def _import_targets(source_path: Path) -> set[str]:
+    tree = ast.parse(source_path.read_text(encoding="utf-8"), filename=source_path.name)
+    targets: set[str] = set()
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            targets.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            targets.add(node.module)
+            targets.update(
+                f"{node.module}.{alias.name}"
+                for alias in node.names
+                if alias.name != "*"
+            )
+        elif (
+            isinstance(node, ast.Call)
+            and node.args
+            and isinstance(node.args[0], ast.Constant)
+            and isinstance(node.args[0].value, str)
+            and (
+                (isinstance(node.func, ast.Name) and node.func.id == "__import__")
+                or (isinstance(node.func, ast.Name) and node.func.id == "import_module")
+                or (
+                    isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "import_module"
+                )
+            )
+        ):
+            targets.add(node.args[0].value)
+    return targets
+
+
+def _is_fork_runtime_import(module: str) -> bool:
+    return module == "agent_reach.execution" or module.startswith(
+        "agent_reach.execution."
+    )
+
 
 def test_project_declares_the_documented_hermes_plugin_entry_point() -> None:
-    root = Path(__file__).resolve().parents[1]
-    with (root / "pyproject.toml").open("rb") as project_file:
+    with (ROOT / "pyproject.toml").open("rb") as project_file:
         project = tomllib.load(project_file)
+
+    dependencies = project["project"]["dependencies"]
+    agent_reach_dependencies = [
+        dependency
+        for dependency in dependencies
+        if _normalized_requirement_name(dependency) == "agent-reach"
+    ]
 
     assert project["project"]["requires-python"] == ">=3.11,<3.14"
     assert project["project"]["entry-points"]["hermes_agent.plugins"] == {
         "reach": "hermes_reach"
     }
-    assert "hermes-agent>=0.19.0,<0.20.0" in project["project"]["dependencies"]
+    assert "hermes-agent>=0.19.0,<0.20.0" in dependencies
     assert project["tool"]["setuptools"]["package-data"] == {
         "hermes_reach": ["skill/SKILL.md"]
     }
-    assert (
-        "agent-reach @ git+https://github.com/Panniantong/Agent-Reach.git@"
-        "1494c2ab239e7355a77e7cceaf3271453a1f34b5"
-    ) in project["project"]["dependencies"]
-    assert "feedparser==6.0.12" in project["project"]["dependencies"]
-    assert "bilibili-cli==0.6.2" in project["project"]["dependencies"]
-    assert "yt-dlp==2026.7.4" in project["project"]["dependencies"]
-    assert "yt-dlp-ejs==0.8.0" in project["project"]["dependencies"]
-    assert "deno==2.8.3" in project["project"]["dependencies"]
+    assert agent_reach_dependencies == [OFFICIAL_AGENT_REACH_DEPENDENCY]
+    assert not any(
+        "izumi0uu" in dependency.lower() for dependency in agent_reach_dependencies
+    )
+    assert "feedparser==6.0.12" in dependencies
+    assert "bilibili-cli==0.6.2" in dependencies
+    assert "yt-dlp==2026.7.4" in dependencies
+    assert "yt-dlp-ejs==0.8.0" in dependencies
+    assert "deno==2.8.3" in dependencies
 
 
 def test_lockfile_keeps_the_inspected_agent_reach_commit() -> None:
-    root = Path(__file__).resolve().parents[1]
-    lockfile = (root / "uv.lock").read_text(encoding="utf-8")
+    lockfile = (ROOT / "uv.lock").read_text(encoding="utf-8")
     packages = tomllib.loads(lockfile)["package"]
+    agent_reach_packages = [
+        package for package in packages if package["name"] == "agent-reach"
+    ]
 
-    assert 'name = "agent-reach"' in lockfile
-    assert "1494c2ab239e7355a77e7cceaf3271453a1f34b5" in lockfile
+    assert len(agent_reach_packages) == 1
+    assert agent_reach_packages[0]["version"] == "1.5.0"
+    assert agent_reach_packages[0]["source"] == {
+        "git": OFFICIAL_AGENT_REACH_LOCK_SOURCE
+    }
+    assert "izumi0uu" not in str(agent_reach_packages[0]["source"]).lower()
     assert 'name = "feedparser"' in lockfile
     assert "feedparser-6.0.12" in lockfile
     assert [
@@ -61,11 +131,36 @@ def test_lockfile_keeps_the_inspected_agent_reach_commit() -> None:
 
 
 def test_manifest_includes_reviewed_docs_and_prunes_tests() -> None:
-    root = Path(__file__).resolve().parents[1]
-
-    assert (root / "MANIFEST.in").read_text(encoding="ascii") == (
+    assert (ROOT / "MANIFEST.in").read_text(encoding="ascii") == (
         "recursive-include docs *.md *.json\nprune tests\n"
     )
+
+
+def test_production_source_does_not_vendor_agent_reach() -> None:
+    source_root = ROOT / "src"
+    vendored_directories = [
+        path.relative_to(ROOT).as_posix()
+        for path in source_root.rglob("*")
+        if path.is_dir() and path.name.replace("-", "_").lower() == "agent_reach"
+    ]
+
+    assert vendored_directories == []
+
+
+def test_production_source_does_not_import_a_fork_execution_runtime() -> None:
+    production_package = ROOT / "src" / "hermes_reach"
+    forbidden_imports = [
+        (source_path.relative_to(ROOT).as_posix(), target)
+        for source_path in sorted(production_package.rglob("*.py"))
+        for target in sorted(_import_targets(source_path))
+        if _is_fork_runtime_import(target)
+    ]
+
+    assert _is_fork_runtime_import("agent_reach.execution") is True
+    assert _is_fork_runtime_import("agent_reach.execution.runtime") is True
+    assert _is_fork_runtime_import("hermes_reach.runtime") is False
+    assert (production_package / "runtime").is_dir()
+    assert forbidden_imports == []
 
 
 def test_installed_entry_point_loads_the_plugin_module() -> None:

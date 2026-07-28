@@ -137,12 +137,12 @@ def _degraded_availability(source: str, operation: str) -> AvailabilityRecord:
 def test_connector_binding_maps_verified_result_and_preserves_truncation() -> None:
     client = _FixtureConnectorClient([])
     registry = AdapterRegistry()
-    for binding in connector_bindings(client, _availability, (("web", "read.url"),)):
+    for binding in connector_bindings(client, _availability, (("rss", "read.feed"),)):
         registry.register(binding)
     call = validate_read(
         {
-            "source": "web",
-            "operation": "read.url",
+            "source": "rss",
+            "operation": "read.feed",
             "target": {"url": "https://example.com/connector-adapter"},
         }
     )
@@ -164,12 +164,12 @@ def test_connector_binding_maps_verified_result_and_preserves_truncation() -> No
 def test_connector_binding_owns_transient_retry() -> None:
     client = _OfflineConnectorClient()
     registry = AdapterRegistry()
-    for binding in connector_bindings(client, _availability, (("web", "read.url"),)):
+    for binding in connector_bindings(client, _availability, (("rss", "read.feed"),)):
         registry.register(binding)
     call = validate_read(
         {
-            "source": "web",
-            "operation": "read.url",
+            "source": "rss",
+            "operation": "read.feed",
             "target": {"url": "https://example.com/offline"},
         }
     )
@@ -188,10 +188,10 @@ def test_connector_factory_rejects_duplicate_unknown_and_planned_operations() ->
         connector_bindings(
             client,
             _availability,
-            (("web", "read.url"), ("web", "read.url")),
+            (("rss", "read.feed"), ("rss", "read.feed")),
         )
     with pytest.raises(ValueError, match="selection"):
-        connector_bindings(client, _availability, (("web", "read.unknown"),))
+        connector_bindings(client, _availability, (("rss", "read.unknown"),))
     assert (
         len(connector_bindings(client, _availability, (("reddit", "read.post"),))) == 1
     )
@@ -209,7 +209,7 @@ def test_multi_source_tool_trace_reaches_each_connector_binding(
     for binding in connector_bindings(
         client,
         _degraded_availability,
-        (("github", "search.repositories"), ("youtube", "search.videos")),
+        (("youtube", "search.videos"), ("bilibili", "search.videos")),
     ):
         registry.register(binding)
     monkeypatch.setattr(reach_tools, "_RUNTIME", RuntimeDispatcher(registry))
@@ -220,12 +220,12 @@ def test_multi_source_tool_trace_reaches_each_connector_binding(
                 {
                     "requests": [
                         {
-                            "source": "github",
-                            "operation": "search.repositories",
+                            "source": "youtube",
+                            "operation": "search.videos",
                             "query": "first",
                         },
                         {
-                            "source": "youtube",
+                            "source": "bilibili",
                             "operation": "search.videos",
                             "query": "second",
                         },
@@ -237,6 +237,10 @@ def test_multi_source_tool_trace_reaches_each_connector_binding(
 
     assert response["outcome"] == "ok"
     assert len(client.calls) == 2
+    assert [(call.source.name, call.operation.name) for call, _ in client.calls] == [
+        ("youtube", "search.videos"),
+        ("bilibili", "search.videos"),
+    ]
     assert {trace for _, trace in client.calls} == {response["trace_id"]}
 
 
@@ -245,8 +249,8 @@ def test_default_alpha1_registry_contains_no_connector_binding() -> None:
     calls = (
         validate_read(
             {
-                "source": "web",
-                "operation": "read.url",
+                "source": "rss",
+                "operation": "read.feed",
                 "target": {"url": "https://example.com"},
             }
         ),

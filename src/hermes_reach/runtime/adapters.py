@@ -216,6 +216,10 @@ class AdapterRegistry:
         )
         if operation is None:
             raise ValueError("Adapter bindings must reference a catalog operation.")
+        if operation.implementation_state != "implemented":
+            raise ValueError(
+                "Adapter bindings require an implemented catalog operation."
+            )
         if not scope_includes(operation.runtime.data_scope, binding.required_scope):
             raise ValueError("Adapter bindings cannot widen a catalog data scope.")
         key = (binding.source, binding.operation)

@@ -70,6 +70,12 @@ read.subtitles:
   extract_info(<canonical-watch-url>, download=True, ie_key="Youtube")
 ```
 
+Hermes owns the closed mapping from the public `limit` to `ytsearch<limit>` and
+from the optional public language to `subtitleslangs`. When no language is
+requested, Hermes supplies the fixed preference order `zh-Hans`, then `zh`,
+then `en`; this order is not an yt-dlp default or an Agent-Reach operation
+contract.
+
 The worker constructs `YoutubeDL(params)` directly. It never invokes yt-dlp's
 CLI parser or `main`, so host config files and caller-selected flags cannot
 enter the execution path.
@@ -93,9 +99,11 @@ exists.
 Subtitle work stays under the private root. The selected file must be a
 regular, single-link VTT beneath that root and is opened without following
 links, byte-bounded before UTF-8 decoding, projected to a bounded result, and
-removed. Manual captions take precedence over automatic captions for the same
-language. The parent removes all remaining private state after the worker is
-reaped.
+removed. Hermes chooses one language using the fixed request/default mapping,
+prefers manual over automatic captions for that selected language, verifies
+the video and file identity, and chooses the single file that may cross the
+closed result boundary. The parent removes all remaining private state after
+the worker is reaped.
 
 Stdin, stdout, JSON depth/items/nodes/scalars, projected fields, subtitle
 files, and final results are bounded. Stderr and backend logging are discarded.
@@ -107,11 +115,21 @@ enter provenance, receipts, audit, or stable errors.
 
 ## Semantic Delta
 
-There is no platform backend substitution. Hermes narrows authority, enforces
-isolation and bounds, verifies video identity, derives canonical watch URLs,
-and maps the backend result into the existing v1 normalized schema. Search
-pagination and extraction, metadata semantics, subtitle selection, subtitle
-download, and YouTube network behavior remain owned by yt-dlp.
+There is no platform backend substitution, but the wrapper has explicit
+product semantics. Hermes owns:
+
+- the closed public search-limit mapping to `ytsearch<limit>`;
+- the requested-language mapping and default `zh-Hans -> zh -> en` preference;
+- manual-before-automatic caption choice for the selected language;
+- video identity checks, canonical watch URL derivation, and subtitle file
+  identity/containment/selection;
+- projection into the v1 schema and every process, frame, file, item, and
+  character bound.
+
+yt-dlp owns native extraction ordering, YouTube metadata and caption
+discovery, extractor behavior, subtitle download, and YouTube network
+semantics. Hermes does not add a YouTube endpoint or parse a YouTube response
+schema; it selects and bounds one result from yt-dlp's discovered data.
 
 The wrapper deliberately does not approximate comment pages by refetching and
 slicing larger prefixes. That would create new pagination semantics and growing

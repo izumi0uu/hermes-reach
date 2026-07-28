@@ -51,6 +51,8 @@ parsing, and explicit provider-query retention policy.
 
 ## Rollback
 
-Restoring the pre-alpha generic injected-client API requires a coordinated
-rollback of this decision, the Exa catalog/registry changes, and their tests.
-There is no persisted data or credential migration.
+Keep both Exa operations planned and unbound if this review record is rolled
+back or replaced. Execution may be enabled only through a reviewed official
+callable or the exact Agent-Reach-selected mcporter route; the pre-alpha
+generic injected-client API must not be restored. There is no persisted data
+or credential migration.

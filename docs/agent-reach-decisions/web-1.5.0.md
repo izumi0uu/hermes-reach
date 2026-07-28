@@ -1,26 +1,27 @@
-# Web Agent-Reach 1.5.0 Safety Exception
+# Web Agent-Reach 1.5.0 Disabled Path Decision
 
-- Status: approved
-- Date: 2026-07-27
+- Status: disabled
+- Date: 2026-07-28
+- Historical exception review: 2026-07-27
 - Operation: `web:read.url`
-- Classification: `hermes_native_equivalent`
-- Current backend: `web-public-http-v1` (version `1`)
-- Current runtime: `WebAdapter(PublicHttpClient)`
+- Classification: `not_implemented`
+- Current backend: none
+- Current runtime: none
 - Upstream callable: `agent_reach.channels.web.WebChannel.read`
 - Agent-Reach pin: `1.5.0` at commit
   `1494c2ab239e7355a77e7cceaf3271453a1f34b5`
 
 ## Decision
 
-Retain `WebAdapter(PublicHttpClient)` as a safety exception. Do not call or
-compose the pinned `WebChannel.read` method into production execution,
-registration, or availability checks. Public request/result contracts, Web
-availability, and the `web-public-http-v1` provenance identity remain
-unchanged.
+Disable the former `WebAdapter(PublicHttpClient)` safety exception. Keep
+`web:read.url` in the stable Hermes catalog as planned/unavailable, with no
+production binding or local platform implementation. Do not compose the pinned
+`WebChannel.read` method because it still fails the reviewed safety and
+retention gates below.
 
-The project owner explicitly approved this exception in the 2026-07-27 task
-request: retain the Hermes-native Web path for this pin rather than weaken the
-existing runtime and security guarantees.
+The owner selected strict adapter purity on 2026-07-28. The earlier exception
+approval is preserved only as historical evidence; it no longer grants
+production authority to `web-public-http-v1`.
 
 ## Pinned Evidence
 
@@ -42,7 +43,7 @@ not probe Jina; it sets the active backend to `Jina Reader` and reports success.
 
 ## Semantic And Security Delta
 
-| Boundary | Current Hermes backend | Direct pinned callable |
+| Boundary | Former Hermes backend | Direct pinned callable |
 | --- | --- | --- |
 | Cancellation and deadline | Cancellable stream under a 15-second attempt and 30-second total budget | A thread wrapper cannot stop the blocking call; timed-out work can outlive the response and overlap a retry |
 | Raw size | 1 MiB streamed-byte cap, then a 250,000-character decode cap and 16,000-character result cap | Unbounded `resp.read()` materializes and decodes the whole response before shared truncation |
@@ -57,13 +58,15 @@ Hermes own an upstream response format, contrary to the reuse boundary.
 
 ## Consequences
 
-The exception preserves the current closed URL policy, direct-origin privacy,
-bounded memory/network work, cancellation, redaction, error mapping,
-metadata-only audit, and I/O-free registry construction. It also knowingly
-keeps this operation outside the preferred direct-upstream architecture.
+Web reading is no longer executable in this release. The operation remains
+discoverable and fails closed instead of using either an unsafe direct
+callable or a Hermes-owned replacement. This removes one platform exception
+without changing the public request/result schema, database, grants, or stored
+state.
 
-This decision adds no Jina parser, disposable process, fallback, endpoint,
-operation, database change, grant change, or response migration.
+The former implementation remains useful evidence for the controls an official
+callable must satisfy, but it is not a fallback and must not be silently
+recomposed.
 
 ## Review Milestone
 
@@ -80,6 +83,8 @@ a hosted-service retention contract compatible with the product claim.
 
 ## Rollback
 
-Revert this decision record and its reuse-matrix/test assertion. Because the
-exception introduces no runtime, catalog, database, grant, availability, or
-response change, rollback requires no data or operational migration.
+Operational rollback keeps `web:read.url` planned and unavailable. Execution
+may return only through a reviewed official Agent-Reach callable or exact
+Agent-Reach-selected backend with the required safety properties; the former
+Hermes adapter cannot be restored as an exception. No data migration is
+required.

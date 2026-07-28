@@ -4,22 +4,26 @@
 > Hermes Reach is pre-alpha. The runtime can deliver an authorized operation to
 > a Connector executor only through an explicitly registered exact binding.
 > `ConnectorService` authorizes and delivers that fixed operation; it does not
-> select a provider, credential, browser session, or local path. The default
-> runtime remains unbound. The only production composition path is the explicit
-> two-sided activation of Reddit `read.post` through one attested OpenCLI
-> executable. Treat the controls below as approval for that exact pre-alpha
-> slice only, not for arbitrary commands or production credentials.
+> select a provider, credential, browser session, or local path. Default
+> Connector execution composition remains unbound; this is distinct from the
+> default local registry, which has nine credential-free exact-backend bindings
+> for RSS, Bilibili, and YouTube. The only Connector production composition
+> path is the explicit two-sided activation of Reddit `read.post` through one
+> attested OpenCLI executable. Treat the controls below as approval for that
+> exact pre-alpha slice only, not for arbitrary commands or production
+> credentials.
 
 ## Supported topology
 
-The trusted-device Connector supports macOS and Linux. The remote VPS supports
-Linux. Windows is unsupported; the implementation must fail closed rather than
+The trusted-device Connector supports macOS and Linux. The remote virtual
+private server (VPS) supports Linux. Windows is unsupported; the implementation must fail closed rather than
 weaken file permissions, terminal unlock, process locking, or certificate
 checks.
 
 Start the Connector only on a trusted device and give it one explicit numeric
-loopback or private-network address. The listener accepts WSS only. It rejects
-wildcard, public, multicast, ambiguous link-local, and plaintext WebSocket
+loopback or private-network address. The listener accepts only WebSocket Secure
+(WSS) over Transport Layer Security (TLS). It rejects wildcard, public,
+multicast, ambiguous link-local, and plaintext WebSocket
 binds. In particular, never expose it through `0.0.0.0`, `::`, or a public
 address. Private reachability, including Tailscale or Headscale membership, does
 not grant authority by itself.
@@ -39,7 +43,8 @@ fetches the dedicated project in isolated memory before selecting one binding,
 so project-level least privilege is a required security boundary. Do not reuse
 a broad personal or application project.
 
-Provide the BWS bootstrap token through the operator-controlled profile
+Provide the Bitwarden Secrets Manager (BWS) bootstrap token through the
+operator-controlled profile
 environment. Do not put it in Reach configuration or copy it to the VPS. The
 runtime does not install or update `bws`, use stale values, or use plaintext or
 encrypted Bitwarden caches.
@@ -72,6 +77,13 @@ explicit composition decision is therefore also the rollback point: removing
 the binding restores signed `backend_unbound` behavior without changing browser
 or Bitwarden state.
 
+This unbound Connector default does not make the complete local registry empty.
+The default local registry contains two RSS/feedparser, four Bilibili/bili-cli,
+and three YouTube/yt-dlp bindings. `youtube:read.comments` is implemented but
+unbound and reports `setup_required`. The Connector contributes only the tenth
+concrete executor, `reddit:read.post`, after both explicit activation gates
+pass; it does not replace or proxy those nine local operations.
+
 ### Exact activation sequence
 
 On the trusted device, initialize the owner-only Connector state once:
@@ -93,14 +105,15 @@ uv run hermes reach connector serve \
   --reddit-opencli /absolute/path/to/opencli
 ```
 
-Before state unlock or listener construction, the original TTY displays
+Before state unlock or listener construction, the original terminal (TTY) displays
 `reddit:read.post:public`, the resolved path, and its SHA-256. Type exactly
 `enable` to continue. The executable must resolve to a bounded regular file,
 be owned by the current user or root, be executable, have one hard link, and
 not be group- or world-writable. Its metadata and digest are rechecked
 immediately before every spawn. The current implementation does not use
 `fexecve`; replacement in the small interval between recheck and path-based
-spawn remains a trusted-device TOCTOU limitation. For script executables, the
+spawn remains a trusted-device time-of-check-to-time-of-use (TOCTOU)
+limitation. For script executables, the
 shebang interpreter and the allowlisted `PATH` are also outside the attested
 file digest and must be controlled by the trusted-device operator.
 
@@ -124,7 +137,8 @@ uv run hermes reach connector pair \
 ```
 
 While the VPS `pair` command waits, enter `pending` at the trusted device's
-`Connector>` prompt. Verify the SAS, identity, scope, expiry, and usage limit
+`Connector>` prompt. Verify the short authentication string (SAS), identity,
+scope, expiry, and usage limit
 shown on both original terminals, then enter `approve <pairing-id>` on the
 trusted terminal and type exactly `approve` at its confirmation prompt. After
 the VPS reports `Pairing complete.`, leave the Connector unlocked to execute
@@ -139,10 +153,12 @@ HERMES_REACH_VPS_STATE_DIRECTORY=/absolute/vps-state hermes ...
 owner-only local state. It is not a credential, is never sent in an operation,
 and cannot add a scope absent from the signed grant. If it is absent, plugin
 registration performs no Connector file or network work. If it is invalid,
-only `reddit:read.post` is unavailable; local Web, RSS, V2EX, and GitHub
-adapters continue to load. Pairing or local state changes require restarting
-Hermes because the runtime is composed once at plugin registration. Connector
-startup never persists the OpenCLI path or digest.
+only `reddit:read.post` is unavailable; the nine local RSS, Bilibili, and
+YouTube exact-backend bindings continue to load. Web, GitHub, and V2EX remain
+planned/unavailable independently of Connector state. Pairing or local state
+changes require restarting Hermes because the runtime is composed once at
+plugin registration. Connector startup never persists the OpenCLI path or
+digest.
 
 ## Foreground lifecycle and availability
 
@@ -152,8 +168,9 @@ short-lived TLS leaf key, and start WSS. `lock` and `exit` close connections and
 discard the in-memory key lease. Device sleep interrupts reachability as well.
 
 Sleep, lock, or exit therefore makes Connector-backed operations degraded. It
-does not disable credential-free local Web, RSS, V2EX, or GitHub operations.
-Status reads a bounded local snapshot and does not contact the Connector.
+does not disable the nine credential-free local RSS, Bilibili, or YouTube
+bindings. Status reads a bounded local snapshot and does not contact the
+Connector.
 
 A verified paired profile with a valid exact grant but no recent authenticated
 snapshot normally reports `degraded`; this state is dispatchable so the first

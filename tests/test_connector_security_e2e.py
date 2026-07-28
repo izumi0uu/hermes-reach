@@ -558,10 +558,10 @@ def test_secret_provider_and_local_path_fields_are_rejected() -> None:
 
 def test_local_public_registry_remains_available() -> None:
     local_registry = build_alpha1_registry()
-    local_web = local_registry.availability("web", "read.url")
+    local_rss = local_registry.availability("rss", "read.feed")
 
-    assert local_web.state == "available"
-    assert local_web.backend_id == "web-public-http-v1"
+    assert local_rss.state == "available"
+    assert local_rss.backend_id == "feedparser"
 
 
 def test_unknown_protocol_schema_key_and_provider_versions_fail_closed(
@@ -615,7 +615,7 @@ def test_audit_ledger_append_has_no_implicit_export(
             device_id="local",
             source="web",
             operation="read.url",
-            backend_id="web-public-http-v1",
+            backend_id="fixture-backend-v1",
             backend_version="1",
             catalog_version="v1",
             policy_revision="1",

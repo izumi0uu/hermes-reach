@@ -1664,8 +1664,8 @@ def test_signed_request_verification_binds_key_audience_operation_time_and_diges
         ("bitwarden-project", "1"),
         ("provider-account", "1"),
         ("secret-selector", "1"),
-        ("web-public-http-v1", "TOKEN_CANARY"),
-        ("web-public-http-v1/path", "1"),
+        ("fixture-backend-v1", "TOKEN_CANARY"),
+        ("fixture-backend-v1/path", "1"),
         ("https://backend.invalid", "1"),
     ],
 )
