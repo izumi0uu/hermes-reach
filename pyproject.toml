@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=77.0,<82"]
+requires = ["setuptools==81.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -32,6 +32,10 @@ classifiers = [
   "Programming Language :: Python :: 3.13",
 ]
 
+[project.urls]
+Repository = "https://github.com/izumi0uu/hermes-reach"
+Issues = "https://github.com/izumi0uu/hermes-reach/issues"
+
 [project.entry-points."hermes_agent.plugins"]
 reach = "hermes_reach"
 
@@ -39,6 +43,7 @@ reach = "hermes_reach"
 dev = [
   "build==1.2.2.post1",
   "mypy==1.15.0",
+  "packaging==26.0",
   "pytest==8.3.5",
   "ruff==0.11.2",
   "types-PyYAML>=6.0.12.20250516,<7",

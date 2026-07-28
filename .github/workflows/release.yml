@@ -1,0 +1,98 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/quality.yml
+    with:
+      release: true
+
+  attest:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      attestations: write
+      contents: read
+      id-token: write
+    steps:
+      - name: Download exact release artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ needs.build.outputs.artifact_name }}
+          path: dist
+          digest-mismatch: error
+      - name: Verify artifact handoff
+        working-directory: dist
+        run: sha256sum --check SHA256SUMS
+      - name: Attest wheel and source distribution
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        with:
+          subject-checksums: dist/SHA256SUMS
+
+  release:
+    needs: [build, attest]
+    environment: github-release
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download attested release artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ needs.build.outputs.artifact_name }}
+          path: dist
+          digest-mismatch: error
+      - name: Verify artifact handoff
+        working-directory: dist
+        run: sha256sum --check SHA256SUMS
+      - name: Verify remote tag and main ancestry
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.build.outputs.tag }}
+        run: |
+          set -euo pipefail
+          remote_tag="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}" --jq '[.object.type, .object.sha] | @tsv')"
+          tag_type="${remote_tag%%$'\t'*}"
+          tag_sha="${remote_tag#*$'\t'}"
+          test "${tag_type}" = "commit"
+          test "${tag_sha}" = "${GITHUB_SHA}"
+
+          remote_main="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '[.object.type, .object.sha] | @tsv')"
+          main_type="${remote_main%%$'\t'*}"
+          main_sha="${remote_main#*$'\t'}"
+          test "${main_type}" = "commit"
+          comparison_status="$(gh api "repos/${GITHUB_REPOSITORY}/compare/${GITHUB_SHA}...${main_sha}" --jq '.status')"
+          case "${comparison_status}" in
+            ahead|identical) ;;
+            *) exit 1 ;;
+          esac
+      - name: Create pre-release from exact artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.build.outputs.tag }}
+          RELEASE_VERSION: ${{ needs.build.outputs.version }}
+          WHEEL_NAME: ${{ needs.build.outputs.wheel_name }}
+          SDIST_NAME: ${{ needs.build.outputs.sdist_name }}
+          CHECKSUM_NAME: ${{ needs.build.outputs.checksum_name }}
+        run: >-
+          gh release create "${RELEASE_TAG}"
+          "dist/${WHEEL_NAME}"
+          "dist/${SDIST_NAME}"
+          "dist/${CHECKSUM_NAME}"
+          --repo "${GITHUB_REPOSITORY}"
+          --verify-tag
+          --prerelease
+          --latest=false
+          --generate-notes
+          --title "Hermes Reach ${RELEASE_VERSION}"

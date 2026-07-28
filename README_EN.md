@@ -88,7 +88,89 @@ Credential-free access is not unlimited. Public sources remain subject to platfo
 
 ## Get started
 
-The project does not have a stable package release yet. The current workflow targets a source checkout and requires Python 3.11 through 3.13, `uv`, and Hermes Agent 0.19.x.
+The project does not have a stable release. The approved first public channel
+is GitHub Pre-releases and requires Python 3.11 through 3.13, `uv`, GitHub CLI,
+and Hermes Agent 0.19.x.
+
+### Install from a GitHub pre-release
+
+The workflow uploads exactly three assets: the wheel, sdist, and `SHA256SUMS`.
+GitHub separately renders generated `Source code (zip)` and
+`Source code (tar.gz)` tag snapshots. They are not workflow-uploaded assets and
+are not covered by `SHA256SUMS` or this workflow's attestations. After
+`v0.1.0a0` appears in GitHub Releases, download the three workflow assets from
+any empty directory:
+
+```bash
+RELEASE_TAG=v0.1.0a0
+RELEASE_DIR="hermes-reach-${RELEASE_TAG}"
+gh release download "$RELEASE_TAG" \
+  --repo izumi0uu/hermes-reach \
+  --dir "$RELEASE_DIR"
+
+gh attestation verify \
+  "$RELEASE_DIR/hermes_reach-0.1.0a0-py3-none-any.whl" \
+  --repo izumi0uu/hermes-reach
+```
+
+Then verify the transfer digests for both distributions. On macOS:
+
+```bash
+cd "$RELEASE_DIR"
+shasum -a 256 --check SHA256SUMS
+cd ..
+```
+
+On GNU/Linux, replace the second line with
+`sha256sum --check SHA256SUMS`. On Windows, compare
+`Get-FileHash -Algorithm SHA256` results with the manifest. GitHub attestation
+verifies that this repository's Actions workflow produced the artifact;
+SHA-256 only detects changed bytes and does not authenticate the publisher by
+itself.
+
+Install the wheel into the same Python environment that actually runs Hermes.
+The paths below are placeholders; do not substitute whichever Python happens
+to be active in the current shell:
+
+```bash
+HERMES_PYTHON=/absolute/path/to/hermes-environment/bin/python
+HERMES_BIN=/absolute/path/to/hermes-environment/bin/hermes
+
+uv pip install \
+  --python "$HERMES_PYTHON" \
+  "$RELEASE_DIR/hermes_reach-0.1.0a0-py3-none-any.whl"
+uv pip check --python "$HERMES_PYTHON"
+
+"$HERMES_BIN" plugins enable reach --no-allow-tool-override
+```
+
+Windows environments normally use `Scripts\python.exe` and
+`Scripts\hermes.exe` from the same environment. Installing the wheel does not
+enable it, and the explicit command above does not grant tool override
+authority. Start a new Hermes session after enabling, then inspect local
+capabilities:
+
+```bash
+"$HERMES_BIN" reach status --json
+"$HERMES_BIN" reach sources --json
+"$HERMES_BIN" reach doctor --json
+```
+
+This pre-release wheel is not an offline dependency bundle. Installation still
+needs GitHub access for official Agent-Reach at its exact commit and resolves
+the other declared dependencies without reading this repository's `uv.lock`.
+
+To roll back a wheel installation, disable it first, start a new session
+without Reach, then uninstall it through the package manager for that same
+Python environment:
+
+```bash
+"$HERMES_BIN" plugins disable reach
+uv pip uninstall --python "$HERMES_PYTHON" hermes-reach
+uv pip check --python "$HERMES_PYTHON"
+```
+
+### Develop from a source checkout
 
 Install dependencies and enable the plugin from the repository root:
 
@@ -97,7 +179,7 @@ uv sync --all-groups
 uv run hermes plugins enable reach --no-allow-tool-override
 ```
 
-Hermes disables third-party plugins by default. Restart Hermes after enabling the plugin, then inspect local capabilities:
+Hermes disables third-party plugins by default. Start a new Hermes session after enabling the plugin, then inspect local capabilities:
 
 ```bash
 uv run hermes reach status --json
@@ -105,28 +187,20 @@ uv run hermes reach sources --json
 uv run hermes reach doctor --json
 ```
 
-To deactivate the plugin, update Hermes' configuration first and then start a
+Source-environment rollback also starts by disabling the plugin and starting a
 new session:
 
 ```bash
 uv run hermes plugins disable reach
 ```
 
-Disabling does not remove the installed package. For the current source
-checkout flow, the project environment is normally `.venv`; uninstall it with:
+Then uninstall it from the default project environment, `.venv`:
 
 ```bash
 uv pip uninstall --python .venv/bin/python hermes-reach
 ```
 
-On Windows, replace the interpreter path with
-`.venv\Scripts\python.exe`. If the wheel is installed in another environment,
-name the interpreter that actually runs Hermes instead of copying the project
-`.venv` path:
-
-```bash
-uv pip uninstall --python /absolute/path/to/hermes-python hermes-reach
-```
+On Windows, replace the interpreter path with `.venv\Scripts\python.exe`.
 
 Hermes' own `plugins remove`, `plugins rm`, and
 `plugins uninstall` commands remove directory plugins under
@@ -263,8 +337,9 @@ The roadmap describes development order, not release dates. Incomplete capabilit
 | Complete | Explicit two-sided production composition | Attest and confirm OpenCLI on the trusted device; build the sole Reddit adapter from owner-only paired VPS state |
 | Complete | Exact local backends | Two RSS, four Bilibili, and three YouTube default-local wrappers; YouTube comments remains unbound |
 | Complete | Freeze strict plugin boundary | Disable 13 Web/GitHub/V2EX platform exceptions while retaining catalog discovery and historical evidence |
-| Now | Review official execution evidence | Accept only official callables or exact Agent-Reach backends for planned operations; build no local or fork runtime |
-| Then | Expand proven thin wrappers | Activate operations individually after pins, closed input, isolation, bounds, and rollback pass review |
+| Complete | Verify the real plugin lifecycle | Prove default-disabled install, enable, disable, and package-manager uninstall in a clean Hermes 0.19 environment |
+| Now | Establish a public pre-release channel | Lifecycle-test one exact wheel, checksum it, attest it with GitHub provenance, and publish with least privilege |
+| Then | Review official execution evidence | Accept only official callables or exact Agent-Reach backends for planned operations; build no local or fork runtime |
 | Later | Support authenticated platforms and production operations | Twitter/X and similar sources, one-step grants, audit export, alerts, upgrades, and rollback |
 
 ## Development
@@ -280,5 +355,8 @@ uv run pytest
 uv lock --check
 uv build
 ```
+
+Maintainer release steps and repository-protection prerequisites are in the
+[release guide](docs/releasing.md).
 
 Hermes Reach is currently version `0.1.0a0` and uses the [MIT License](LICENSE).

@@ -88,7 +88,80 @@ VPS 会看到它获准处理的查询和结果。如果 VPS 在授权有效期�
 
 ## 开始使用
 
-项目尚未发布稳定包。当前流程适用于源码检出，需要 Python 3.11 至 3.13、`uv` 和 Hermes Agent 0.19.x。
+项目尚未发布稳定版。批准的首个公开通道是 GitHub Pre-release，需要
+Python 3.11 至 3.13、`uv`、GitHub CLI 和 Hermes Agent 0.19.x。
+
+### 从 GitHub Pre-release 安装
+
+发布工作流只上传三个资产：wheel、sdist 和 `SHA256SUMS`。GitHub 页面还会单独
+显示自动生成的 `Source code (zip)` 和 `Source code (tar.gz)` 标签快照；它们
+不是工作流上传的资产，也不在 `SHA256SUMS` 或本工作流 attestation 的覆盖范围
+内。`v0.1.0a0` 出现在 GitHub Releases 后，可以在任意空目录下载三个工作流资产：
+
+```bash
+RELEASE_TAG=v0.1.0a0
+RELEASE_DIR="hermes-reach-${RELEASE_TAG}"
+gh release download "$RELEASE_TAG" \
+  --repo izumi0uu/hermes-reach \
+  --dir "$RELEASE_DIR"
+
+gh attestation verify \
+  "$RELEASE_DIR/hermes_reach-0.1.0a0-py3-none-any.whl" \
+  --repo izumi0uu/hermes-reach
+```
+
+然后检查两个包文件的传输摘要。macOS 使用：
+
+```bash
+cd "$RELEASE_DIR"
+shasum -a 256 --check SHA256SUMS
+cd ..
+```
+
+GNU/Linux 将第二行换成 `sha256sum --check SHA256SUMS`。Windows 可以用
+`Get-FileHash -Algorithm SHA256` 与清单逐项比较。GitHub attestation 验证
+制品由这个仓库的 Actions 工作流产生；SHA-256 只检测字节是否变化，不能单独
+证明发布者身份。
+
+必须把 wheel 安装到实际运行 Hermes 的同一个 Python 环境。以下路径是占位符，
+不要替换成当前 shell 中碰巧存在的 Python：
+
+```bash
+HERMES_PYTHON=/absolute/path/to/hermes-environment/bin/python
+HERMES_BIN=/absolute/path/to/hermes-environment/bin/hermes
+
+uv pip install \
+  --python "$HERMES_PYTHON" \
+  "$RELEASE_DIR/hermes_reach-0.1.0a0-py3-none-any.whl"
+uv pip check --python "$HERMES_PYTHON"
+
+"$HERMES_BIN" plugins enable reach --no-allow-tool-override
+```
+
+Windows 环境通常使用同一环境下的 `Scripts\python.exe` 和
+`Scripts\hermes.exe`。安装 wheel 不会启用插件；上面的显式命令也不会授予
+工具覆盖权。启用后请启动新的 Hermes 会话，再检查本地能力：
+
+```bash
+"$HERMES_BIN" reach status --json
+"$HERMES_BIN" reach sources --json
+"$HERMES_BIN" reach doctor --json
+```
+
+这个 Pre-release wheel 不是离线依赖包。安装时仍需访问 GitHub 取得固定 commit
+的官方 Agent-Reach，并按 wheel 声明解析其余依赖；它不会读取本仓库的
+`uv.lock`。
+
+要回滚 wheel 安装，先停用并启动一个不含 Reach 的新会话，再由同一个 Python
+环境的包管理器卸载：
+
+```bash
+"$HERMES_BIN" plugins disable reach
+uv pip uninstall --python "$HERMES_PYTHON" hermes-reach
+uv pip check --python "$HERMES_PYTHON"
+```
+
+### 从源码检出开发
 
 在项目根目录安装依赖并启用插件：
 
@@ -97,7 +170,7 @@ uv sync --all-groups
 uv run hermes plugins enable reach --no-allow-tool-override
 ```
 
-Hermes 的第三方插件默认关闭。启用后请重新启动 Hermes，再检查本地能力：
+Hermes 的第三方插件默认关闭。启用后请启动新的 Hermes 会话，再检查本地能力：
 
 ```bash
 uv run hermes reach status --json
@@ -105,25 +178,19 @@ uv run hermes reach sources --json
 uv run hermes reach doctor --json
 ```
 
-要停用插件，请先更新 Hermes 配置，再启动一个新会话：
+源码环境的回滚同样必须先停用并启动一个新会话：
 
 ```bash
 uv run hermes plugins disable reach
 ```
 
-停用不会删除已安装的包。对于当前源码检出流程，项目环境默认位于 `.venv`，
-可以这样卸载：
+然后从默认项目环境 `.venv` 卸载：
 
 ```bash
 uv pip uninstall --python .venv/bin/python hermes-reach
 ```
 
-Windows 下将解释器路径替换为 `.venv\Scripts\python.exe`。如果 wheel 安装在
-其他环境中，必须指定实际运行 Hermes 的解释器，不能照搬项目 `.venv`：
-
-```bash
-uv pip uninstall --python /absolute/path/to/hermes-python hermes-reach
-```
+Windows 下将解释器路径替换为 `.venv\Scripts\python.exe`。
 
 Hermes 自带的
 `plugins remove`、`plugins rm` 和 `plugins uninstall` 只删除
@@ -253,8 +320,9 @@ Roadmap 表示开发顺序，不承诺发布日期。未完成的能力会保持
 | 已完成 | 双端显式生产组成 | 可信设备证明 OpenCLI 并确认启用；VPS 从 owner-only 配对状态组成唯一 Reddit adapter |
 | 已完成 | 精确本地 backend | RSS 2、Bilibili 4、YouTube 3 条默认本地薄包装；YouTube comments 保持未绑定 |
 | 已完成 | 冻结严格插件边界 | 关闭 Web/GitHub/V2EX 共 13 条平台例外，保留目录可发现性和历史审核证据 |
-| 现在 | 审核官方执行证据 | 对规划 operation 只接受官方 callable 或 Agent-Reach 精确 backend，不建立本地或 fork runtime |
-| 随后 | 扩展经过证明的薄包装 | 在固定依赖、封闭输入、隔离、限制和回滚均通过审核后逐项启用 |
+| 已完成 | 验证真实插件生命周期 | 在全新 Hermes 0.19 环境验证默认关闭、启用、停用和包管理器卸载 |
+| 现在 | 建立公开 Pre-release 通道 | 同一 wheel 的生命周期验收、摘要、GitHub provenance 与最小权限发布 |
+| 随后 | 审核官方执行证据 | 对规划 operation 只接受官方 callable 或 Agent-Reach 精确 backend，不建立本地或 fork runtime |
 | 后续 | 支持认证平台和生产运维 | Twitter/X 等平台、一键授权、审计导出、告警、升级与回滚 |
 
 ## 开发
@@ -270,5 +338,7 @@ uv run pytest
 uv lock --check
 uv build
 ```
+
+维护者发布步骤和仓库保护前提见 [发布指南](docs/releasing.md)。
 
 Hermes Reach 当前版本为 `0.1.0a0`，使用 [MIT License](LICENSE)。
