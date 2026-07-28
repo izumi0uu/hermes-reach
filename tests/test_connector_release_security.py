@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import json
 import os
 import re
 import shutil
@@ -23,6 +24,7 @@ _CONNECTOR_MODULES = frozenset(
         "cli.py",
         "client.py",
         "errors.py",
+        "execution.py",
         "identity.py",
         "limits.py",
         "media_policy.py",
@@ -143,6 +145,181 @@ def built_archives(
     assert len(wheels) == 1
     assert len(source_distributions) == 1
     return wheels[0], source_distributions[0]
+
+
+def _run_acceptance_command(
+    command: Collection[str],
+    *,
+    cwd: Path,
+    environment: dict[str, str],
+) -> subprocess.CompletedProcess[str]:
+    completed = subprocess.run(
+        tuple(command),
+        cwd=cwd,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, (
+        f"Acceptance command failed: {tuple(command)!r}\n"
+        f"stdout:\n{completed.stdout}\n"
+        f"stderr:\n{completed.stderr}"
+    )
+    return completed
+
+
+def _virtual_environment_python(environment: Path) -> Path:
+    if os.name == "nt":
+        return environment / "Scripts" / "python.exe"
+    return environment / "bin" / "python"
+
+
+def test_built_wheel_loads_through_the_real_hermes_plugin_host(
+    built_archives: tuple[Path, Path],
+    tmp_path: Path,
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    wheel, _ = built_archives
+    virtual_environment = tmp_path / "venv"
+    isolated_python = _virtual_environment_python(virtual_environment)
+    uv = shutil.which("uv")
+    assert uv is not None, "Plugin acceptance requires the project's uv tool."
+
+    bootstrap_environment = os.environ.copy()
+    bootstrap_environment.update(
+        {
+            "PIP_NO_INDEX": "1",
+            "UV_OFFLINE": "1",
+            "UV_PYTHON_DOWNLOADS": "never",
+            "VIRTUAL_ENV": str(virtual_environment),
+        }
+    )
+    _run_acceptance_command(
+        (
+            sys.executable,
+            "-m",
+            "venv",
+            "--without-pip",
+            str(virtual_environment),
+        ),
+        cwd=tmp_path,
+        environment=bootstrap_environment,
+    )
+    assert isolated_python.is_file()
+
+    _run_acceptance_command(
+        (
+            uv,
+            "sync",
+            "--active",
+            "--locked",
+            "--offline",
+            "--no-python-downloads",
+            "--no-install-project",
+            "--no-dev",
+            "--no-progress",
+        ),
+        cwd=root,
+        environment=bootstrap_environment,
+    )
+    _run_acceptance_command(
+        (
+            uv,
+            "pip",
+            "install",
+            "--offline",
+            "--no-python-downloads",
+            "--no-deps",
+            "--python",
+            str(isolated_python),
+            str(wheel),
+        ),
+        cwd=tmp_path,
+        environment=bootstrap_environment,
+    )
+    _run_acceptance_command(
+        (
+            uv,
+            "pip",
+            "check",
+            "--offline",
+            "--no-python-downloads",
+            "--python",
+            str(isolated_python),
+        ),
+        cwd=tmp_path,
+        environment=bootstrap_environment,
+    )
+
+    acceptance_root = tmp_path / "probe-state"
+    hermes_home = acceptance_root / "hermes-home"
+    bundled_plugins = acceptance_root / "bundled-plugins"
+    temporary_directory = acceptance_root / "tmp"
+    xdg_config = acceptance_root / "xdg-config"
+    xdg_cache = acceptance_root / "xdg-cache"
+    xdg_data = acceptance_root / "xdg-data"
+    for directory in (
+        hermes_home,
+        hermes_home / "plugins",
+        bundled_plugins,
+        temporary_directory,
+        xdg_config,
+        xdg_cache,
+        xdg_data,
+    ):
+        directory.mkdir(parents=True, exist_ok=True)
+    (hermes_home / "config.yaml").write_text(
+        "plugins:\n  enabled:\n    - reach\n",
+        encoding="utf-8",
+    )
+
+    probe_environment = {
+        "HOME": str(hermes_home),
+        "HERMES_BUNDLED_PLUGINS": str(bundled_plugins),
+        "HERMES_HOME": str(hermes_home),
+        "LANG": "C",
+        "LC_ALL": "C",
+        "PATH": str(isolated_python.parent),
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONHASHSEED": "0",
+        "PYTHONUTF8": "1",
+        "TMPDIR": str(temporary_directory),
+        "USERPROFILE": str(hermes_home),
+        "XDG_CACHE_HOME": str(xdg_cache),
+        "XDG_CONFIG_HOME": str(xdg_config),
+        "XDG_DATA_HOME": str(xdg_data),
+    }
+    probe = root / "tests" / "fixtures" / "hermes_plugin_probe.py"
+    completed = _run_acceptance_command(
+        (
+            str(isolated_python),
+            "-I",
+            str(probe),
+            str(acceptance_root),
+            str(root / "src"),
+        ),
+        cwd=acceptance_root,
+        environment=probe_environment,
+    )
+    output_lines = [line for line in completed.stdout.splitlines() if line]
+    assert len(output_lines) == 1, completed.stdout
+    summary = json.loads(output_lines[0])
+    assert summary == {
+        "frozen_operations": 13,
+        "hermes_agent_version": "0.19.0",
+        "hermes_reach_version": "0.1.0a0",
+        "plugin_source": "entrypoint",
+        "registration_side_effects": [],
+        "rss_backend": "feedparser@6.0.12",
+        "tools": [
+            "reach_browse",
+            "reach_read",
+            "reach_search",
+            "reach_status",
+            "reach_transcribe",
+        ],
+    }
 
 
 def test_built_distributions_include_every_connector_module(
