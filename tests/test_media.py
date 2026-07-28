@@ -27,9 +27,7 @@ def _youtube_attestation() -> MediaBackendAttestation:
     return MediaBackendAttestation(
         provider_id="yt-dlp",
         provider_version="2026.07.24",
-        operations=frozenset(
-            {"search.videos", "read.video", "read.subtitles", "read.comments"}
-        ),
+        operations=frozenset({"search.videos", "read.video", "read.subtitles"}),
         logs_queries=False,
         persists_content=False,
         hidden_model_processing=False,
@@ -94,12 +92,6 @@ class FixtureYouTubeClient:
             )
         )
 
-    async def read_comments(
-        self, video_url: str, limit: int, page: int
-    ) -> AdapterResult:
-        self.calls.append(("comments", video_url, limit, page))
-        return AdapterResult((RawItem("comment", kind="entry"),))
-
 
 class FixtureBilibiliClient:
     def __init__(self) -> None:
@@ -129,12 +121,11 @@ def _unexpected_side_effect(*args: object, **kwargs: object) -> None:
     )
 
 
-def test_media_default_availability_activates_only_public_bilibili_rows() -> None:
+def test_media_default_availability_activates_reviewed_public_media_rows() -> None:
     runtime = build_alpha1_runtime()
 
     assert (
-        runtime.operation_availability("youtube", "search.videos").state
-        == "setup_required"
+        runtime.operation_availability("youtube", "search.videos").state == "available"
     )
     assert (
         runtime.operation_availability("youtube", "read.comments").state
@@ -169,8 +160,9 @@ def test_default_media_registry_does_not_probe_and_setup_groups_make_zero_attemp
             reach_read(
                 {
                     "source": "youtube",
-                    "operation": "read.video",
+                    "operation": "read.comments",
                     "target": {"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"},
+                    "options": {"limit": 2, "page": 1},
                 }
             )
         )
@@ -232,16 +224,17 @@ def test_eligible_media_backends_receive_only_their_typed_validated_methods() ->
         for call in (youtube_search, subtitles, comments, rank)
     ]
 
-    assert all(result is not None for result in results)
+    assert results[0] is not None
+    assert results[1] is not None
+    assert results[2] is None
+    assert results[3] is not None
     assert youtube_client.calls == [
         ("search", "private search", 2),
         ("subtitles", "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "en"),
-        ("comments", "https://www.youtube.com/watch?v=dQw4w9WgXcQ", 2, 3),
     ]
     assert bilibili_client.calls == [("rank", 4)]
-    assert results[2] is not None
-    assert results[2].items[0].media == MediaMetadata(coverage="partial")
-    assert results[2].selected_backend_id == "youtube-audited-backend"
+    assert results[0] is not None
+    assert results[0].selected_backend_id == "yt-dlp"
 
 
 def test_failed_or_cross_source_attestation_never_binds_or_attempts() -> None:

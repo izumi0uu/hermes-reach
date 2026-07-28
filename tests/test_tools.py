@@ -188,7 +188,7 @@ def test_status_is_local_and_lists_all_sources() -> None:
     assert availability["v2ex"] == "available"
     assert availability["exa"] == "setup_required"
     assert availability["github"] == "available"
-    assert availability["youtube"] == "setup_required"
+    assert availability["youtube"] == "available"
     assert availability["bilibili"] == "available"
 
 

@@ -59,7 +59,7 @@ Writing and account mutation commands documented by Agent-Reach are excluded.
 | --- | --- | --- | --- |
 | GitHub | 8 Hermes-native equivalent | `gh` CLI | P0 public-authority exception approved; anonymous REST retained |
 | Twitter/X | 6 not implemented | `twitter-cli`, OpenCLI, `bird` | Frozen before implementation |
-| YouTube | 4 exact backend thin contracts, 1 not implemented | `yt-dlp`; transcription pipeline | Contracts remain unbound until a concrete backend passes review |
+| YouTube | 4 exact backend thin contracts, 1 not implemented | `yt-dlp`; transcription pipeline | Search, metadata, and subtitles use isolated pinned yt-dlp; comments stay unbound because yt-dlp has no compatible page selector |
 | Reddit | 1 exact backend thin wrapper, 6 not implemented | OpenCLI, then `rdt-cli` | Fixed OpenCLI `read.post` is the reference pattern; other operations frozen |
 | Facebook | 4 not implemented | OpenCLI | Frozen before implementation |
 | Instagram | 4 not implemented | OpenCLI | Frozen before implementation |
@@ -94,12 +94,13 @@ The exact implemented-operation classifications are frozen as follows:
 | Reach reimplementation | V2EX | `browse.hot`, `browse.node_topics`, `read.topic`, `read.user` |
 | Not implemented | Exa | `search.web`, `search.code` |
 
-Twenty operations now have a concrete retrieval implementation. Thirteen
+Twenty-three operations now have a concrete retrieval implementation. Thirteen
 default-bound Web/V2EX/GitHub paths remain Reach-owned, six default-bound
-RSS/Bilibili paths invoke exact Agent-Reach-selected backends, and Reddit uses
-a fixed upstream-selected OpenCLI wrapper that remains Connector-bound. The
-YouTube rows are typed, audited contracts without a production backend. Exa is
-catalog-planned with no production backend interface.
+RSS/Bilibili paths and three default-bound YouTube paths invoke exact
+Agent-Reach-selected backends, and Reddit uses a fixed upstream-selected
+OpenCLI wrapper that remains Connector-bound. YouTube comments stay
+`setup_required` without a binding; Exa is catalog-planned with no production
+backend interface.
 
 ## P0 Review Resolution
 
@@ -160,15 +161,36 @@ next-pin gate are recorded in
 [`bilibili-cli-0.6.2.md`](agent-reach-decisions/bilibili-cli-0.6.2.md) and the
 four Bilibili rows of the machine-readable review set.
 
+## P2 YouTube Review Resolution
+
+YouTube `search.videos`, `read.video`, and `read.subtitles` now execute through
+directly pinned `yt-dlp==2026.7.4`, `yt-dlp-ejs==0.8.0`, and `deno==2.8.3`.
+Hermes calls `yt_dlp.YoutubeDL` inside a fixed isolated worker. Query, URL, and
+language travel only through bounded framed stdin; the worker receives private
+HOME/XDG/DENO/TMP state, no PATH, empty proxy state, disabled plugins, no
+Cookie/netrc/browser imports, packaged EJS, the exact adjacent Deno executable,
+and no remote components or backend fallback.
+
+`read.comments` remains an implemented catalog contract but is explicitly
+`setup_required` with no binding. yt-dlp exposes a bounded prefix through
+`max_comments`, not the stable `page` selector required by the public v1
+contract. `transcribe.video` remains planned and belongs to a future
+Connector/model grant rather than the yt-dlp wrapper.
+
+Full invocation evidence, portability limits, rollback, and the next-pin gate
+are recorded in
+[`youtube-yt-dlp-2026.7.4.md`](agent-reach-decisions/youtube-yt-dlp-2026.7.4.md)
+and in the three activated YouTube rows of the machine-readable review set.
+
 ## Drift Assessment
 
 Relative to the intended `Hermes -> Agent-Reach -> backend` product shape, the
-current overall drift is **medium-low, approximately 4.5/10**. This is a
+current overall drift is **medium-low, approximately 4/10**. This is a
 decision aid, not a code-volume formula:
 
 | Axis | Drift | Evidence |
 | --- | --- | --- |
-| Platform execution ownership | Medium | No operation calls a structured Agent-Reach runtime, but 7 of 20 concrete paths now use exact selected backends; 13 remain Reach-owned |
+| Platform execution ownership | Medium-low | No operation calls a structured Agent-Reach runtime, but 10 of 23 concrete paths use exact selected backends; 13 remain Reach-owned |
 | Catalog/backend metadata | Low | All 15 channels are projected and compatibility-checked from the pinned upstream registry |
 | Platform logic duplication | Local | 4 of 24 implemented rows, all approved V2EX exceptions, repeat platform logic |
 | Security and control plane | Minimal | Connector, grants, secret isolation, bounds, receipts, and audit have no upstream equivalent |

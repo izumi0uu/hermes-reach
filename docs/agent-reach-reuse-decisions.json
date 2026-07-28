@@ -235,6 +235,39 @@
       "current_backend": "bili-cli",
       "review_milestone": "any Agent-Reach or bili-cli pin, dependency closure, Click command/schema, credential behavior, worker protocol, or backend identity change",
       "decision_record": "docs/agent-reach-decisions/bilibili-cli-0.6.2.md"
+    },
+    {
+      "source": "youtube",
+      "operation": "search.videos",
+      "upstream_execution": "yt-dlp 2026.7.4 Python API: YoutubeDL(...).extract_info(ytsearch<limit>:<query>, download=False, ie_key=YoutubeSearch)",
+      "classification": "exact_backend_thin_wrapper",
+      "semantic_delta": "Hermes invokes the exact selected search route in an isolated worker and projects only bounded video fields; no backend substitution or search fallback.",
+      "approval": "owner-approved-exact-backend-isolation-2026-07-28",
+      "current_backend": "yt-dlp",
+      "review_milestone": "any Agent-Reach, yt-dlp, yt-dlp-ejs, or Deno pin; EJS source; JS runtime; extractor behavior; dependency closure; worker protocol; or backend identity change",
+      "decision_record": "docs/agent-reach-decisions/youtube-yt-dlp-2026.7.4.md"
+    },
+    {
+      "source": "youtube",
+      "operation": "read.video",
+      "upstream_execution": "yt-dlp 2026.7.4 Python API: YoutubeDL(...).extract_info(<validated-watch-url>, download=False, ie_key=Youtube)",
+      "classification": "exact_backend_thin_wrapper",
+      "semantic_delta": "Hermes invokes the exact selected metadata route in an isolated worker and derives identity from the validated video ID; no API, browser, account, or fallback backend.",
+      "approval": "owner-approved-exact-backend-isolation-2026-07-28",
+      "current_backend": "yt-dlp",
+      "review_milestone": "any Agent-Reach, yt-dlp, yt-dlp-ejs, or Deno pin; EJS source; JS runtime; extractor behavior; dependency closure; worker protocol; or backend identity change",
+      "decision_record": "docs/agent-reach-decisions/youtube-yt-dlp-2026.7.4.md"
+    },
+    {
+      "source": "youtube",
+      "operation": "read.subtitles",
+      "upstream_execution": "yt-dlp 2026.7.4 Python API with writesubtitles, writeautomaticsub, subtitlesformat=vtt, skip_download, and packaged Deno/EJS",
+      "classification": "exact_backend_thin_wrapper",
+      "semantic_delta": "Hermes reproduces the selected manual-plus-automatic VTT route inside bounded private storage and returns one validated language; no direct subtitle HTTP or transcription fallback.",
+      "approval": "owner-approved-exact-backend-isolation-2026-07-28",
+      "current_backend": "yt-dlp",
+      "review_milestone": "any Agent-Reach, yt-dlp, yt-dlp-ejs, or Deno pin; EJS source; JS runtime; subtitle file behavior; dependency closure; worker protocol; or backend identity change",
+      "decision_record": "docs/agent-reach-decisions/youtube-yt-dlp-2026.7.4.md"
     }
   ]
 }

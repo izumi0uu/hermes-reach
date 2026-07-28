@@ -12,6 +12,9 @@ def test_release_check_reports_current_pins_from_injected_metadata() -> None:
             "agent-reach": "1.5.0",
             "feedparser": "6.0.12",
             "bilibili-cli": "0.6.2",
+            "yt-dlp": "2026.7.4",
+            "yt-dlp-ejs": "0.8.0",
+            "deno": "2.8.3",
         }.get(package, "0.1.0a0")
     )
 
@@ -20,6 +23,9 @@ def test_release_check_reports_current_pins_from_injected_metadata() -> None:
     assert report.agent_reach_version == "1.5.0"
     assert report.feedparser_version == "6.0.12"
     assert report.bilibili_cli_version == "0.6.2"
+    assert report.yt_dlp_version == "2026.7.4"
+    assert report.yt_dlp_ejs_version == "0.8.0"
+    assert report.deno_version == "2.8.3"
     assert report.catalog_version == "v1"
 
 
@@ -115,3 +121,37 @@ def test_release_check_reports_a_missing_bilibili_backend() -> None:
     assert report.status == "unavailable"
     assert report.bilibili_cli_version is None
     assert "Bilibili backend" in report.reason
+
+
+def test_release_check_reports_youtube_dependency_drift_and_absence() -> None:
+    current = {
+        "hermes-reach": "0.1.0a0",
+        "hermes-agent": "0.19.0",
+        "agent-reach": "1.5.0",
+        "feedparser": "6.0.12",
+        "bilibili-cli": "0.6.2",
+        "yt-dlp": "2026.7.4",
+        "yt-dlp-ejs": "0.8.0",
+        "deno": "2.8.3",
+    }
+
+    drifted = check_release_pins(
+        lambda package: "2026.7.3" if package == "yt-dlp" else current[package]
+    )
+
+    def missing_ejs(package: str) -> str:
+        if package == "yt-dlp-ejs":
+            raise PackageNotFoundError
+        return current[package]
+
+    missing = check_release_pins(missing_ejs)
+    deno_drift = check_release_pins(
+        lambda package: "2.8.2" if package == "deno" else current[package]
+    )
+
+    assert drifted.status == "degraded"
+    assert drifted.yt_dlp_version == "2026.7.3"
+    assert missing.status == "unavailable"
+    assert missing.yt_dlp_ejs_version is None
+    assert deno_drift.status == "degraded"
+    assert deno_drift.deno_version == "2.8.2"

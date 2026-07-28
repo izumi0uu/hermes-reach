@@ -24,6 +24,9 @@ def test_project_declares_the_documented_hermes_plugin_entry_point() -> None:
     ) in project["project"]["dependencies"]
     assert "feedparser==6.0.12" in project["project"]["dependencies"]
     assert "bilibili-cli==0.6.2" in project["project"]["dependencies"]
+    assert "yt-dlp==2026.7.4" in project["project"]["dependencies"]
+    assert "yt-dlp-ejs==0.8.0" in project["project"]["dependencies"]
+    assert "deno==2.8.3" in project["project"]["dependencies"]
 
 
 def test_lockfile_keeps_the_inspected_agent_reach_commit() -> None:
@@ -40,6 +43,21 @@ def test_lockfile_keeps_the_inspected_agent_reach_commit() -> None:
         for package in packages
         if package["name"] == "bilibili-cli"
     ] == [("bilibili-cli", "0.6.2")]
+    assert [
+        (package["name"], package.get("version"))
+        for package in packages
+        if package["name"] in {"yt-dlp", "yt-dlp-ejs", "deno"}
+    ] == [
+        ("deno", "2.8.3"),
+        ("yt-dlp", "2026.7.4"),
+        ("yt-dlp-ejs", "0.8.0"),
+    ]
+    assert (
+        "f11f2b11d5a8ac4059f9bdf29fa4407dc7c6bb00c5097e95ca22a7a9db518266" in lockfile
+    )
+    assert (
+        "79300e5fca7f937a1eeede11f0456862c1b41107ce1d726871e0207424f4bdb4" in lockfile
+    )
 
 
 def test_manifest_includes_reviewed_docs_and_prunes_tests() -> None:
