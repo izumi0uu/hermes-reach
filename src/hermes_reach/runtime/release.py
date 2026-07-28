@@ -10,6 +10,8 @@ from typing import Literal
 from ..agent_reach_bridge import (
     AGENT_REACH_COMMIT,
     AGENT_REACH_VERSION,
+    BILIBILI_CLI_DISTRIBUTION,
+    BILIBILI_CLI_VERSION,
     FEEDPARSER_DISTRIBUTION,
     FEEDPARSER_VERSION,
 )
@@ -30,6 +32,7 @@ class ReleaseReport:
     hermes_version: str | None
     agent_reach_version: str | None
     feedparser_version: str | None
+    bilibili_cli_version: str | None
     catalog_version: str
     agent_reach_baseline: str
     reason: str
@@ -47,6 +50,7 @@ def check_release_pins(version_reader: VersionReader = version) -> ReleaseReport
     hermes_version = _read_version("hermes-agent", version_reader)
     agent_reach_version = _read_version("agent-reach", version_reader)
     feedparser_version = _read_version(FEEDPARSER_DISTRIBUTION, version_reader)
+    bilibili_cli_version = _read_version(BILIBILI_CLI_DISTRIBUTION, version_reader)
     if hermes_version is None:
         return ReleaseReport(
             "unavailable",
@@ -54,6 +58,7 @@ def check_release_pins(version_reader: VersionReader = version) -> ReleaseReport
             None,
             agent_reach_version,
             feedparser_version,
+            bilibili_cli_version,
             CATALOG_VERSION,
             PINNED_AGENT_REACH_BASELINE,
             "The supported Hermes host package is not installed.",
@@ -65,6 +70,7 @@ def check_release_pins(version_reader: VersionReader = version) -> ReleaseReport
             hermes_version,
             None,
             feedparser_version,
+            bilibili_cli_version,
             CATALOG_VERSION,
             PINNED_AGENT_REACH_BASELINE,
             "The pinned Agent-Reach package is not installed.",
@@ -76,6 +82,7 @@ def check_release_pins(version_reader: VersionReader = version) -> ReleaseReport
             hermes_version,
             agent_reach_version,
             feedparser_version,
+            bilibili_cli_version,
             CATALOG_VERSION,
             PINNED_AGENT_REACH_BASELINE,
             "The installed Hermes version is outside the supported 0.19 release line.",
@@ -87,6 +94,7 @@ def check_release_pins(version_reader: VersionReader = version) -> ReleaseReport
             hermes_version,
             agent_reach_version,
             feedparser_version,
+            bilibili_cli_version,
             CATALOG_VERSION,
             PINNED_AGENT_REACH_BASELINE,
             "The installed Agent-Reach version differs from the pinned 1.5.0 release.",
@@ -98,6 +106,7 @@ def check_release_pins(version_reader: VersionReader = version) -> ReleaseReport
             hermes_version,
             agent_reach_version,
             None,
+            bilibili_cli_version,
             CATALOG_VERSION,
             PINNED_AGENT_REACH_BASELINE,
             "The exact Agent-Reach RSS backend is not installed.",
@@ -109,9 +118,34 @@ def check_release_pins(version_reader: VersionReader = version) -> ReleaseReport
             hermes_version,
             agent_reach_version,
             feedparser_version,
+            bilibili_cli_version,
             CATALOG_VERSION,
             PINNED_AGENT_REACH_BASELINE,
             "The installed feedparser version differs from the pinned 6.0.12 backend.",
+        )
+    if bilibili_cli_version is None:
+        return ReleaseReport(
+            "unavailable",
+            package_version,
+            hermes_version,
+            agent_reach_version,
+            feedparser_version,
+            None,
+            CATALOG_VERSION,
+            PINNED_AGENT_REACH_BASELINE,
+            "The exact Agent-Reach Bilibili backend is not installed.",
+        )
+    if bilibili_cli_version != BILIBILI_CLI_VERSION:
+        return ReleaseReport(
+            "degraded",
+            package_version,
+            hermes_version,
+            agent_reach_version,
+            feedparser_version,
+            bilibili_cli_version,
+            CATALOG_VERSION,
+            PINNED_AGENT_REACH_BASELINE,
+            "The installed bili-cli version differs from the pinned 0.6.2 backend.",
         )
     return ReleaseReport(
         "current",
@@ -119,6 +153,7 @@ def check_release_pins(version_reader: VersionReader = version) -> ReleaseReport
         hermes_version,
         agent_reach_version,
         feedparser_version,
+        bilibili_cli_version,
         CATALOG_VERSION,
         PINNED_AGENT_REACH_BASELINE,
         "Installed package metadata matches the bundled Reach compatibility pins.",

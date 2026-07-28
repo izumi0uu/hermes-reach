@@ -1,4 +1,4 @@
-"""Audited, injected media backend boundary with no local process execution."""
+"""Audited media backend boundary with closed source-specific clients."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from ..runtime.policy import AuthorizedCall
 _YOUTUBE_OPERATIONS: Final = frozenset(
     {"search.videos", "read.video", "read.subtitles", "read.comments"}
 )
-_BILIBILI_OPERATIONS: Final = frozenset(
+BILIBILI_OPERATIONS: Final = frozenset(
     {"search.videos", "read.video", "browse.hot", "browse.rank"}
 )
 _VERSION: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,63}")
@@ -96,7 +96,7 @@ def bilibili_backend_is_eligible(bundle: AuditedBilibiliBackend) -> bool:
     """Reject yt-dlp and every non-bili-cli source identity by construction."""
 
     return _attestation_is_eligible(
-        bundle.attestation, provider_id="bili-cli", operations=_BILIBILI_OPERATIONS
+        bundle.attestation, provider_id="bili-cli", operations=BILIBILI_OPERATIONS
     )
 
 
@@ -127,8 +127,8 @@ def bilibili_bindings(
     adapter = _BilibiliAdapter(bundle.client)
     return _bindings(
         "bilibili",
-        _BILIBILI_OPERATIONS,
-        "bilibili-audited-backend",
+        BILIBILI_OPERATIONS,
+        "bili-cli",
         bundle.attestation,
         adapter.execute,
     )

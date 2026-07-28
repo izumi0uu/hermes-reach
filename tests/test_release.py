@@ -11,6 +11,7 @@ def test_release_check_reports_current_pins_from_injected_metadata() -> None:
             "hermes-agent": "0.19.0",
             "agent-reach": "1.5.0",
             "feedparser": "6.0.12",
+            "bilibili-cli": "0.6.2",
         }.get(package, "0.1.0a0")
     )
 
@@ -18,6 +19,7 @@ def test_release_check_reports_current_pins_from_injected_metadata() -> None:
     assert report.hermes_version == "0.19.0"
     assert report.agent_reach_version == "1.5.0"
     assert report.feedparser_version == "6.0.12"
+    assert report.bilibili_cli_version == "0.6.2"
     assert report.catalog_version == "v1"
 
 
@@ -81,3 +83,35 @@ def test_release_check_reports_a_missing_rss_backend() -> None:
     assert report.status == "unavailable"
     assert report.feedparser_version is None
     assert "RSS backend" in report.reason
+
+
+def test_release_check_reports_an_incompatible_bilibili_backend_version() -> None:
+    report = check_release_pins(
+        lambda package: {
+            "hermes-agent": "0.19.0",
+            "agent-reach": "1.5.0",
+            "feedparser": "6.0.12",
+            "bilibili-cli": "0.6.1",
+        }.get(package, "0.1.0a0")
+    )
+
+    assert report.status == "degraded"
+    assert report.bilibili_cli_version == "0.6.1"
+    assert "bili-cli" in report.reason
+
+
+def test_release_check_reports_a_missing_bilibili_backend() -> None:
+    def versions(package: str) -> str:
+        if package == "bilibili-cli":
+            raise PackageNotFoundError
+        return {
+            "hermes-agent": "0.19.0",
+            "agent-reach": "1.5.0",
+            "feedparser": "6.0.12",
+        }.get(package, "0.1.0a0")
+
+    report = check_release_pins(versions)
+
+    assert report.status == "unavailable"
+    assert report.bilibili_cli_version is None
+    assert "Bilibili backend" in report.reason

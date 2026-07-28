@@ -191,6 +191,50 @@
       "current_backend": "feedparser",
       "review_milestone": "any Agent-Reach or feedparser pin, RSS worker protocol, fetch-owner, backend identity, or parser invocation change",
       "decision_record": "docs/agent-reach-decisions/rss-feedparser-6.0.12.md"
+    },
+    {
+      "source": "bilibili",
+      "operation": "search.videos",
+      "upstream_execution": "bili-cli 0.6.2 Click entry point: search --type video --max <limit> --json -- <query>",
+      "classification": "exact_backend_thin_wrapper",
+      "semantic_delta": "Hermes invokes the exact selected command in a fixed isolated worker, then validates and normalizes the JSON v1 envelope; no backend substitution.",
+      "approval": "owner-approved-exact-backend-isolation-2026-07-28",
+      "current_backend": "bili-cli",
+      "review_milestone": "any Agent-Reach or bili-cli pin, dependency closure, Click command/schema, credential behavior, worker protocol, or backend identity change",
+      "decision_record": "docs/agent-reach-decisions/bilibili-cli-0.6.2.md"
+    },
+    {
+      "source": "bilibili",
+      "operation": "read.video",
+      "upstream_execution": "bili-cli 0.6.2 Click entry point: video <validated-url> --json",
+      "classification": "exact_backend_thin_wrapper",
+      "semantic_delta": "Hermes invokes the exact credential-free base video command in a fixed isolated worker and forbids every optional credential/download path; no backend substitution.",
+      "approval": "owner-approved-exact-backend-isolation-2026-07-28",
+      "current_backend": "bili-cli",
+      "review_milestone": "any Agent-Reach or bili-cli pin, dependency closure, Click command/schema, credential behavior, worker protocol, or backend identity change",
+      "decision_record": "docs/agent-reach-decisions/bilibili-cli-0.6.2.md"
+    },
+    {
+      "source": "bilibili",
+      "operation": "browse.hot",
+      "upstream_execution": "bili-cli 0.6.2 Click entry point: hot --max <limit> --json",
+      "classification": "exact_backend_thin_wrapper",
+      "semantic_delta": "Hermes invokes the exact page-1 hot command in a fixed isolated worker, then validates and normalizes the JSON v1 envelope; no backend substitution.",
+      "approval": "owner-approved-exact-backend-isolation-2026-07-28",
+      "current_backend": "bili-cli",
+      "review_milestone": "any Agent-Reach or bili-cli pin, dependency closure, Click command/schema, credential behavior, worker protocol, or backend identity change",
+      "decision_record": "docs/agent-reach-decisions/bilibili-cli-0.6.2.md"
+    },
+    {
+      "source": "bilibili",
+      "operation": "browse.rank",
+      "upstream_execution": "bili-cli 0.6.2 Click entry point: rank --max <limit> --json",
+      "classification": "exact_backend_thin_wrapper",
+      "semantic_delta": "Hermes invokes the exact default three-day rank command in a fixed isolated worker, then validates and normalizes the JSON v1 envelope; no backend substitution.",
+      "approval": "owner-approved-exact-backend-isolation-2026-07-28",
+      "current_backend": "bili-cli",
+      "review_milestone": "any Agent-Reach or bili-cli pin, dependency closure, Click command/schema, credential behavior, worker protocol, or backend identity change",
+      "decision_record": "docs/agent-reach-decisions/bilibili-cli-0.6.2.md"
     }
   ]
 }

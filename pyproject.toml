@@ -13,6 +13,7 @@ license-files = ["LICENSE"]
 authors = [{ name = "Booker" }]
 dependencies = [
   "agent-reach @ git+https://github.com/Panniantong/Agent-Reach.git@1494c2ab239e7355a77e7cceaf3271453a1f34b5",
+  "bilibili-cli==0.6.2",
   "cryptography>=46.0.7,<47",
   "feedparser==6.0.12",
   "hermes-agent>=0.19.0,<0.20.0",

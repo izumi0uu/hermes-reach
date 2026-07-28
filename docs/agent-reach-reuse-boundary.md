@@ -63,7 +63,7 @@ Writing and account mutation commands documented by Agent-Reach are excluded.
 | Reddit | 1 exact backend thin wrapper, 6 not implemented | OpenCLI, then `rdt-cli` | Fixed OpenCLI `read.post` is the reference pattern; other operations frozen |
 | Facebook | 4 not implemented | OpenCLI | Frozen before implementation |
 | Instagram | 4 not implemented | OpenCLI | Frozen before implementation |
-| Bilibili | 4 exact backend thin contracts, 2 not implemented | `bili-cli`, OpenCLI, transcription pipeline | Contracts remain unbound until a concrete backend passes review |
+| Bilibili | 4 exact backend thin wrappers, 2 not implemented | `bili-cli`, OpenCLI, transcription pipeline | Four public operations use the isolated pinned `bili-cli` worker; subtitle/transcription remain frozen |
 | Xiaohongshu | 5 not implemented | OpenCLI, MCP, `xhs-cli` | Frozen before implementation |
 | LinkedIn | 4 not implemented | scraper MCP, Jina fallback | Frozen before implementation |
 | Xiaoyuzhou | 1 not implemented | Agent-Reach transcription scripts | Frozen before implementation |
@@ -94,13 +94,12 @@ The exact implemented-operation classifications are frozen as follows:
 | Reach reimplementation | V2EX | `browse.hot`, `browse.node_topics`, `read.topic`, `read.user` |
 | Not implemented | Exa | `search.web`, `search.code` |
 
-Only 16 operations currently have a concrete retrieval implementation. Thirteen
-default-bound Web/V2EX/GitHub paths remain Reach-owned, two default-bound RSS
-paths invoke the exact Agent-Reach-selected feedparser backend, and Reddit uses
-a fixed upstream-selected OpenCLI wrapper that remains unbound by default. The
-YouTube and Bilibili rows are typed, audited contracts, not concrete production
-backend implementations. Exa is catalog-planned with no production backend
-interface.
+Twenty operations now have a concrete retrieval implementation. Thirteen
+default-bound Web/V2EX/GitHub paths remain Reach-owned, six default-bound
+RSS/Bilibili paths invoke exact Agent-Reach-selected backends, and Reddit uses
+a fixed upstream-selected OpenCLI wrapper that remains Connector-bound. The
+YouTube rows are typed, audited contracts without a production backend. Exa is
+catalog-planned with no production backend interface.
 
 ## P0 Review Resolution
 
@@ -147,20 +146,34 @@ The complete evidence, approval, rollback, and next-pin gate are recorded in
 rows of the machine-readable review set. This V2EX decision changes no
 production runtime or public contract.
 
+## P2 Bilibili Review Resolution
+
+Four credential-free Bilibili operations now execute through directly pinned
+`bilibili-cli==0.6.2`. The exact Click entry point runs in a fixed worker with a
+closed operation-to-argv mapping, bounded framed stdin/stdout, private HOME/XDG
+state, empty proxy environment, and process-group cleanup. Login, browser
+Cookie import, account reads, optional video extras, downloads, writes, and
+fallbacks are unreachable.
+
+Full evidence, dependency-closure risk, exact command shapes, rollback, and the
+next-pin gate are recorded in
+[`bilibili-cli-0.6.2.md`](agent-reach-decisions/bilibili-cli-0.6.2.md) and the
+four Bilibili rows of the machine-readable review set.
+
 ## Drift Assessment
 
 Relative to the intended `Hermes -> Agent-Reach -> backend` product shape, the
-current overall drift is **medium, approximately 5.5/10**. This is a
+current overall drift is **medium-low, approximately 4.5/10**. This is a
 decision aid, not a code-volume formula:
 
 | Axis | Drift | Evidence |
 | --- | --- | --- |
-| Platform execution ownership | Medium-high | No operation calls a structured Agent-Reach runtime, but 3 of 16 concrete paths now use exact selected backends; 13 remain Reach-owned |
+| Platform execution ownership | Medium | No operation calls a structured Agent-Reach runtime, but 7 of 20 concrete paths now use exact selected backends; 13 remain Reach-owned |
 | Catalog/backend metadata | Low | All 15 channels are projected and compatibility-checked from the pinned upstream registry |
 | Platform logic duplication | Local | 4 of 24 implemented rows, all approved V2EX exceptions, repeat platform logic |
 | Security and control plane | Minimal | Connector, grants, secret isolation, bounds, receipts, and audit have no upstream equivalent |
 
-This is not a claim that 55% of the repository should be removed. Most code is
+This is not a claim that 45% of the repository should be removed. Most code is
 the required security and product control plane. The drift concerns the
 ownership of platform-specific retrieval behavior.
 

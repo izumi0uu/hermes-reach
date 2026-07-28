@@ -14,6 +14,8 @@ from .catalog import SOURCE_CATALOG
 AGENT_REACH_DISTRIBUTION: Final = "agent-reach"
 AGENT_REACH_VERSION: Final = "1.5.0"
 AGENT_REACH_COMMIT: Final = "1494c2ab239e7355a77e7cceaf3271453a1f34b5"
+BILIBILI_CLI_DISTRIBUTION: Final = "bilibili-cli"
+BILIBILI_CLI_VERSION: Final = "0.6.2"
 FEEDPARSER_DISTRIBUTION: Final = "feedparser"
 FEEDPARSER_VERSION: Final = "6.0.12"
 SAFE_AGENT_REACH_DOCTOR_CHANNELS: Final[frozenset[str]] = frozenset(
