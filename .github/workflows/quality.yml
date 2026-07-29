@@ -139,6 +139,16 @@ jobs:
         run: >-
           uv run pytest tests/test_connector_release_security.py
           --release-dist "${GITHUB_WORKSPACE}/dist"
+      - name: Retain wheel for dependency-resolution matrix
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: wheel-resolution-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dist/*.whl
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+          overwrite: false
+          include-hidden-files: false
       - name: Validate and checksum release artifacts
         if: inputs.release
         id: artifacts
@@ -163,3 +173,64 @@ jobs:
           compression-level: 0
           overwrite: false
           include-hidden-files: false
+
+  wheel-resolution:
+    name: Resolve public wheel / Python ${{ matrix.python-version }}
+    needs: build
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Set up pinned uv without dependency cache
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          checksum: ${{ env.UV_LINUX_X86_64_SHA256 }}
+          python-version: ${{ matrix.python-version }}
+          download-from-astral-mirror: false
+          enable-cache: false
+      - name: Download the exact wheel under test
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: wheel-resolution-${{ github.run_id }}-${{ github.run_attempt }}
+          path: wheel-under-test
+          digest-mismatch: error
+      - name: Resolve public dependencies in a clean environment
+        env:
+          GIT_CONFIG_GLOBAL: /dev/null
+          GIT_CONFIG_NOSYSTEM: "1"
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          wheels=(wheel-under-test/*.whl)
+          test "${#wheels[@]}" -eq 1
+          uv venv --no-project --no-config --no-python-downloads \
+            --python "${{ matrix.python-version }}" .public-wheel-venv
+          uv pip install --no-cache --no-config --no-python-downloads \
+            --python .public-wheel-venv/bin/python "${wheels[0]}"
+          uv pip check --no-config --no-python-downloads \
+            --python .public-wheel-venv/bin/python
+      - name: Verify fork provenance and execution handshake
+        run: |
+          .public-wheel-venv/bin/python -I - <<'PY'
+          from importlib.metadata import version
+
+          from hermes_reach.agent_reach_bridge import (
+              AGENT_REACH_VERSION,
+              load_agent_reach_catalog,
+              validate_agent_reach_execution_contract,
+          )
+
+          assert version("agent-reach") == AGENT_REACH_VERSION
+          validate_agent_reach_execution_contract()
+          catalog = load_agent_reach_catalog()
+          assert catalog.version == AGENT_REACH_VERSION
+          assert len(catalog.channels) == 15
+          PY

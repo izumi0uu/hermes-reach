@@ -9,7 +9,7 @@ import re
 import signal
 import sys
 from collections.abc import Mapping
-from typing import Final
+from typing import Final, cast
 
 from ..runtime.adapters import AdapterResult, FailureClass, RawItem
 from ..runtime.policy import AuthorizedCall
@@ -22,12 +22,15 @@ from .documents import (
 )
 from .public_http import HttpFailure, PublicHttpClient
 from .rss_worker import (
+    MAX_CONTENT_TYPE_CHARACTERS,
     MAX_ENTRIES,
     MAX_OUTPUT_BYTES,
     EntryProjection,
     FeedparserProjection,
     FeedparserProtocolError,
     FeedProjection,
+    ForkExecutionFailure,
+    WorkerOperation,
     decode_response,
     encode_request,
 )
@@ -74,12 +77,13 @@ class FeedparserWorkerError(Exception):
 
 
 class FeedparserWorker:
-    """Run feedparser in a fixed isolated process that can be hard-cancelled."""
+    """Run the fork RSS executor in a fixed process that can be hard-cancelled."""
 
     async def parse(
         self,
         body: bytes,
         *,
+        operation: WorkerOperation,
         content_type: str,
         content_location: str,
         max_entries: int,
@@ -87,6 +91,7 @@ class FeedparserWorker:
         try:
             request = encode_request(
                 body,
+                operation=operation,
                 content_type=content_type,
                 content_location=content_location,
                 max_entries=max_entries,
@@ -95,6 +100,7 @@ class FeedparserWorker:
             raise FeedparserWorkerError("permanent") from None
 
         process: asyncio.subprocess.Process | None = None
+        succeeded = False
         try:
             try:
                 process = await asyncio.create_subprocess_exec(
@@ -112,15 +118,28 @@ class FeedparserWorker:
                 )
             except asyncio.CancelledError:
                 raise
-            except (OSError, ValueError):
+            except OSError:
                 raise FeedparserWorkerError("transient") from None
             output = await _exchange_bounded(process, request)
             if process.returncode != 0:
                 raise FeedparserWorkerError("permanent")
             try:
-                return decode_response(output)
+                response = decode_response(
+                    output,
+                    operation=operation,
+                    max_entries=max_entries,
+                )
             except FeedparserProtocolError:
                 raise FeedparserWorkerError("permanent") from None
+            if isinstance(response, ForkExecutionFailure):
+                failure_class: FailureClass = (
+                    "transient"
+                    if response.error_code in {"deadline_exceeded", "cancelled"}
+                    else "permanent"
+                )
+                raise FeedparserWorkerError(failure_class)
+            succeeded = True
+            return response
         except asyncio.CancelledError:
             raise
         except FeedparserWorkerError:
@@ -128,10 +147,13 @@ class FeedparserWorker:
         except (BrokenPipeError, ChildProcessError, ConnectionError, OSError):
             raise FeedparserWorkerError("transient") from None
         except Exception:
-            raise FeedparserWorkerError("transient") from None
+            raise FeedparserWorkerError("permanent") from None
         finally:
             if process is not None:
-                await _kill_process_group(process)
+                await _cleanup_process_group(
+                    process,
+                    terminate_group=not succeeded,
+                )
 
 
 class RssAdapter:
@@ -151,6 +173,7 @@ class RssAdapter:
             )
             if content_location is None:
                 raise FeedError("feed_location_invalid")
+            content_type = _normalized_content_type(response.content_type)
             maximum_items = authorized.operation.runtime.maximum_items
             limit = (
                 _integer_option(
@@ -161,17 +184,25 @@ class RssAdapter:
                 if authorized.operation.name == "browse.entries"
                 else 1
             )
+            operation = cast(WorkerOperation, authorized.operation.name)
+            max_entries = (
+                min(limit, maximum_items + 1, MAX_ENTRIES)
+                if operation == "browse.entries"
+                else 1
+            )
             parsed = await self._worker.parse(
                 response.body,
-                content_type=response.content_type,
+                operation=operation,
+                content_type=content_type,
                 content_location=content_location,
-                max_entries=min(limit, maximum_items + 1, MAX_ENTRIES),
+                max_entries=max_entries,
             )
             if authorized.operation.name == "read.feed":
                 item = _feed_item(parsed.feed, content_location)
                 return AdapterResult(
                     (item,),
-                    partial_failure_class="permanent" if parsed.bozo else None,
+                    partial_failure_class=parsed.partial_error_code,
+                    truncated=parsed.truncated,
                 )
             if authorized.operation.name == "browse.entries":
                 projected = tuple(
@@ -179,13 +210,16 @@ class RssAdapter:
                 )
                 items = tuple(item for item in projected if item is not None)
                 dropped_entries = len(items) != len(parsed.entries)
-                if not items and (parsed.bozo or parsed.entries):
+                if not items and parsed.entries:
                     raise FeedError("feed_entries_unusable")
                 return AdapterResult(
                     items,
                     partial_failure_class=(
-                        "permanent" if parsed.bozo or dropped_entries else None
+                        "permanent"
+                        if parsed.partial_error_code is not None or dropped_entries
+                        else None
                     ),
+                    truncated=parsed.truncated,
                 )
             return AdapterResult(failure_class="invalid_input")
         except asyncio.CancelledError:
@@ -198,6 +232,17 @@ class RssAdapter:
             return AdapterResult(failure_class="permanent")
         except Exception:
             return AdapterResult(failure_class="transient")
+
+
+def _normalized_content_type(value: str) -> str:
+    if (
+        type(value) is not str
+        or len(value) > MAX_CONTENT_TYPE_CHARACTERS
+        or not value.isascii()
+        or any(ord(character) < 32 or ord(character) == 127 for character in value)
+    ):
+        raise FeedError("feed_content_type_invalid")
+    return value.strip()
 
 
 def _preflight_xml(body: bytes, content_type: str) -> None:
@@ -374,19 +419,24 @@ async def _exchange_bounded(
         output[:] = b"\x00" * len(output)
 
 
-async def _kill_process_group(process: asyncio.subprocess.Process) -> None:
+async def _cleanup_process_group(
+    process: asyncio.subprocess.Process, *, terminate_group: bool
+) -> None:
+    if process.returncode is not None and not terminate_group:
+        return
+    if terminate_group:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        except OSError:
+            if process.returncode is None:
+                try:
+                    process.kill()
+                except OSError:
+                    pass
     if process.returncode is not None:
         return
-    try:
-        os.killpg(process.pid, signal.SIGKILL)
-    except ProcessLookupError:
-        pass
-    except OSError:
-        if process.returncode is None:
-            try:
-                process.kill()
-            except OSError:
-                pass
     try:
         await process.wait()
     except (BrokenPipeError, ChildProcessError, ConnectionError, OSError):

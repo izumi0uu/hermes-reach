@@ -694,7 +694,7 @@ def test_built_distributions_install_and_wheel_follows_real_hermes_lifecycle(
     ) == {
         "frozen_operations": 13,
         "hermes_agent_version": "0.19.0",
-        "hermes_reach_version": "0.1.0a0",
+        "hermes_reach_version": "0.1.0a1",
         "plugin_source": "entrypoint",
         "registration_side_effects": [],
         "rss_backend": "feedparser@6.0.12",
@@ -858,6 +858,7 @@ def test_source_distribution_includes_agent_reach_decision_evidence(
     suffixes = (
         "docs/agent-reach-reuse-boundary.md",
         "docs/agent-reach-reuse-decisions.json",
+        "docs/agent-reach-operation-ledger.json",
         "docs/agent-reach-decisions/web-1.5.0.md",
         "docs/agent-reach-decisions/exa-mcporter-1.5.0.md",
         "docs/agent-reach-decisions/github-gh-2.95.0.md",

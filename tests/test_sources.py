@@ -15,7 +15,10 @@ from hermes_reach.runtime.adapters import AdapterRegistry
 from hermes_reach.runtime.policy import ReadOnlyPolicy
 from hermes_reach.sources.public_http import HttpResponse
 from hermes_reach.sources.registry import build_alpha1_registry, build_alpha1_runtime
-from hermes_reach.sources.rss import RssAdapter
+from hermes_reach.sources.rss import FeedparserWorker, RssAdapter
+from hermes_reach.sources.rss_worker import FeedparserProjection, FeedProjection
+
+FEED_URL = "https://example.com/feed.xml"
 
 
 class FixtureHttpClient:
@@ -40,16 +43,16 @@ def _response(body: str, content_type: str, url: str) -> HttpResponse:
     return HttpResponse(200, content_type, body.encode(), url)
 
 
-def test_rss_adapter_normalizes_atom_entries_in_native_order() -> None:
+def test_rss_adapter_normalizes_atom_entries_and_strips_native_id_secrets() -> None:
     atom = """<?xml version="1.0" encoding="utf-8"?>
     <feed xmlns="http://www.w3.org/2005/Atom">
       <title>Example feed</title><subtitle>A useful feed</subtitle>
       <link rel="alternate" href="https://example.com/feed" />
-      <entry><id>entry-2</id><title>Second</title>
+      <entry><id>https://example.com/entry-2?token=private#section</id><title>Second</title>
         <link href="/second?tracking=yes" />
         <author><name>Alice</name></author><updated>2026-07-24T02:00:00Z</updated>
         <summary>&lt;p&gt;Second body&lt;/p&gt;</summary></entry>
-      <entry><id>entry-1</id><title>First</title>
+      <entry><id>https://example.com/entry-1?signature=private#section</id><title>First</title>
         <link href="/first" /><summary>First body</summary></entry>
     </feed>"""
     client = FixtureHttpClient(
@@ -101,6 +104,107 @@ def test_rss_adapter_reads_rss_1_entries_beside_channel() -> None:
     assert [(item.title, item.text) for item in result.items] == [
         ("First item", "First body")
     ]
+
+
+@pytest.mark.parametrize(
+    ("content_type", "expected"),
+    [
+        ("", ""),
+        (
+            "  application/rss+xml; charset=utf-8  ",
+            "application/rss+xml; charset=utf-8",
+        ),
+    ],
+)
+def test_rss_adapter_normalizes_content_type_only_at_the_fork_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+    content_type: str,
+    expected: str,
+) -> None:
+    feed = (
+        "<rss><channel><title>Feed</title><description>Body</description>"
+        "</channel></rss>"
+    )
+    client = FixtureHttpClient(_response(feed, content_type, FEED_URL))
+    captured: dict[str, object] = {}
+
+    async def parse(
+        _worker: FeedparserWorker,
+        body: bytes,
+        *,
+        operation: str,
+        content_type: str,
+        content_location: str,
+        max_entries: int,
+    ) -> FeedparserProjection:
+        captured.update(
+            {
+                "body": body,
+                "operation": operation,
+                "content_type": content_type,
+                "content_location": content_location,
+                "max_entries": max_entries,
+            }
+        )
+        return FeedparserProjection(
+            "read.feed",
+            FeedProjection("Body", "Feed", None),
+            (),
+            None,
+            False,
+        )
+
+    monkeypatch.setattr(FeedparserWorker, "parse", parse)
+    call = validate_read(
+        {
+            "source": "rss",
+            "operation": "read.feed",
+            "target": {"url": FEED_URL},
+        }
+    )
+
+    result = asyncio.run(RssAdapter(client).execute(ReadOnlyPolicy().authorize(call)))
+
+    assert result.is_success
+    assert captured == {
+        "body": feed.encode(),
+        "operation": "read.feed",
+        "content_type": expected,
+        "content_location": FEED_URL,
+        "max_entries": 1,
+    }
+
+
+def test_rss_adapter_rejects_control_characters_in_content_type_before_fork(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    feed = (
+        "<rss><channel><title>Feed</title><description>Body</description>"
+        "</channel></rss>"
+    )
+    client = FixtureHttpClient(
+        _response(feed, "application/rss+xml\r\nproxy: private", FEED_URL)
+    )
+    called = False
+
+    async def parse(*_: object, **__: object) -> FeedparserProjection:
+        nonlocal called
+        called = True
+        raise AssertionError("unsafe content type crossed the worker boundary")
+
+    monkeypatch.setattr(FeedparserWorker, "parse", parse)
+    call = validate_read(
+        {
+            "source": "rss",
+            "operation": "read.feed",
+            "target": {"url": FEED_URL},
+        }
+    )
+
+    result = asyncio.run(RssAdapter(client).execute(ReadOnlyPolicy().authorize(call)))
+
+    assert result.failure_class == "permanent"
+    assert called is False
 
 
 def test_rss_adapter_rejects_dtd_and_entity_declarations() -> None:

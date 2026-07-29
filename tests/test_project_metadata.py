@@ -6,14 +6,24 @@ import tomllib
 from importlib.metadata import entry_points
 from pathlib import Path
 
+import yaml
+
 ROOT = Path(__file__).resolve().parents[1]
-AGENT_REACH_COMMIT = "1494c2ab239e7355a77e7cceaf3271453a1f34b5"
-OFFICIAL_AGENT_REACH_DEPENDENCY = (
-    "agent-reach @ git+https://github.com/Panniantong/Agent-Reach.git@"
+PROJECT_VERSION = "0.1.0a1"
+AGENT_REACH_COMMIT = "806205fd106f4f4453624becfd773acce8418cf1"
+LEGACY_AGENT_REACH_COMMITS = frozenset(
+    {
+        "1494c2ab239e7355a77e7cceaf3271453a1f34b5",
+        "0f0edca8d2d5f6179de2b38cd777d3c93232a99e",
+        "3416c83ce588fadb3e8b007395b7175b26df769d",
+    }
+)
+OWNER_FORK_AGENT_REACH_DEPENDENCY = (
+    "agent-reach @ git+https://github.com/izumi0uu/Agent-Reach.git@"
     f"{AGENT_REACH_COMMIT}"
 )
-OFFICIAL_AGENT_REACH_LOCK_SOURCE = (
-    "https://github.com/Panniantong/Agent-Reach.git"
+OWNER_FORK_AGENT_REACH_LOCK_SOURCE = (
+    "https://github.com/izumi0uu/Agent-Reach.git"
     f"?rev={AGENT_REACH_COMMIT}#{AGENT_REACH_COMMIT}"
 )
 _REQUIREMENT_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*")
@@ -66,6 +76,7 @@ def _is_fork_runtime_import(module: str) -> bool:
 def test_project_declares_the_documented_hermes_plugin_entry_point() -> None:
     with (ROOT / "pyproject.toml").open("rb") as project_file:
         project = tomllib.load(project_file)
+    plugin_manifest = yaml.safe_load((ROOT / "plugin.yaml").read_text(encoding="utf-8"))
 
     dependencies = project["project"]["dependencies"]
     agent_reach_dependencies = [
@@ -74,6 +85,8 @@ def test_project_declares_the_documented_hermes_plugin_entry_point() -> None:
         if _normalized_requirement_name(dependency) == "agent-reach"
     ]
 
+    assert project["project"]["version"] == PROJECT_VERSION
+    assert plugin_manifest["version"] == PROJECT_VERSION
     assert project["project"]["requires-python"] == ">=3.11,<3.14"
     assert project["project"]["entry-points"]["hermes_agent.plugins"] == {
         "reach": "hermes_reach"
@@ -82,9 +95,9 @@ def test_project_declares_the_documented_hermes_plugin_entry_point() -> None:
     assert project["tool"]["setuptools"]["package-data"] == {
         "hermes_reach": ["skill/SKILL.md"]
     }
-    assert agent_reach_dependencies == [OFFICIAL_AGENT_REACH_DEPENDENCY]
+    assert agent_reach_dependencies == [OWNER_FORK_AGENT_REACH_DEPENDENCY]
     assert not any(
-        "izumi0uu" in dependency.lower() for dependency in agent_reach_dependencies
+        "panniantong" in dependency.lower() for dependency in agent_reach_dependencies
     )
     assert "feedparser==6.0.12" in dependencies
     assert "bilibili-cli==0.6.2" in dependencies
@@ -103,9 +116,9 @@ def test_lockfile_keeps_the_inspected_agent_reach_commit() -> None:
     assert len(agent_reach_packages) == 1
     assert agent_reach_packages[0]["version"] == "1.5.0"
     assert agent_reach_packages[0]["source"] == {
-        "git": OFFICIAL_AGENT_REACH_LOCK_SOURCE
+        "git": OWNER_FORK_AGENT_REACH_LOCK_SOURCE
     }
-    assert "izumi0uu" not in str(agent_reach_packages[0]["source"]).lower()
+    assert "panniantong" not in str(agent_reach_packages[0]["source"]).lower()
     assert 'name = "feedparser"' in lockfile
     assert "feedparser-6.0.12" in lockfile
     assert [
@@ -130,6 +143,26 @@ def test_lockfile_keeps_the_inspected_agent_reach_commit() -> None:
     )
 
 
+def test_release_surface_contains_no_legacy_agent_reach_commit() -> None:
+    release_paths = [
+        ROOT / ".github" / "workflows" / "quality.yml",
+        ROOT / "README.md",
+        ROOT / "README_EN.md",
+        ROOT / "plugin.yaml",
+        ROOT / "pyproject.toml",
+        ROOT / "uv.lock",
+    ]
+    release_paths.extend(sorted((ROOT / "docs").rglob("*.json")))
+    release_paths.extend(sorted((ROOT / "docs").rglob("*.md")))
+    release_paths.extend(sorted((ROOT / "src" / "hermes_reach").rglob("*.py")))
+    release_paths.extend(sorted((ROOT / "src" / "hermes_reach").rglob("*.md")))
+
+    for path in release_paths:
+        text = path.read_text(encoding="utf-8")
+        for legacy_commit in LEGACY_AGENT_REACH_COMMITS:
+            assert legacy_commit not in text, path.relative_to(ROOT).as_posix()
+
+
 def test_manifest_includes_reviewed_docs_and_prunes_tests() -> None:
     assert (ROOT / "MANIFEST.in").read_text(encoding="ascii") == (
         "recursive-include docs *.md *.json\nprune tests\n"
@@ -147,7 +180,7 @@ def test_production_source_does_not_vendor_agent_reach() -> None:
     assert vendored_directories == []
 
 
-def test_production_source_does_not_import_a_fork_execution_runtime() -> None:
+def test_production_source_has_no_direct_fork_runtime_imports() -> None:
     production_package = ROOT / "src" / "hermes_reach"
     forbidden_imports = [
         (source_path.relative_to(ROOT).as_posix(), target)
