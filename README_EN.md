@@ -110,10 +110,18 @@ gh release download "$RELEASE_TAG" \
 
 gh attestation verify \
   "$RELEASE_DIR/hermes_reach-0.1.0a0-py3-none-any.whl" \
-  --repo izumi0uu/hermes-reach
+  --repo izumi0uu/hermes-reach \
+  --signer-workflow izumi0uu/hermes-reach/.github/workflows/release.yml
+gh attestation verify \
+  "$RELEASE_DIR/hermes_reach-0.1.0a0.tar.gz" \
+  --repo izumi0uu/hermes-reach \
+  --signer-workflow izumi0uu/hermes-reach/.github/workflows/release.yml
 ```
 
-Then verify the transfer digests for both distributions. On macOS:
+The two commands verify the wheel and sdist separately and restrict the signer
+to this repository's reviewed release workflow. `SHA256SUMS` itself is not an
+attestation subject; it only records the expected digests for the two
+distributions. Then verify those digests. On macOS:
 
 ```bash
 cd "$RELEASE_DIR"
@@ -123,10 +131,9 @@ cd ..
 
 On GNU/Linux, replace the second line with
 `sha256sum --check SHA256SUMS`. On Windows, compare
-`Get-FileHash -Algorithm SHA256` results with the manifest. GitHub attestation
-verifies that this repository's Actions workflow produced the artifact;
-SHA-256 only detects changed bytes and does not authenticate the publisher by
-itself.
+`Get-FileHash -Algorithm SHA256` results with the manifest. The attestation
+checks authenticate each distribution's workflow provenance; SHA-256 only
+detects changed bytes and does not authenticate the publisher by itself.
 
 Install the wheel into the same Python environment that actually runs Hermes.
 The paths below are placeholders; do not substitute whichever Python happens
@@ -338,7 +345,7 @@ The roadmap describes development order, not release dates. Incomplete capabilit
 | Complete | Exact local backends | Two RSS, four Bilibili, and three YouTube default-local wrappers; YouTube comments remains unbound |
 | Complete | Freeze strict plugin boundary | Disable 13 Web/GitHub/V2EX platform exceptions while retaining catalog discovery and historical evidence |
 | Complete | Verify the real plugin lifecycle | Prove default-disabled install, enable, disable, and package-manager uninstall in a clean Hermes 0.19 environment |
-| Now | Establish a public pre-release channel | Lifecycle-test one exact wheel, checksum it, attest it with GitHub provenance, and publish with least privilege |
+| Now | Establish a public pre-release channel | Install one exact sdist offline, lifecycle-test the exact wheel, then checksum and attest both before least-privilege publication |
 | Then | Review official execution evidence | Accept only official callables or exact Agent-Reach backends for planned operations; build no local or fork runtime |
 | Later | Support authenticated platforms and production operations | Twitter/X and similar sources, one-step grants, audit export, alerts, upgrades, and rollback |
 
