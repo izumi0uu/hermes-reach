@@ -328,6 +328,7 @@ def _valid_content_location(value: object) -> bool:
         try:
             address = ipaddress.ip_address(host)
         except ValueError:
+            # Keep this no broader than the pinned fork's FetchedDocumentV1.
             return all(
                 0 < len(label) <= 63
                 and label[0].isalnum()
