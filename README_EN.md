@@ -4,10 +4,22 @@
 
 Hermes Reach gives Hermes a consistent set of read-only tools for public web and platform data while preserving a clear security boundary for remote VPS hosts.
 
-It embeds the official pinned [Agent-Reach](https://github.com/Panniantong/Agent-Reach) dependency as the channel, backend-routing, and compatibility authority, then exposes search, read, browse, transcribe, and status operations through a [Hermes Agent](https://github.com/NousResearch/hermes-agent) plugin.
+It pins an [owner fork](https://github.com/izumi0uu/Agent-Reach) based on a
+reviewed official [Agent-Reach](https://github.com/Panniantong/Agent-Reach)
+baseline. The official baseline supplies channel, backend-routing, and
+compatibility evidence; the fork adds structured execution v1 for only two RSS
+operations. Hermes Reach then exposes search, read, browse, transcribe, and
+status operations through a
+[Hermes Agent](https://github.com/NousResearch/hermes-agent) plugin.
 
 > [!IMPORTANT]
-> The project is **pre-alpha**. Nine fixed backend paths for RSS/Atom, Bilibili, and YouTube work locally today. The remote Connector can explicitly activate the single Reddit `read.post` OpenCLI path at both ends, while default Connector composition remains empty; Web, GitHub, V2EX, and other unaudited platforms remain planned and unavailable.
+> The project is **pre-alpha**. The default local registry has two owner-fork RSS
+> runtime calls and seven fixed backend wrappers for Bilibili and YouTube. The
+> remote Connector can explicitly activate the single Reddit `read.post`
+> OpenCLI wrapper at both ends, while default Connector composition remains
+> empty; Web, GitHub, V2EX, and other unaudited platforms remain planned and
+> unavailable. The fork does not make the other 61 catalog operations
+> executable.
 
 ## The problem Hermes Reach solves
 
@@ -68,7 +80,7 @@ The default installation registers five tools, but `reach_status` remains author
 
 | State | Sources | Available operations |
 | --- | --- | --- |
-| Locally available | RSS/Atom | Read feeds and browse entries through two fixed `feedparser` paths |
+| Locally available | RSS/Atom | Read feeds and browse entries through owner-fork execution v1 with fixed `feedparser` provenance |
 | Locally available | Bilibili | Search/read videos and browse hot/rank through four fixed `bili-cli` paths |
 | Locally available | YouTube | Search/read videos and read subtitles through three fixed `yt-dlp` paths |
 | Explicitly configurable | Reddit | `read.post` only; requires activation on both the trusted device and VPS and remains unavailable by default |
@@ -98,22 +110,22 @@ The workflow uploads exactly three assets: the wheel, sdist, and `SHA256SUMS`.
 GitHub separately renders generated `Source code (zip)` and
 `Source code (tar.gz)` tag snapshots. They are not workflow-uploaded assets and
 are not covered by `SHA256SUMS` or this workflow's attestations. After
-`v0.1.0a0` appears in GitHub Releases, download the three workflow assets from
+`v0.1.0a1` appears in GitHub Releases, download the three workflow assets from
 any empty directory:
 
 ```bash
-RELEASE_TAG=v0.1.0a0
+RELEASE_TAG=v0.1.0a1
 RELEASE_DIR="hermes-reach-${RELEASE_TAG}"
 gh release download "$RELEASE_TAG" \
   --repo izumi0uu/hermes-reach \
   --dir "$RELEASE_DIR"
 
 gh attestation verify \
-  "$RELEASE_DIR/hermes_reach-0.1.0a0-py3-none-any.whl" \
+  "$RELEASE_DIR/hermes_reach-0.1.0a1-py3-none-any.whl" \
   --repo izumi0uu/hermes-reach \
   --signer-workflow izumi0uu/hermes-reach/.github/workflows/release.yml
 gh attestation verify \
-  "$RELEASE_DIR/hermes_reach-0.1.0a0.tar.gz" \
+  "$RELEASE_DIR/hermes_reach-0.1.0a1.tar.gz" \
   --repo izumi0uu/hermes-reach \
   --signer-workflow izumi0uu/hermes-reach/.github/workflows/release.yml
 ```
@@ -145,7 +157,7 @@ HERMES_BIN=/absolute/path/to/hermes-environment/bin/hermes
 
 uv pip install \
   --python "$HERMES_PYTHON" \
-  "$RELEASE_DIR/hermes_reach-0.1.0a0-py3-none-any.whl"
+  "$RELEASE_DIR/hermes_reach-0.1.0a1-py3-none-any.whl"
 uv pip check --python "$HERMES_PYTHON"
 
 "$HERMES_BIN" plugins enable reach --no-allow-tool-override
@@ -163,9 +175,14 @@ capabilities:
 "$HERMES_BIN" reach doctor --json
 ```
 
-This pre-release wheel is not an offline dependency bundle. Installation still
-needs GitHub access for official Agent-Reach at its exact commit and resolves
-the other declared dependencies without reading this repository's `uv.lock`.
+This pre-release wheel is not an offline dependency bundle. Installation needs
+Git, PyPI network access, and GitHub HTTPS access for the exact
+`izumi0uu/Agent-Reach` owner-fork integration commit. It resolves all other
+declared dependencies without reading this repository's `uv.lock`. Before
+release, that commit must have an immutable integration tag protected from
+movement and deletion so old installs and rollback remain reachable. The tag
+is only a recovery reference, not a dependency selector; the exact commit
+remains authoritative.
 
 To roll back a wheel installation, disable it first, start a new session
 without Reach, then uninstall it through the package manager for that same
@@ -268,49 +285,67 @@ This environment value is only a pointer to owner-only local paired state. It is
 
 ## How the system works
 
-Hermes Reach embeds the official pinned Agent-Reach dependency through `hermes_reach.register`. Agent-Reach supplies its 15-channel registry, backend-routing evidence, compatibility metadata, and restricted doctor. Hermes Reach supplies the five closed tools, security policy, Connector, normalization, and audit. Platform retrieval belongs to an official callable, when one exists and passes review, or to the exact backend selected by Agent-Reach.
+Hermes Reach integrates the exact pinned Agent-Reach owner fork through
+`hermes_reach.register`. The official baseline supplies the 15-channel
+registry, backend-routing evidence, compatibility metadata, and restricted
+doctor. Fork execution v1 currently owns only two RSS operations. Hermes Reach
+supplies the five closed tools, security policy, host capability, Connector,
+normalization, and audit. Other platform retrieval remains with the exact
+backend selected by Agent-Reach.
 
 ```mermaid
 flowchart TD
     Hermes["Hermes Agent"] --> Plugin["Hermes Reach<br/>five reach_* tools"]
-    Upstream["Official Agent-Reach 1.5.0<br/>15 channels · backend evidence · restricted doctor"] --> Bridge["Pinned compatibility bridge"]
+    Upstream["Official Agent-Reach 1.5.0 baseline<br/>15 channels · backend evidence"] --> Fork["Owner fork at exact commit<br/>execution v1: RSS only"]
+    Fork --> Bridge["Provenance and capability bridge"]
     Bridge --> Plugin
     Plugin --> Guard["Hermes security and control plane<br/>validation · grants · isolation · bounds · audit"]
-    Guard --> Local["9 default-local bindings<br/>RSS · Bilibili · YouTube"]
+    Guard --> RSS["2 direct owner-fork calls<br/>RSS read.feed · browse.entries"]
+    Guard --> Local["7 default-local thin wrappers<br/>Bilibili · YouTube"]
     Guard --> Connector["1 explicit Connector binding<br/>Reddit read.post"]
-    Local --> Backends["Exact backends<br/>feedparser · bili-cli · yt-dlp"]
+    RSS --> Feedparser["Fork-owned feedparser invocation and projection"]
+    Local --> Backends["Exact backends<br/>bili-cli · yt-dlp"]
     Connector --> OpenCLI["Fixed OpenCLI read"]
-    Backends --> Results["Bounded v1 results and provenance"]
+    Feedparser --> Results["Bounded Hermes v1 results and audit metadata"]
+    Backends --> Results
     OpenCLI --> Results
 ```
 
 ### How much of Agent-Reach is reused
 
-The 15-channel registry, backend metadata, version compatibility, and restricted
-doctor come directly from official Agent-Reach. The Hermes product catalog has
-63 read-only operations: 11 are marked implemented and 52 are planned. Ten
-have concrete exact-backend executors: nine default-local bindings and one
-Connector-only Reddit binding. One additional contract,
-`youtube:read.comments`, is implemented but unbound and is not counted as a
-concrete executor.
+The 15-channel registry, backend metadata, and official compatibility baseline
+come from official Agent-Reach. Owner-fork execution v1 directly runs two RSS
+operations. The Hermes product catalog has 63 read-only operations: 11 are
+marked implemented and 52 are planned. Ten have concrete executors: two RSS
+fork-runtime calls and eight exact-backend wrappers (four Bilibili, three
+YouTube, and one Connector-only Reddit). Nine bindings are default-local and
+one is Connector-only. One additional contract, `youtube:read.comments`, is
+implemented but unbound and is not counted as a concrete executor.
 
-Agent-Reach 1.5.0 has no unified structured operation execution API, so the
-number of direct official Agent-Reach runtime calls is zero. This is an
-upstream boundary, not a runtime that Hermes or a personal fork should fill.
-Fixed wrappers around exact Agent-Reach-selected backends are the normal
-integration. The 13 former Hermes platform implementations for Web, GitHub,
-and V2EX are disabled; Hermes-native and reimplementation exceptions are now
-both zero.
+Official Agent-Reach 1.5.0 has no unified structured operation execution API,
+so the number of direct official runtime calls remains zero. The reviewed owner
+fork adds only operation-scoped execution and currently owns exactly the two
+RSS calls; it is not a general 15-channel runtime. Other executable paths use
+fixed wrappers around exact Agent-Reach-selected backends. The 13 former Hermes
+platform implementations for Web, GitHub, and V2EX are disabled; Hermes-native
+and reimplementation exceptions are both zero.
 
-Hermes Reach owns protocol, authorization, safe invocation, normalization,
-bounds, redaction, receipts, and audit. Platform knowledge, backend selection,
-and retrieval semantics stay in official Agent-Reach or its exact backend. See
+Hermes Reach owns protocol, authorization, host capabilities, safe invocation,
+normalization, bounds, redaction, receipts, and audit. RSS invocation and
+projection belong to the exact owner fork; other platform knowledge, backend
+selection, and retrieval semantics stay in official Agent-Reach evidence or
+its exact backend. See
 [Agent-Reach as a Hermes plugin](docs/agent-reach-plugin-boundary.md) for the
 canonical architecture and the
 [Agent-Reach reuse boundary](docs/agent-reach-reuse-boundary.md) for the
 operation matrix and reactivation gates.
 
-The project pins Agent-Reach `1.5.0` at commit `1494c2ab239e7355a77e7cceaf3271453a1f34b5`.
+The project pins Agent-Reach `1.5.0`: the reviewed official base is
+`b4d52c46c9113cb0f653d6df4cf71ebadf4930ac`, the owner-fork integration commit
+is `806205fd106f4f4453624becfd773acce8418cf1`, and the execution protocol is
+`v1`. The complete 63-row state lives in the
+[operation ledger](docs/agent-reach-operation-ledger.json); the two RSS
+descriptors do not claim execution support for the other 61 rows.
 
 ### Connector path when explicitly composed
 
@@ -342,11 +377,11 @@ The roadmap describes development order, not release dates. Incomplete capabilit
 | Complete | Exact remote execution bridge | Explicit Connector adapters, authorized-operation delivery, receipts, and retries; default composition remains empty |
 | Complete | First source executor | Fixed OpenCLI read, closed YAML mapping, and WSS receipt test for Reddit `read.post`; unbound by default |
 | Complete | Explicit two-sided production composition | Attest and confirm OpenCLI on the trusted device; build the sole Reddit adapter from owner-only paired VPS state |
-| Complete | Exact local backends | Two RSS, four Bilibili, and three YouTube default-local wrappers; YouTube comments remains unbound |
+| Complete | RSS fork execution and exact local backends | Two direct owner-fork RSS runtime calls; four Bilibili and three YouTube default-local wrappers; YouTube comments remains unbound |
 | Complete | Freeze strict plugin boundary | Disable 13 Web/GitHub/V2EX platform exceptions while retaining catalog discovery and historical evidence |
 | Complete | Verify the real plugin lifecycle | Prove default-disabled install, enable, disable, and package-manager uninstall in a clean Hermes 0.19 environment |
 | Now | Establish a public pre-release channel | Install one exact sdist offline, lifecycle-test the exact wheel, then checksum and attest both before least-privilege publication |
-| Then | Review official execution evidence | Accept only official callables or exact Agent-Reach backends for planned operations; build no local or fork runtime |
+| Then | Review structured execution evidence | Choose one narrow owner-fork contract or exact Agent-Reach backend per planned operation; build no Hermes platform runtime and expose no generic fork dispatch |
 | Later | Support authenticated platforms and production operations | Twitter/X and similar sources, one-step grants, audit export, alerts, upgrades, and rollback |
 
 ## Development
@@ -366,4 +401,4 @@ uv build
 Maintainer release steps and repository-protection prerequisites are in the
 [release guide](docs/releasing.md).
 
-Hermes Reach is currently version `0.1.0a0` and uses the [MIT License](LICENSE).
+Hermes Reach is currently version `0.1.0a1` and uses the [MIT License](LICENSE).

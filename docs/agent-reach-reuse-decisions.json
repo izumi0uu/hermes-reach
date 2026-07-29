@@ -1,8 +1,12 @@
 {
-  "schema_version": "v1",
+  "schema_version": "v2",
   "agent_reach": {
     "version": "1.5.0",
-    "commit": "1494c2ab239e7355a77e7cceaf3271453a1f34b5"
+    "official_repository": "Panniantong/Agent-Reach",
+    "official_base_commit": "b4d52c46c9113cb0f653d6df4cf71ebadf4930ac",
+    "fork_repository": "izumi0uu/Agent-Reach",
+    "fork_execution_commit": "806205fd106f4f4453624becfd773acce8418cf1",
+    "execution_protocol": "v1"
   },
   "reviews": [
     {
@@ -173,23 +177,23 @@
     {
       "source": "rss",
       "operation": "read.feed",
-      "upstream_execution": "feedparser 6.0.12 parse(BytesIO(bounded_bytes)) selected by Agent-Reach RSSChannel and skill route",
-      "classification": "exact_backend_thin_wrapper",
-      "semantic_delta": "Hermes narrows feedparser to safely fetched bounded bytes in a killable worker, then projects the existing read.feed item contract; no backend substitution.",
-      "approval": "owner-approved-exact-backend-isolation-2026-07-27",
+      "upstream_execution": "agent_reach.execution.v1.execute(rss:read.feed, fetched_document.v1)",
+      "classification": "direct_owner_fork_runtime",
+      "semantic_delta": "The owner fork owns feedparser invocation and source projection; Hermes supplies safely fetched bounded bytes, process containment, public normalization, and audit metadata.",
+      "approval": "owner-approved-fork-runtime-rss-pilot-2026-07-29",
       "current_backend": "feedparser",
-      "review_milestone": "any Agent-Reach or feedparser pin, RSS worker protocol, fetch-owner, backend identity, or parser invocation change",
+      "review_milestone": "any official base, fork commit, execution protocol/capability, feedparser pin, RSS worker protocol, fetch-owner, backend identity, or parser invocation change",
       "decision_record": "docs/agent-reach-decisions/rss-feedparser-6.0.12.md"
     },
     {
       "source": "rss",
       "operation": "browse.entries",
-      "upstream_execution": "feedparser 6.0.12 parse(BytesIO(bounded_bytes)).entries selected by Agent-Reach RSS skill route",
-      "classification": "exact_backend_thin_wrapper",
-      "semantic_delta": "Hermes narrows feedparser to safely fetched bounded bytes in a killable worker and applies the existing browse limit and RawItem projection; no backend substitution.",
-      "approval": "owner-approved-exact-backend-isolation-2026-07-27",
+      "upstream_execution": "agent_reach.execution.v1.execute(rss:browse.entries, fetched_document.v1)",
+      "classification": "direct_owner_fork_runtime",
+      "semantic_delta": "The owner fork owns feedparser invocation, entry selection, partial classification, and source projection; Hermes supplies safely fetched bounded bytes, process containment, public normalization, and audit metadata.",
+      "approval": "owner-approved-fork-runtime-rss-pilot-2026-07-29",
       "current_backend": "feedparser",
-      "review_milestone": "any Agent-Reach or feedparser pin, RSS worker protocol, fetch-owner, backend identity, or parser invocation change",
+      "review_milestone": "any official base, fork commit, execution protocol/capability, feedparser pin, RSS worker protocol, fetch-owner, backend identity, or parser invocation change",
       "decision_record": "docs/agent-reach-decisions/rss-feedparser-6.0.12.md"
     },
     {

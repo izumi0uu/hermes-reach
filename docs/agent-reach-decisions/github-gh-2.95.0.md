@@ -15,10 +15,12 @@ as historical evidence.
 
 ## Context
 
-Agent-Reach `1.5.0` at commit
-`1494c2ab239e7355a77e7cceaf3271453a1f34b5` selects GitHub CLI command
-families for repository and code search, repository/issue/pull-request reads,
-Actions, and releases. The reviewed local executable was `gh 2.95.0`.
+Official Agent-Reach `1.5.0` at base commit
+`b4d52c46c9113cb0f653d6df4cf71ebadf4930ac`, carried by owner-fork
+integration commit `806205fd106f4f4453624becfd773acce8418cf1`, selects GitHub CLI
+command families for repository and code search, repository/issue/pull-request
+reads, Actions, and releases. The reviewed local executable was `gh 2.95.0`.
+The fork execution v1 ledger contains no GitHub capability.
 
 Hermetic tests with GitHub configuration and token variables removed showed
 that both `gh search` and `gh api` exit with authentication required. Ambient
@@ -66,8 +68,8 @@ requires a separate account-visible catalog and grant design.
 ## Rollback
 
 Operational rollback keeps all eight GitHub operations planned and
-unavailable. Execution may return only through a reviewed official Agent-Reach
-callable or exact Agent-Reach-selected backend with the required safety
-properties; the former REST adapter cannot be restored as an exception. This
-record alone does not authorize a `gh` migration, and no data migration is
-required.
+unavailable. Execution may return only through a reviewed structured
+Agent-Reach execution capability or exact Agent-Reach-selected backend with the
+required safety properties; the former REST adapter cannot be restored as an
+exception. This record alone does not authorize a `gh` migration, and no data
+migration is required.

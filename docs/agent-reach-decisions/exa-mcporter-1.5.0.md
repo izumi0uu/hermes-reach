@@ -4,8 +4,10 @@ Status: owner-approved fail-closed decision on 2026-07-27.
 
 ## Context
 
-Agent-Reach `1.5.0` at commit
-`1494c2ab239e7355a77e7cceaf3271453a1f34b5` selects these methods:
+Official Agent-Reach `1.5.0` at base commit
+`b4d52c46c9113cb0f653d6df4cf71ebadf4930ac`, carried by owner-fork
+integration commit `806205fd106f4f4453624becfd773acce8418cf1`, selects these methods.
+The fork execution v1 ledger contains no Exa capability:
 
 - `search.web`: `exa.web_search_exa(query, numResults)` through mcporter.
 - `search.code`: `exa.get_code_context_exa(query, tokensNum)` through
@@ -52,7 +54,7 @@ parsing, and explicit provider-query retention policy.
 ## Rollback
 
 Keep both Exa operations planned and unbound if this review record is rolled
-back or replaced. Execution may be enabled only through a reviewed official
-callable or the exact Agent-Reach-selected mcporter route; the pre-alpha
-generic injected-client API must not be restored. There is no persisted data
-or credential migration.
+back or replaced. Execution may be enabled only through a reviewed structured
+Agent-Reach capability or the exact Agent-Reach-selected mcporter route; the
+pre-alpha generic injected-client API must not be restored. There is no
+persisted data or credential migration.

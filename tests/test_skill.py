@@ -18,7 +18,7 @@ def test_installed_hermes_resolves_the_namespaced_plugin_skill() -> None:
     path = Path(plugin.__file__).resolve().parent / "skill" / "SKILL.md"
     manager = PluginManager()
     context = PluginContext(
-        PluginManifest(name="reach", version="0.1.0a0", source="entry_point"),
+        PluginManifest(name="reach", version="0.1.0a1", source="entry_point"),
         manager,
     )
 
@@ -72,4 +72,8 @@ def test_safe_skill_contains_no_upstream_execution_escape_hatches() -> None:
 
     for fragment in forbidden_fragments:
         assert fragment not in text
-    assert "1494c2ab239e7355a77e7cceaf3271453a1f34b5" in text
+    assert "b4d52c46c9113cb0f653d6df4cf71ebadf4930ac" in text
+    assert "806205fd106f4f4453624becfd773acce8418cf1" in text
+    assert "rss:read.feed" in text
+    assert "rss:browse.entries" in text
+    assert "other 61 catalog operations" in text

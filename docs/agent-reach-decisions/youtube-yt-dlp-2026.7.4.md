@@ -7,8 +7,10 @@
 - Classification: `exact_backend_thin_wrapper`
 - Backend: `yt-dlp` version `2026.7.4`
 - Execution closure: `yt-dlp-ejs==0.8.0`, `deno==2.8.3`
-- Agent-Reach pin: `1.5.0` at commit
-  `1494c2ab239e7355a77e7cceaf3271453a1f34b5`
+- Official Agent-Reach base: `Panniantong/Agent-Reach` `1.5.0` at
+  `b4d52c46c9113cb0f653d6df4cf71ebadf4930ac`
+- Owner-fork integration pin: `izumi0uu/Agent-Reach` at
+  `806205fd106f4f4453624becfd773acce8418cf1`
 
 ## Decision
 
@@ -28,7 +30,9 @@ planned and unbound.
 ## Pinned Evidence
 
 Agent-Reach 1.5.0 selects yt-dlp for YouTube metadata, search, and subtitles.
-The activated closure is directly pinned and locked:
+The owner fork adds no YouTube execution v1 descriptor, so these three
+operations remain exact-backend thin wrappers rather than direct fork-runtime
+calls. The activated closure is directly pinned and locked:
 
 ```text
 yt-dlp      2026.7.4

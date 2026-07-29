@@ -8,8 +8,10 @@
 - Classification: `not_implemented`
 - Current backend: none
 - Current runtime: none
-- Agent-Reach pin: `1.5.0` at commit
-  `1494c2ab239e7355a77e7cceaf3271453a1f34b5`
+- Official Agent-Reach base: `Panniantong/Agent-Reach` `1.5.0` at
+  `b4d52c46c9113cb0f653d6df4cf71ebadf4930ac`
+- Owner-fork integration pin: `izumi0uu/Agent-Reach` at
+  `806205fd106f4f4453624becfd773acce8418cf1`
 
 ## Decision
 
@@ -101,7 +103,8 @@ and a response contract that retains the fields already promised by Hermes.
 ## Rollback
 
 Operational rollback keeps all four V2EX operations planned and unavailable.
-Execution may return only through a reviewed official Agent-Reach callable or
-exact Agent-Reach-selected backend with the required safety properties; the
-former Hermes adapter cannot be restored as an exception. No data migration
-is required.
+Execution may return only through a reviewed structured Agent-Reach execution
+capability or exact Agent-Reach-selected backend with the required safety
+properties; the current fork ledger contains no V2EX execution capability.
+The former Hermes adapter cannot be restored as an exception. No data
+migration is required.
