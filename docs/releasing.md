@@ -2,22 +2,34 @@
 
 Hermes Reach publishes pre-release wheel and source distributions through
 GitHub Releases. PyPI is intentionally deferred because the package requires
-official Agent-Reach from one exact Git commit, and Warehouse does not accept
-that direct VCS `Requires-Dist`. Do not vendor, fork, loosen, or remove that
+the reviewed `izumi0uu/Agent-Reach` owner fork from one exact Git commit, and
+Warehouse does not accept that direct VCS `Requires-Dist`. The fork records its
+official `Panniantong/Agent-Reach` base, but the install dependency is the exact
+fork integration commit. Do not vendor, loosen, retarget, or remove that
 dependency to make an index upload succeed.
+
+Installing the public wheel therefore requires Git, PyPI access for normal
+dependencies, and GitHub HTTPS access for that exact owner-fork commit. A wheel
+installer does not read this repository's `uv.lock`. Before release, the exact
+fork commit must have an immutable integration tag protected from movement and
+deletion so old installs and rollback remain reachable. The tag is only a
+recovery reference and never the dependency selector; the commit in wheel
+metadata remains authoritative.
 
 The release invariant is:
 
 ```text
 build once -> install exact sdist offline -> lifecycle-test exact wheel
-           -> checksum exact bytes -> attest exact bytes -> publish exact bytes
+           -> checksum exact bytes -> resolve exact wheel uncached on 3 Pythons
+           -> attest exact bytes -> publish exact bytes
 ```
 
 No release job rebuilds either distribution after exact-artifact acceptance.
 
 ## Repository prerequisites
 
-Before the first tag, the repository owner must verify these external controls:
+Before every release tag, the repository owner must verify these external
+controls:
 
 - `main` requires the reusable quality gate and owner review before a rebase
   merge, and rejects history rewrites/force pushes;
@@ -25,6 +37,8 @@ Before the first tag, the repository owner must verify these external controls:
 - the `github-release` environment has the intended required reviewer;
 - Actions may create artifact attestations for the public repository;
 - immutable releases are enabled if the repository supports them;
+- the exact Agent-Reach fork commit has one immutable integration tag protected
+  from update and deletion, and its tag-to-commit mapping is recorded;
 - workflow Actions and the uv binary checksum still match the reviewed pins.
 
 The workflow cannot configure or prove these repository settings. A tag push
@@ -48,12 +62,12 @@ the exact sdist installs offline, run the full Hermes lifecycle against the
 exact wheel, and perform the release metadata checks:
 
 ```bash
-uv run python scripts/prepare_release.py version --tag v0.1.0a0
+uv run python scripts/prepare_release.py version --tag v0.1.0a1
 uv build --clear --no-create-gitignore --out-dir dist
 uv run pytest tests/test_connector_release_security.py \
   --release-dist "$PWD/dist"
 uv run python scripts/prepare_release.py artifacts \
-  --tag v0.1.0a0 \
+  --tag v0.1.0a1 \
   --dist-dir "$PWD/dist"
 ```
 
@@ -73,8 +87,8 @@ After the release change is reviewed, rebased, merged, and pushed to `main`:
 git switch main
 git pull --ff-only
 git status --short
-git tag v0.1.0a0
-git push origin refs/tags/v0.1.0a0
+git tag v0.1.0a1
+git push origin refs/tags/v0.1.0a1
 ```
 
 Do not push the tag unless the status output is empty and the local commit is
@@ -87,10 +101,16 @@ The workflow then:
 2. passes Python 3.11, 3.12, and 3.13 plus static gates;
 3. builds one wheel/sdist pair, installs the exact sdist offline, and runs the
    full Hermes lifecycle against the exact wheel;
-4. hands the checksummed files between jobs through one Actions artifact;
-5. creates separate GitHub OIDC build attestations for the wheel and sdist
+4. retains that wheel alone in a one-day Actions artifact for a clean
+   dependency-resolution matrix, while the release handoff remains the closed
+   checksummed wheel, sdist, and `SHA256SUMS` set;
+5. on Python 3.11, 3.12, and 3.13, installs the exact wheel without a dependency
+   cache, repository lock, offline mode, or source checkout, then runs
+   `uv pip check` and validates fork provenance, execution handshake, and the
+   15-channel catalog;
+6. creates separate GitHub OIDC build attestations for the wheel and sdist
    whose digests are listed in `SHA256SUMS`;
-6. rechecks the remote tag and current remote `main` ancestry, then publishes a
+7. rechecks the remote tag and current remote `main` ancestry, then publishes a
    non-latest pre-release.
 
 `gh release create` normally stages asset uploads through a private draft and
@@ -115,6 +135,10 @@ hermes_reach-<version>.tar.gz
 SHA256SUMS
 ```
 
+The one-day wheel-only dependency-resolution artifact is an internal Actions
+handoff for the three-version gate. It is not a release asset, a fourth
+distribution, or an alternative download channel.
+
 GitHub separately renders generated `Source code (zip)` and
 `Source code (tar.gz)` links for the tag. Those snapshots are not uploaded by
 the workflow and are not covered by `SHA256SUMS` or this workflow's build
@@ -124,17 +148,18 @@ set.
 Verify the published wheel and sdist independently, then check their digests:
 
 ```bash
-gh release download v0.1.0a0 --repo izumi0uu/hermes-reach --dir release-audit
+gh release download v0.1.0a1 --repo izumi0uu/hermes-reach --dir release-audit
 gh attestation verify \
-  release-audit/hermes_reach-0.1.0a0-py3-none-any.whl \
+  release-audit/hermes_reach-0.1.0a1-py3-none-any.whl \
   --repo izumi0uu/hermes-reach \
   --signer-workflow izumi0uu/hermes-reach/.github/workflows/release.yml
 gh attestation verify \
-  release-audit/hermes_reach-0.1.0a0.tar.gz \
+  release-audit/hermes_reach-0.1.0a1.tar.gz \
   --repo izumi0uu/hermes-reach \
   --signer-workflow izumi0uu/hermes-reach/.github/workflows/release.yml
 cd release-audit
 shasum -a 256 --check SHA256SUMS
+cd ..
 ```
 
 The two attestation commands name only the wheel and sdist as subjects and
@@ -143,6 +168,176 @@ not an attestation subject; it is only the manifest used for checksum
 verification. Checksums establish byte equality, not publisher identity.
 GitHub provenance does not prove that the reviewed source is defect-free or
 that repository administrators are uncompromised.
+
+## Public wheel smoke
+
+The pre-publication gate already resolves the unpublished exact wheel on all
+three supported Python versions. After provenance and checksums pass, recheck
+the published bytes with real, uncached dependency resolution in a fresh
+environment. Run this outside the repository checkout. Keep the process `HOME`
+unchanged; isolate Hermes and XDG state with their supported overrides instead.
+The commands show Python 3.11; repeat the complete smoke in separate roots for
+Python 3.12 and 3.13 before announcing the release:
+
+```bash
+WHEEL="$(pwd)/release-audit/hermes_reach-0.1.0a1-py3-none-any.whl"
+SMOKE_ROOT="$(mktemp -d)"
+SMOKE_VENV="$SMOKE_ROOT/venv"
+SMOKE_PYTHON_VERSION=3.11
+ORIGINAL_HOME="$HOME"
+test -f "$WHEEL"
+
+uv venv --no-project --no-config --no-python-downloads \
+  --python "$SMOKE_PYTHON_VERSION" \
+  "$SMOKE_VENV"
+mkdir -p \
+  "$SMOKE_ROOT/hermes" \
+  "$SMOKE_ROOT/bundled-plugins" \
+  "$SMOKE_ROOT/xdg-config" \
+  "$SMOKE_ROOT/xdg-cache" \
+  "$SMOKE_ROOT/xdg-data"
+
+export HERMES_HOME="$SMOKE_ROOT/hermes"
+export HERMES_BUNDLED_PLUGINS="$SMOKE_ROOT/bundled-plugins"
+export XDG_CONFIG_HOME="$SMOKE_ROOT/xdg-config"
+export XDG_CACHE_HOME="$SMOKE_ROOT/xdg-cache"
+export XDG_DATA_HOME="$SMOKE_ROOT/xdg-data"
+export GIT_CONFIG_GLOBAL=/dev/null
+export GIT_CONFIG_NOSYSTEM=1
+export GIT_TERMINAL_PROMPT=0
+unset PYTHONPATH HERMES_ENABLE_PROJECT_PLUGINS HERMES_REACH_VPS_STATE_DIRECTORY
+test "$HOME" = "$ORIGINAL_HOME"
+
+SMOKE_PYTHON="$SMOKE_VENV/bin/python"
+SMOKE_HERMES="$SMOKE_VENV/bin/hermes"
+uv pip install \
+  --no-cache \
+  --no-config \
+  --no-python-downloads \
+  --python "$SMOKE_PYTHON" \
+  "hermes-agent==0.19.0" \
+  "$WHEEL"
+uv pip check --no-config --no-python-downloads --python "$SMOKE_PYTHON"
+```
+
+The install must resolve the exact owner-fork VCS dependency from wheel
+metadata. It must not use `--no-deps`, a repository checkout, `PYTHONPATH`, or a
+pre-populated Hermes profile. Verify that the built VCS dependency recorded the
+same exact PEP 610 provenance expected by Hermes Reach:
+
+```bash
+"$SMOKE_PYTHON" -I - <<'PY'
+import json
+from importlib.metadata import distribution
+
+from hermes_reach.agent_reach_bridge import (
+    AGENT_REACH_FORK_COMMIT,
+    AGENT_REACH_FORK_URL,
+)
+
+raw = distribution("agent-reach").read_text("direct_url.json")
+assert raw is not None
+document = json.loads(raw)
+assert document["url"] == AGENT_REACH_FORK_URL, document
+assert document["vcs_info"] == {
+    "vcs": "git",
+    "requested_revision": AGENT_REACH_FORK_COMMIT,
+    "commit_id": AGENT_REACH_FORK_COMMIT,
+}, document
+print("exact Agent-Reach PEP 610 provenance verified")
+PY
+```
+
+Then, in a separate process, prove that the installed entry point remains
+disabled by default without importing the plugin:
+
+```bash
+"$SMOKE_PYTHON" -I - <<'PY'
+from hermes_cli.config import ensure_hermes_home
+from hermes_cli.plugins import discover_plugins, get_plugin_manager
+from tools.registry import registry
+
+ensure_hermes_home()
+discover_plugins()
+manager = get_plugin_manager()
+records = [record for record in manager.list_plugins() if record["key"] == "reach"]
+assert len(records) == 1 and records[0]["enabled"] is False, records
+assert registry.get_tool_names_for_toolset("reach") == []
+assert manager.find_plugin_skill("reach:agent-reach") is None
+assert "reach" not in manager._cli_commands
+print("installed and disabled by default")
+PY
+```
+
+Enable without tool-override authority. Each following command is a new
+process, which proves that persisted activation is sufficient. The default
+doctor is intentionally no-network; do not add `--upstream` to this smoke:
+
+```bash
+"$SMOKE_HERMES" plugins enable reach --no-allow-tool-override
+"$SMOKE_HERMES" reach status --json
+"$SMOKE_HERMES" reach doctor --json
+```
+
+Run one credential-free live RSS operation through normal Hermes plugin
+discovery and assert the normalized backend provenance:
+
+```bash
+"$SMOKE_PYTHON" -I - <<'PY'
+import json
+
+from hermes_cli.config import ensure_hermes_home
+from hermes_cli.plugins import discover_plugins
+from tools.registry import registry
+
+ensure_hermes_home()
+discover_plugins()
+raw = registry.dispatch(
+    "reach_read",
+    {
+        "source": "rss",
+        "operation": "read.feed",
+        "target": {
+            "url": "https://github.com/izumi0uu/hermes-reach/releases.atom"
+        },
+    },
+)
+assert isinstance(raw, str), type(raw)
+result = json.loads(raw)
+assert result["outcome"] == "ok", result
+assert len(result["groups"]) == 1, result
+group = result["groups"][0]
+assert group["provenance"]["backend_id"] == "feedparser", group
+assert group["provenance"]["backend_version"] == "6.0.12", group
+assert group["items"], group
+print(json.dumps(result, sort_keys=True))
+PY
+```
+
+This one live probe depends on DNS, GitHub egress, and service availability. It
+can also encounter rate limits. Those are distinct from the fixture-backed
+release acceptance test; production RSS fetching remains bounded by a 3-second
+DNS limit and 5-second connect/read limits.
+
+Finally disable the plugin, prove the `reach` command is absent in another
+process, uninstall through the same environment's package manager, and recheck
+the remaining dependency graph:
+
+```bash
+"$SMOKE_HERMES" plugins disable reach
+if "$SMOKE_HERMES" reach status --json; then
+  echo "reach command remained active after disable" >&2
+  exit 1
+fi
+
+uv pip uninstall --no-config --no-python-downloads \
+  --python "$SMOKE_PYTHON" hermes-reach
+"$SMOKE_PYTHON" -I -c \
+  'import importlib.util; assert importlib.util.find_spec("hermes_reach") is None'
+uv pip check --no-config --no-python-downloads --python "$SMOKE_PYTHON"
+```
+
+Retain `$SMOKE_ROOT` with the release evidence until the audit is complete.
 
 ## Failure and recovery
 
@@ -162,6 +357,7 @@ that repository administrators are uncompromised.
 - User rollback remains: disable Reach, start a new Hermes session, uninstall
   from the same Hermes Python environment, then run `uv pip check`.
 
-Publishing to PyPI requires a separately reviewed dependency strategy after
-official Agent-Reach has an acceptable index artifact. It is not an additional
-job to enable in this workflow.
+Publishing to PyPI requires a separately reviewed, index-compatible dependency
+strategy for the reviewed Agent-Reach integration. The current exact owner-fork
+VCS dependency cannot be uploaded to Warehouse; PyPI is not an additional job
+to enable in this workflow.

@@ -121,6 +121,9 @@ def test_quality_workflow_pins_toolchain_and_complete_gate() -> None:
     assert quality["jobs"]["tests"]["strategy"]["matrix"] == {
         "python-version": ["3.11", "3.12", "3.13"]
     }
+    assert quality["jobs"]["wheel-resolution"]["strategy"]["matrix"] == {
+        "python-version": ["3.11", "3.12", "3.13"]
+    }
     assert _step_names(quality, "tests") == [
         "Check out the reviewed revision",
         "Set up Python",
@@ -174,6 +177,7 @@ def test_quality_build_gate_order_and_conditions_fail_closed() -> None:
         "Validate release version",
         "Build distributions once",
         "Test the exact built distributions",
+        "Retain wheel for dependency-resolution matrix",
         "Validate and checksum release artifacts",
         "Retain exact release artifacts",
     ]
@@ -199,10 +203,80 @@ def test_quality_build_gate_order_and_conditions_fail_closed() -> None:
     ):
         assert command in tag_validation
 
-    for job in ("tests", "build"):
+    for job in ("tests", "build", "wheel-resolution"):
         assert quality["jobs"][job].get("continue-on-error") is None
         for step in quality["jobs"][job]["steps"]:
             assert step.get("continue-on-error") is None
+
+
+def test_public_wheel_resolution_is_clean_three_version_and_pin_checked() -> None:
+    quality = _workflow("quality.yml")
+    build_upload = _step(
+        quality,
+        "build",
+        "Retain wheel for dependency-resolution matrix",
+    )
+    resolution = quality["jobs"]["wheel-resolution"]
+
+    assert build_upload["with"] == {
+        "name": "wheel-resolution-${{ github.run_id }}-${{ github.run_attempt }}",
+        "path": "dist/*.whl",
+        "if-no-files-found": "error",
+        "retention-days": "1",
+        "compression-level": "0",
+        "overwrite": "false",
+        "include-hidden-files": "false",
+    }
+    assert resolution["needs"] == "build"
+    assert resolution["strategy"] == {
+        "fail-fast": "false",
+        "matrix": {"python-version": ["3.11", "3.12", "3.13"]},
+    }
+    assert _step_names(quality, "wheel-resolution") == [
+        "Set up Python",
+        "Set up pinned uv without dependency cache",
+        "Download the exact wheel under test",
+        "Resolve public dependencies in a clean environment",
+        "Verify fork provenance and execution handshake",
+    ]
+    assert _step(
+        quality,
+        "wheel-resolution",
+        "Download the exact wheel under test",
+    )["with"] == {
+        "name": "wheel-resolution-${{ github.run_id }}-${{ github.run_attempt }}",
+        "path": "wheel-under-test",
+        "digest-mismatch": "error",
+    }
+    uv_setup = _step(
+        quality,
+        "wheel-resolution",
+        "Set up pinned uv without dependency cache",
+    )
+    assert uv_setup["with"]["enable-cache"] == "false"
+    install = _step(
+        quality,
+        "wheel-resolution",
+        "Resolve public dependencies in a clean environment",
+    )
+    assert install["env"] == {
+        "GIT_CONFIG_GLOBAL": "/dev/null",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_TERMINAL_PROMPT": "0",
+    }
+    assert "uv venv --no-project --no-config --no-python-downloads" in install["run"]
+    assert (
+        "uv pip install --no-cache --no-config --no-python-downloads" in install["run"]
+    )
+    assert "shopt -s nullglob" in install["run"]
+    assert "--offline" not in install["run"]
+    handshake = _step(
+        quality,
+        "wheel-resolution",
+        "Verify fork provenance and execution handshake",
+    )["run"]
+    assert "validate_agent_reach_execution_contract()" in handshake
+    assert "load_agent_reach_catalog()" in handshake
 
 
 def test_build_backend_matches_audited_release_generator() -> None:
@@ -347,16 +421,16 @@ def test_release_docs_distinguish_uploaded_assets_from_generated_sources() -> No
     documents = {path: path.read_text(encoding="utf-8") for path in paths}
     expected_subjects = {
         ROOT / "README.md": [
-            "$RELEASE_DIR/hermes_reach-0.1.0a0-py3-none-any.whl",
-            "$RELEASE_DIR/hermes_reach-0.1.0a0.tar.gz",
+            "$RELEASE_DIR/hermes_reach-0.1.0a1-py3-none-any.whl",
+            "$RELEASE_DIR/hermes_reach-0.1.0a1.tar.gz",
         ],
         ROOT / "README_EN.md": [
-            "$RELEASE_DIR/hermes_reach-0.1.0a0-py3-none-any.whl",
-            "$RELEASE_DIR/hermes_reach-0.1.0a0.tar.gz",
+            "$RELEASE_DIR/hermes_reach-0.1.0a1-py3-none-any.whl",
+            "$RELEASE_DIR/hermes_reach-0.1.0a1.tar.gz",
         ],
         ROOT / "docs" / "releasing.md": [
-            "release-audit/hermes_reach-0.1.0a0-py3-none-any.whl",
-            "release-audit/hermes_reach-0.1.0a0.tar.gz",
+            "release-audit/hermes_reach-0.1.0a1-py3-none-any.whl",
+            "release-audit/hermes_reach-0.1.0a1.tar.gz",
         ],
     }
     subject_disclaimers = {
@@ -403,3 +477,63 @@ def test_release_docs_distinguish_uploaded_assets_from_generated_sources() -> No
     assert "`WITHDRAWN`" in release_guide
     assert "fix forward with a new version and tag" in release_guide
     assert "disable the public release" not in release_guide
+
+
+def test_release_guide_public_smoke_is_fresh_complete_and_cwd_safe() -> None:
+    release_guide = (ROOT / "docs" / "releasing.md").read_text(encoding="utf-8")
+    public_smoke_start = release_guide.index("## Public wheel smoke")
+    public_smoke_end = release_guide.index("## Failure and recovery")
+    public_smoke = release_guide[public_smoke_start:public_smoke_end]
+    install_block = public_smoke.split("```bash", 1)[1].split("```", 1)[0]
+    audit_commands = release_guide[:public_smoke_start]
+
+    assert audit_commands.rindex("cd ..") > audit_commands.rindex(
+        "shasum -a 256 --check SHA256SUMS"
+    )
+    assert 'WHEEL="$(pwd)/release-audit/hermes_reach-0.1.0a1-py3-none-any.whl"' in (
+        install_block
+    )
+    assert 'test -f "$WHEEL"' in install_block
+    assert "uv venv --no-project --no-config --no-python-downloads" in install_block
+    assert "uv pip install \\" in install_block
+    assert "--no-cache" in install_block
+    assert "--no-config" in install_block
+    assert "--no-python-downloads" in install_block
+    assert "--offline" not in install_block
+    assert "--no-deps" not in install_block
+    assert "GIT_CONFIG_GLOBAL=/dev/null" in install_block
+    assert "GIT_CONFIG_NOSYSTEM=1" in install_block
+    assert "GIT_TERMINAL_PROMPT=0" in install_block
+    assert 'test "$HOME" = "$ORIGINAL_HOME"' in install_block
+
+    normalized_smoke = " ".join(public_smoke.split())
+    assert "repeat the complete smoke in separate roots for Python 3.12 and 3.13" in (
+        normalized_smoke
+    )
+    assert 'distribution("agent-reach").read_text("direct_url.json")' in public_smoke
+    assert "requested_revision" in public_smoke
+    assert "commit_id" in public_smoke
+    assert "plugins enable reach --no-allow-tool-override" in public_smoke
+    assert "https://github.com/izumi0uu/hermes-reach/releases.atom" in public_smoke
+    assert "plugins disable reach" in public_smoke
+    assert "uv pip uninstall --no-config --no-python-downloads" in public_smoke
+
+
+def test_release_docs_define_immutable_tag_as_recovery_not_selection() -> None:
+    expected = {
+        ROOT / "README.md": (
+            "该 tag 只用于恢复定位，不是依赖选择器，精确 commit 始终是权威 pin。"
+        ),
+        ROOT / "README_EN.md": (
+            "The tag is only a recovery reference, not a dependency selector; "
+            "the exact commit remains authoritative."
+        ),
+        ROOT / "docs" / "releasing.md": (
+            "The tag is only a recovery reference and never the dependency selector; "
+            "the commit in wheel metadata remains authoritative."
+        ),
+    }
+
+    for path, statement in expected.items():
+        normalized = " ".join(path.read_text(encoding="utf-8").split())
+        assert statement in normalized

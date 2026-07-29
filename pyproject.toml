@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hermes-reach"
-version = "0.1.0a0"
+version = "0.1.0a1"
 description = "Hermes plugin for reliable, normalized platform reach"
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
@@ -12,7 +12,7 @@ license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Booker" }]
 dependencies = [
-  "agent-reach @ git+https://github.com/Panniantong/Agent-Reach.git@1494c2ab239e7355a77e7cceaf3271453a1f34b5",
+  "agent-reach @ git+https://github.com/izumi0uu/Agent-Reach.git@806205fd106f4f4453624becfd773acce8418cf1",
   "bilibili-cli==0.6.2",
   "cryptography>=46.0.7,<47",
   "deno==2.8.3",

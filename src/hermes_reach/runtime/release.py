@@ -4,11 +4,15 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
+from importlib import import_module
 from importlib.metadata import PackageNotFoundError, version
 from typing import Literal
 
 from ..agent_reach_bridge import (
     AGENT_REACH_COMMIT,
+    AGENT_REACH_FORK_COMMIT,
+    AGENT_REACH_OFFICIAL_BASE_COMMIT,
+    AGENT_REACH_PROTOCOL_VERSION,
     AGENT_REACH_VERSION,
     BILIBILI_CLI_DISTRIBUTION,
     BILIBILI_CLI_VERSION,
@@ -20,10 +24,20 @@ from ..agent_reach_bridge import (
     YTDLP_EJS_DISTRIBUTION,
     YTDLP_EJS_VERSION,
     YTDLP_VERSION,
+    AgentReachBridgeError,
+    DirectUrlReader,
+    ExecutionModuleLoader,
+    InstallationReader,
+    ModuleLoader,
+    validate_agent_reach_execution_contract,
+    validate_agent_reach_provenance,
 )
 from ..catalog import CATALOG_VERSION
 
 PINNED_AGENT_REACH_BASELINE = AGENT_REACH_COMMIT
+PINNED_AGENT_REACH_OFFICIAL_BASE_COMMIT = AGENT_REACH_OFFICIAL_BASE_COMMIT
+PINNED_AGENT_REACH_FORK_COMMIT = AGENT_REACH_FORK_COMMIT
+PINNED_AGENT_REACH_PROTOCOL_VERSION = AGENT_REACH_PROTOCOL_VERSION
 PINNED_AGENT_REACH_VERSION = AGENT_REACH_VERSION
 ReleaseStatus = Literal["current", "degraded", "unavailable"]
 VersionReader = Callable[[str], str]
@@ -45,6 +59,10 @@ class ReleaseReport:
     catalog_version: str
     agent_reach_baseline: str
     reason: str
+    agent_reach_official_base_commit: str = PINNED_AGENT_REACH_OFFICIAL_BASE_COMMIT
+    agent_reach_fork_commit: str = PINNED_AGENT_REACH_FORK_COMMIT
+    agent_reach_protocol_version: str | None = None
+    agent_reach_expected_protocol_version: str = PINNED_AGENT_REACH_PROTOCOL_VERSION
 
     def as_data(self) -> dict[str, object]:
         """Return JSON-compatible data for the operator CLI response."""
@@ -52,7 +70,14 @@ class ReleaseReport:
         return asdict(self)
 
 
-def check_release_pins(version_reader: VersionReader = version) -> ReleaseReport:
+def check_release_pins(
+    version_reader: VersionReader = version,
+    direct_url_reader: DirectUrlReader | None = None,
+    *,
+    installation_reader: InstallationReader | None = None,
+    execution_module_loader: ExecutionModuleLoader | None = None,
+    module_loader: ModuleLoader = import_module,
+) -> ReleaseReport:
     """Inspect installed metadata and bundled constants without a registry call."""
 
     package_version = _read_version("hermes-reach", version_reader)
@@ -63,6 +88,7 @@ def check_release_pins(version_reader: VersionReader = version) -> ReleaseReport
     yt_dlp_version = _read_version(YTDLP_DISTRIBUTION, version_reader)
     yt_dlp_ejs_version = _read_version(YTDLP_EJS_DISTRIBUTION, version_reader)
     deno_version = _read_version(DENO_DISTRIBUTION, version_reader)
+    agent_reach_protocol_version: str | None = None
 
     def report(status: ReleaseStatus, reason: str) -> ReleaseReport:
         return ReleaseReport(
@@ -78,6 +104,10 @@ def check_release_pins(version_reader: VersionReader = version) -> ReleaseReport
             catalog_version=CATALOG_VERSION,
             agent_reach_baseline=PINNED_AGENT_REACH_BASELINE,
             reason=reason,
+            agent_reach_official_base_commit=(PINNED_AGENT_REACH_OFFICIAL_BASE_COMMIT),
+            agent_reach_fork_commit=PINNED_AGENT_REACH_FORK_COMMIT,
+            agent_reach_protocol_version=agent_reach_protocol_version,
+            agent_reach_expected_protocol_version=(PINNED_AGENT_REACH_PROTOCOL_VERSION),
         )
 
     if hermes_version is None:
@@ -100,6 +130,30 @@ def check_release_pins(version_reader: VersionReader = version) -> ReleaseReport
             "degraded",
             "The installed Agent-Reach version differs from the pinned 1.5.0 release.",
         )
+    try:
+        validate_agent_reach_provenance(direct_url_reader)
+    except AgentReachBridgeError:
+        return report(
+            "degraded",
+            "The installed Agent-Reach source differs from the exact owner-fork pin.",
+        )
+    try:
+        execution_api = validate_agent_reach_execution_contract(
+            version_reader=version_reader,
+            direct_url_reader=direct_url_reader,
+            installation_reader=installation_reader,
+            execution_module_loader=execution_module_loader,
+            module_loader=module_loader,
+        )
+    except AgentReachBridgeError:
+        return report(
+            "degraded",
+            (
+                "The installed Agent-Reach execution API differs from the "
+                "reviewed contract."
+            ),
+        )
+    agent_reach_protocol_version = execution_api.protocol_version
     if feedparser_version is None:
         return report(
             "unavailable",

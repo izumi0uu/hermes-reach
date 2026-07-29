@@ -186,6 +186,6 @@ def test_connector_dependencies_are_direct_and_bounded() -> None:
     assert "websockets>=15.0.1,<16" in dependencies
     assert "hermes-agent>=0.19.0,<0.20.0" in dependencies
     assert (
-        "agent-reach @ git+https://github.com/Panniantong/Agent-Reach.git@"
-        "1494c2ab239e7355a77e7cceaf3271453a1f34b5"
+        "agent-reach @ git+https://github.com/izumi0uu/Agent-Reach.git@"
+        "806205fd106f4f4453624becfd773acce8418cf1"
     ) in dependencies

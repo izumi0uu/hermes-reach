@@ -1,24 +1,32 @@
 from __future__ import annotations
 
 import asyncio
-import builtins
+import importlib
 import io
 import json
 import signal
-import socket
 import subprocess
 import sys
+from collections.abc import Callable
+from dataclasses import replace
+from types import MappingProxyType
 from typing import cast
 
-import feedparser.http
 import pytest
 
 import hermes_reach.sources.rss as rss
 import hermes_reach.sources.rss_worker as rss_worker
+from hermes_reach.agent_reach_bridge import (
+    AgentReachBridgeError,
+    load_agent_reach_catalog,
+    validate_agent_reach_execution_contract,
+)
 from hermes_reach.sources.rss import FeedparserWorker, FeedparserWorkerError
 from hermes_reach.sources.rss_worker import (
     MAX_OUTPUT_BYTES,
     FeedparserProjection,
+    ForkExecutionFailure,
+    WorkerOperation,
     decode_response,
     encode_request,
 )
@@ -27,7 +35,8 @@ FEED_URL = "https://example.com/feed.xml"
 ATOM = b"""<?xml version="1.0" encoding="utf-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
   <title>Example feed</title><subtitle>Feed body</subtitle>
-  <entry><id>entry-1</id><title>Entry title</title>
+  <entry><id>https://example.com/entry-1?private=yes#fragment</id>
+    <title>Entry title</title>
     <content type="html">&lt;p&gt;Preferred body&lt;/p&gt;</content>
     <summary>Fallback body</summary><author><name>Alice</name></author>
     <link href="/entry?tracking=yes" />
@@ -36,17 +45,67 @@ ATOM = b"""<?xml version="1.0" encoding="utf-8"?>
 </feed>"""
 
 
-def _closed_output() -> bytes:
-    return json.dumps(
-        {
-            "bozo": False,
-            "entries": [],
-            "feed": None,
-            "version": 1,
-        },
-        separators=(",", ":"),
-        sort_keys=True,
-    ).encode()
+def _backend() -> dict[str, str]:
+    return {"id": "feedparser", "version": "6.0.12"}
+
+
+def _success_value(
+    operation: WorkerOperation = "browse.entries",
+    *,
+    items: list[dict[str, object]] | None = None,
+    partial: str | None = None,
+    truncated: bool = False,
+) -> dict[str, object]:
+    return {
+        "backend": _backend(),
+        "items": [] if items is None else items,
+        "operation": operation,
+        "partial": partial,
+        "protocol": "v1",
+        "schema": "rss.feed.v1" if operation == "read.feed" else "rss.entry.v1",
+        "source": "rss",
+        "truncated": truncated,
+    }
+
+
+def _failure_value(
+    code: str,
+    operation: WorkerOperation = "browse.entries",
+) -> dict[str, object]:
+    return {
+        "backend": _backend(),
+        "error": {"code": code},
+        "operation": operation,
+        "protocol": "v1",
+        "source": "rss",
+    }
+
+
+def _encoded(value: object) -> bytes:
+    return json.dumps(value, separators=(",", ":"), sort_keys=True).encode()
+
+
+def _entry_fields(**overrides: object) -> dict[str, object]:
+    fields: dict[str, object] = {
+        "author": "Alice",
+        "native_id": "https://example.com/entry-1",
+        "published_at": "2026-07-27T01:02:03Z",
+        "text": "<p>Preferred body</p>",
+        "title": "Entry title",
+        "url": "https://example.com/entry",
+    }
+    fields.update(overrides)
+    return fields
+
+
+def _feed_fields(**overrides: object) -> dict[str, object]:
+    fields: dict[str, object] = {
+        "text": "Feed body",
+        "title": "Example feed",
+        "url": "https://example.com/feed",
+    }
+    fields.update(overrides)
+    return fields
 
 
 class _Writer:
@@ -62,6 +121,11 @@ class _Writer:
 
     def close(self) -> None:
         self.closed = True
+
+
+class _BrokenWriter(_Writer):
+    async def drain(self) -> None:
+        raise BrokenPipeError("private pipe details")
 
 
 class _Reader:
@@ -91,11 +155,12 @@ class _Process:
         *,
         returncode: int = 0,
         reader: _Reader | _NeverReader | None = None,
+        writer: _Writer | None = None,
     ) -> None:
-        self.pid = 7890
+        self.pid = 2_147_483_647
         self.returncode: int | None = None
         self._wait_returncode = returncode
-        self.stdin = _Writer()
+        self.stdin = _Writer() if writer is None else writer
         self.stdout = _Reader(output) if reader is None else reader
         self.direct_kills = 0
         self.waits = 0
@@ -110,34 +175,258 @@ class _Process:
         self.direct_kills += 1
 
 
-def test_feedparser_receives_an_in_memory_byte_stream_without_fetch_or_open(
-    monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.parametrize(
+    ("operation", "max_entries", "expected_arguments", "schema", "fields"),
+    [
+        ("read.feed", 1, {}, "rss.feed.v1", _feed_fields()),
+        (
+            "browse.entries",
+            7,
+            {"max_entries": 7},
+            "rss.entry.v1",
+            _entry_fields(),
+        ),
+    ],
+)
+def test_worker_constructs_closed_fork_request_document_limits_and_context(
+    operation: WorkerOperation,
+    max_entries: int,
+    expected_arguments: dict[str, int],
+    schema: str,
+    fields: dict[str, object],
 ) -> None:
+    execution = importlib.import_module("agent_reach.execution.v1")
+    captured: dict[str, object] = {}
+
+    def execute(request: object, context: object) -> object:
+        captured["request"] = request
+        captured["context"] = context
+        item = execution.ExecutionItemV1(schema, fields)
+        return execution.ExecutionSuccessV1(
+            "v1",
+            "rss",
+            operation,
+            "feedparser",
+            "6.0.12",
+            (item,),
+        )
+
+    execution_api = replace(
+        validate_agent_reach_execution_contract(),
+        execute=execute,
+    )
     framed = encode_request(
         ATOM,
-        content_type="application/atom+xml",
+        operation=operation,
+        content_type="",
         content_location=FEED_URL,
-        max_entries=2,
+        max_entries=max_entries,
     )
     request = rss_worker._read_request(io.BytesIO(framed))
 
-    def unexpected_io(*_: object, **__: object) -> object:
-        raise AssertionError("feedparser attempted external I/O")
+    response = rss_worker._execute_request(
+        request,
+        execution_api_provider=lambda: execution_api,
+    )
+    decoded = decode_response(
+        rss_worker._response_bytes(response),
+        operation=operation,
+        max_entries=max_entries,
+    )
 
-    monkeypatch.setattr(builtins, "open", unexpected_io)
-    monkeypatch.setattr(feedparser.http, "get", unexpected_io)
-    monkeypatch.setattr(socket, "create_connection", unexpected_io)
+    assert isinstance(decoded, FeedparserProjection)
+    execution_request = captured["request"]
+    assert execution_request.protocol_version == "v1"
+    assert execution_request.source == "rss"
+    assert execution_request.operation == operation
+    assert dict(execution_request.arguments) == expected_arguments
+    context = captured["context"]
+    assert len(context.host_capabilities) == 1
+    document = context.host_capabilities[0]
+    assert document.body == ATOM
+    assert document.content_type == ""
+    assert document.content_location == FEED_URL
+    assert context.limits.maximum_items == max_entries
+    assert context.limits.maximum_text_characters == 16_000
 
-    result = rss_worker._parse_feed(request)
 
-    assert result.entries[0].text == "<p>Preferred body</p>"
-    assert result.entries[0].url == "https://example.com/entry?tracking=yes"
+def test_worker_converts_fork_contract_drift_to_a_closed_failure() -> None:
+    execution_api = replace(
+        validate_agent_reach_execution_contract(),
+        execute=lambda *_: object(),
+    )
+    request = rss_worker._read_request(
+        io.BytesIO(
+            encode_request(
+                ATOM,
+                operation="read.feed",
+                content_type="application/atom+xml",
+                content_location=FEED_URL,
+                max_entries=1,
+            )
+        )
+    )
+
+    decoded = decode_response(
+        rss_worker._response_bytes(
+            rss_worker._execute_request(
+                request,
+                execution_api_provider=lambda: execution_api,
+            )
+        ),
+        operation="read.feed",
+        max_entries=1,
+    )
+
+    assert decoded == ForkExecutionFailure("read.feed", "backend_contract_violation")
 
 
-def test_real_isolated_worker_parses_closed_projection() -> None:
+def test_registration_then_worker_drift_revalidates_and_never_calls_execute() -> None:
+    load_agent_reach_catalog()
+    execute_calls = 0
+    validation_calls = 0
+
+    def execute_forbidden(*_: object) -> object:
+        nonlocal execute_calls
+        execute_calls += 1
+        raise AssertionError("fork execute must remain unreachable")
+
+    drifted_api = replace(
+        validate_agent_reach_execution_contract(),
+        execute=execute_forbidden,
+    )
+
+    def drifted_provider() -> object:
+        nonlocal validation_calls
+        validation_calls += 1
+        assert drifted_api.execute is execute_forbidden
+        raise AgentReachBridgeError("PRIVATE CONTRACT DRIFT")
+
+    request = rss_worker._read_request(
+        io.BytesIO(
+            encode_request(
+                ATOM,
+                operation="read.feed",
+                content_type="application/atom+xml",
+                content_location=FEED_URL,
+                max_entries=1,
+            )
+        )
+    )
+
+    for _ in range(2):
+        raw = rss_worker._response_bytes(
+            rss_worker._execute_request(
+                request,
+                execution_api_provider=cast(
+                    rss_worker.ExecutionApiProvider,
+                    drifted_provider,
+                ),
+            )
+        )
+        assert decode_response(
+            raw,
+            operation="read.feed",
+            max_entries=1,
+        ) == ForkExecutionFailure("read.feed", "backend_contract_violation")
+        assert b"PRIVATE" not in raw
+
+    assert validation_calls == 2
+    assert execute_calls == 0
+
+
+def test_default_worker_handshake_revalidates_runtime_module_every_time(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    validation_calls = 0
+
+    def reject_runtime_drift(*, validate_runtime_module: bool = False) -> object:
+        nonlocal validation_calls
+        validation_calls += 1
+        assert validate_runtime_module is True
+        raise AgentReachBridgeError("PRIVATE RUNTIME DRIFT")
+
+    monkeypatch.setattr(
+        rss_worker,
+        "validate_agent_reach_execution_contract",
+        reject_runtime_drift,
+    )
+    request = rss_worker._read_request(
+        io.BytesIO(
+            encode_request(
+                ATOM,
+                operation="read.feed",
+                content_type="application/atom+xml",
+                content_location=FEED_URL,
+                max_entries=1,
+            )
+        )
+    )
+
+    for _ in range(2):
+        raw = rss_worker._response_bytes(rss_worker._execute_request(request))
+        assert decode_response(
+            raw,
+            operation="read.feed",
+            max_entries=1,
+        ) == ForkExecutionFailure("read.feed", "backend_contract_violation")
+        assert b"PRIVATE" not in raw
+
+    assert validation_calls == 2
+
+
+def test_worker_rejects_open_fork_fields_before_writing_stdout() -> None:
+    execution = importlib.import_module("agent_reach.execution.v1")
+    item = execution.ExecutionItemV1("rss.entry.v1", _entry_fields())
+    success = execution.ExecutionSuccessV1(
+        "v1",
+        "rss",
+        "browse.entries",
+        "feedparser",
+        "6.0.12",
+        (item,),
+    )
+    object.__setattr__(
+        item,
+        "fields",
+        MappingProxyType(_entry_fields(private="OUTPUT_CANARY")),
+    )
+    execution_api = replace(
+        validate_agent_reach_execution_contract(),
+        execute=lambda *_: success,
+    )
+    request = rss_worker._read_request(
+        io.BytesIO(
+            encode_request(
+                ATOM,
+                operation="browse.entries",
+                content_type="application/atom+xml",
+                content_location=FEED_URL,
+                max_entries=2,
+            )
+        )
+    )
+
+    raw = rss_worker._response_bytes(
+        rss_worker._execute_request(
+            request,
+            execution_api_provider=lambda: execution_api,
+        )
+    )
+
+    assert b"OUTPUT_CANARY" not in raw
+    assert decode_response(
+        raw,
+        operation="browse.entries",
+        max_entries=2,
+    ) == ForkExecutionFailure("browse.entries", "backend_contract_violation")
+
+
+def test_real_isolated_worker_executes_fork_projection() -> None:
     result = asyncio.run(
         FeedparserWorker().parse(
             ATOM,
+            operation="browse.entries",
             content_type="application/atom+xml",
             content_location=FEED_URL,
             max_entries=2,
@@ -145,10 +434,12 @@ def test_real_isolated_worker_parses_closed_projection() -> None:
     )
 
     assert isinstance(result, FeedparserProjection)
-    assert result.bozo is False
-    assert result.feed is not None
-    assert result.feed.text == "Feed body"
+    assert result.operation == "browse.entries"
+    assert result.partial_error_code is None
+    assert result.truncated is False
     assert [entry.text for entry in result.entries] == ["<p>Preferred body</p>"]
+    assert result.entries[0].native_id == "https://example.com/entry-1"
+    assert result.entries[0].url == "https://example.com/entry"
 
 
 def test_isolated_worker_module_is_not_preloaded_by_package_entry_point() -> None:
@@ -167,7 +458,7 @@ def test_isolated_worker_module_is_not_preloaded_by_package_entry_point() -> Non
 def test_worker_uses_fixed_isolated_argv_environment_and_framing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    process = _Process(_closed_output())
+    process = _Process(_encoded(_success_value()))
     captured: dict[str, object] = {}
 
     async def create(*args: str, **kwargs: object) -> _Process:
@@ -180,6 +471,7 @@ def test_worker_uses_fixed_isolated_argv_environment_and_framing(
     result = asyncio.run(
         FeedparserWorker().parse(
             ATOM,
+            operation="browse.entries",
             content_type="application/atom+xml",
             content_location=FEED_URL,
             max_entries=2,
@@ -209,6 +501,7 @@ def test_worker_uses_fixed_isolated_argv_environment_and_framing(
         "content_location": FEED_URL,
         "content_type": "application/atom+xml",
         "max_entries": 2,
+        "operation": "browse.entries",
         "version": 1,
     }
     assert process.stdin.value[4 + metadata_length :] == ATOM
@@ -237,6 +530,7 @@ def test_timeout_and_cancellation_kill_and_reap_worker_process_group(
         task = asyncio.create_task(
             FeedparserWorker().parse(
                 ATOM,
+                operation="browse.entries",
                 content_type="application/atom+xml",
                 content_location=FEED_URL,
                 max_entries=2,
@@ -276,6 +570,7 @@ def test_worker_cleanup_falls_back_to_direct_kill(
         task = asyncio.create_task(
             FeedparserWorker().parse(
                 ATOM,
+                operation="browse.entries",
                 content_type="application/atom+xml",
                 content_location=FEED_URL,
                 max_entries=2,
@@ -307,7 +602,7 @@ def test_process_group_cleanup_kills_and_reaps_a_real_blocked_child() -> None:
             start_new_session=True,
         )
         try:
-            await rss._kill_process_group(process)
+            await rss._cleanup_process_group(process, terminate_group=True)
         finally:
             if process.returncode is None:
                 process.kill()
@@ -327,7 +622,7 @@ def test_worker_bounds_and_redacts_terminal_failures(
     elif terminal == "malformed":
         output = b'{"private":"OUTPUT_CANARY"}'
     else:
-        output = _closed_output()
+        output = _encoded(_success_value())
     process = _Process(output, returncode=7 if terminal == "nonzero" else 0)
     killed: list[tuple[int, signal.Signals]] = []
 
@@ -345,6 +640,7 @@ def test_worker_bounds_and_redacts_terminal_failures(
         asyncio.run(
             FeedparserWorker().parse(
                 ATOM,
+                operation="browse.entries",
                 content_type="application/atom+xml",
                 content_location=FEED_URL,
                 max_entries=2,
@@ -353,8 +649,171 @@ def test_worker_bounds_and_redacts_terminal_failures(
 
     assert failed.value.failure_class == "permanent"
     assert "OUTPUT_CANARY" not in str(failed.value)
-    expected_kill = [(process.pid, signal.SIGKILL)] if terminal == "oversize" else []
-    assert killed == expected_kill
+    assert killed == [(process.pid, signal.SIGKILL)]
+
+
+@pytest.mark.parametrize(
+    ("factory", "expected"),
+    [
+        (lambda: OSError("private launch"), "transient"),
+        (lambda: ValueError("private configuration"), "permanent"),
+    ],
+)
+def test_worker_classifies_launch_failures_without_leaking_details(
+    monkeypatch: pytest.MonkeyPatch,
+    factory: Callable[[], Exception],
+    expected: str,
+) -> None:
+    async def create(*_: str, **__: object) -> _Process:
+        raise factory()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", create)
+
+    with pytest.raises(FeedparserWorkerError) as failed:
+        asyncio.run(
+            FeedparserWorker().parse(
+                ATOM,
+                operation="read.feed",
+                content_type="application/atom+xml",
+                content_location=FEED_URL,
+                max_entries=1,
+            )
+        )
+
+    assert failed.value.failure_class == expected
+    assert "private" not in str(failed.value)
+
+
+def test_worker_classifies_pipe_os_failures_as_transient(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    process = _Process(writer=_BrokenWriter())
+
+    async def create(*_: str, **__: object) -> _Process:
+        return process
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", create)
+
+    with pytest.raises(FeedparserWorkerError) as failed:
+        asyncio.run(
+            FeedparserWorker().parse(
+                ATOM,
+                operation="read.feed",
+                content_type="application/atom+xml",
+                content_location=FEED_URL,
+                max_entries=1,
+            )
+        )
+
+    assert failed.value.failure_class == "transient"
+
+
+@pytest.mark.parametrize(
+    ("code", "expected"),
+    [
+        ("deadline_exceeded", "transient"),
+        ("cancelled", "transient"),
+        ("backend_unavailable", "permanent"),
+        ("backend_incompatible", "permanent"),
+        ("permanent", "permanent"),
+        ("backend_contract_violation", "permanent"),
+    ],
+)
+def test_worker_maps_closed_fork_failures(
+    monkeypatch: pytest.MonkeyPatch,
+    code: str,
+    expected: str,
+) -> None:
+    process = _Process(_encoded(_failure_value(code)))
+
+    async def create(*_: str, **__: object) -> _Process:
+        return process
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", create)
+
+    with pytest.raises(FeedparserWorkerError) as failed:
+        asyncio.run(
+            FeedparserWorker().parse(
+                ATOM,
+                operation="browse.entries",
+                content_type="application/atom+xml",
+                content_location=FEED_URL,
+                max_entries=2,
+            )
+        )
+
+    assert failed.value.failure_class == expected
+
+
+def test_response_decoder_accepts_only_closed_correlated_success_and_failure() -> None:
+    success = decode_response(
+        _encoded(
+            _success_value(
+                items=[_entry_fields()],
+                partial="permanent",
+                truncated=True,
+            )
+        ),
+        operation="browse.entries",
+        max_entries=2,
+    )
+    failure = decode_response(
+        _encoded(_failure_value("cancelled")),
+        operation="browse.entries",
+        max_entries=2,
+    )
+
+    assert isinstance(success, FeedparserProjection)
+    assert success.partial_error_code == "permanent"
+    assert success.truncated is True
+    assert success.entries[0].native_id == "https://example.com/entry-1"
+    assert failure == ForkExecutionFailure("browse.entries", "cancelled")
+
+
+def _mutated_responses() -> list[dict[str, object]]:
+    values: list[dict[str, object]] = []
+    mutations: tuple[tuple[str, object], ...] = (
+        ("protocol", "v2"),
+        ("source", "web"),
+        ("operation", "read.feed"),
+        ("schema", "rss.unknown.v1"),
+        ("partial", "cancelled"),
+        ("truncated", 1),
+    )
+    for name, replacement in mutations:
+        value = _success_value(items=[_entry_fields()])
+        value[name] = replacement
+        values.append(value)
+    wrong_backend = _success_value(items=[_entry_fields()])
+    wrong_backend["backend"] = {"id": "other", "version": "6.0.12"}
+    values.append(wrong_backend)
+    wrong_version = _success_value(items=[_entry_fields()])
+    wrong_version["backend"] = {"id": "feedparser", "version": "6.0.13"}
+    values.append(wrong_version)
+    extra_top_level = _success_value(items=[_entry_fields()])
+    extra_top_level["private"] = "OUTPUT_CANARY"
+    values.append(extra_top_level)
+    extra_item = _success_value(items=[_entry_fields(private="OUTPUT_CANARY")])
+    values.append(extra_item)
+    long_text = _success_value(items=[_entry_fields(text="x" * 16_001)])
+    values.append(long_text)
+    too_many = _success_value(items=[_entry_fields(), _entry_fields(), _entry_fields()])
+    values.append(too_many)
+    empty_partial = _success_value(partial="permanent")
+    values.append(empty_partial)
+    return values
+
+
+@pytest.mark.parametrize("value", _mutated_responses())
+def test_response_decoder_rejects_identity_backend_schema_bounds_and_item_drift(
+    value: dict[str, object],
+) -> None:
+    with pytest.raises(rss_worker.FeedparserProtocolError):
+        decode_response(
+            _encoded(value),
+            operation="browse.entries",
+            max_entries=2,
+        )
 
 
 @pytest.mark.parametrize(
@@ -362,36 +821,97 @@ def test_worker_bounds_and_redacts_terminal_failures(
     [
         b"",
         b"{}",
-        b'{"bozo":false,"entries":[],"feed":null,"version":true}',
-        b'{"bozo":false,"bozo":true,"entries":[],"feed":null,"version":1}',
-        b'{"bozo":false,"entries":[],"extra":null,"feed":null,"version":1}',
+        b'{"backend":{"id":"feedparser","id":"other","version":"6.0.12"},'
+        b'"error":{"code":"permanent"},"operation":"browse.entries",'
+        b'"protocol":"v1","source":"rss"}',
+        b'{"backend":{"id":"feedparser","version":"6.0.12"},'
+        b'"error":{"code":"private"},"operation":"browse.entries",'
+        b'"protocol":"v1","source":"rss"}',
+        b'{"backend":{"id":"feedparser","version":"6.0.12"},'
+        b'"items":[],"operation":"browse.entries","partial":null,'
+        b'"protocol":"v1","schema":"rss.entry.v1","source":"rss",'
+        b'"truncated":NaN}',
         b"X" * (MAX_OUTPUT_BYTES + 1),
     ],
 )
-def test_response_decoder_rejects_open_or_oversize_protocol(raw: bytes) -> None:
+def test_response_decoder_rejects_open_duplicate_or_oversize_protocol(
+    raw: bytes,
+) -> None:
     with pytest.raises(rss_worker.FeedparserProtocolError):
-        decode_response(raw)
+        decode_response(raw, operation="browse.entries", max_entries=2)
 
 
-def test_request_encoder_rejects_fetchable_strings_and_unsafe_metadata() -> None:
-    with pytest.raises(rss_worker.FeedparserProtocolError):
-        encode_request(
+def test_response_decoder_requires_one_untruncated_feed_item() -> None:
+    for value in (
+        _success_value("read.feed", items=[]),
+        _success_value("read.feed", items=[_feed_fields()], truncated=True),
+        _success_value("read.feed", items=[_entry_fields()]),
+    ):
+        with pytest.raises(rss_worker.FeedparserProtocolError):
+            decode_response(_encoded(value), operation="read.feed", max_entries=1)
+
+
+def test_request_encoder_closes_operation_limits_and_metadata() -> None:
+    empty_type = encode_request(
+        ATOM,
+        operation="read.feed",
+        content_type="",
+        content_location=FEED_URL,
+        max_entries=1,
+    )
+    assert rss_worker._read_request(io.BytesIO(empty_type)).content_type == ""
+
+    invalid: tuple[Callable[[], bytes], ...] = (
+        lambda: encode_request(
             cast(bytes, FEED_URL),
+            operation="read.feed",
             content_type="application/rss+xml",
             content_location=FEED_URL,
-            max_entries=2,
-        )
-    with pytest.raises(rss_worker.FeedparserProtocolError):
-        encode_request(
+            max_entries=1,
+        ),
+        lambda: encode_request(
             ATOM,
+            operation="read.feed",
             content_type="application/rss+xml\nproxy: enabled",
             content_location=FEED_URL,
-            max_entries=2,
-        )
-    with pytest.raises(rss_worker.FeedparserProtocolError):
-        encode_request(
+            max_entries=1,
+        ),
+        lambda: encode_request(
             ATOM,
+            operation="read.feed",
+            content_type=" application/rss+xml ",
+            content_location=FEED_URL,
+            max_entries=1,
+        ),
+        lambda: encode_request(
+            ATOM,
+            operation="read.feed",
             content_type="application/rss+xml",
             content_location="file:///tmp/private-feed",
+            max_entries=1,
+        ),
+        lambda: encode_request(
+            ATOM,
+            operation="read.feed",
+            content_type="application/rss+xml",
+            content_location=FEED_URL,
             max_entries=2,
-        )
+        ),
+        lambda: encode_request(
+            ATOM,
+            operation="browse.entries",
+            content_type="application/rss+xml",
+            content_location=FEED_URL,
+            max_entries=0,
+        ),
+        lambda: encode_request(
+            ATOM,
+            operation="browse.entries",
+            content_type="application/rss+xml",
+            content_location=FEED_URL,
+            max_entries=22,
+        ),
+    )
+    for invoke in invalid:
+        with pytest.raises(rss_worker.FeedparserProtocolError):
+            invoke()
