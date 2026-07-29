@@ -6,8 +6,10 @@
   `bilibili:browse.hot`, `bilibili:browse.rank`
 - Classification: `exact_backend_thin_wrapper`
 - Backend: `bili-cli` version `0.6.2`
-- Agent-Reach pin: `1.5.0` at commit
-  `1494c2ab239e7355a77e7cceaf3271453a1f34b5`
+- Official Agent-Reach base: `Panniantong/Agent-Reach` `1.5.0` at
+  `b4d52c46c9113cb0f653d6df4cf71ebadf4930ac`
+- Owner-fork integration pin: `izumi0uu/Agent-Reach` at
+  `806205fd106f4f4453624becfd773acce8418cf1`
 
 ## Decision
 
@@ -24,9 +26,10 @@ planned and unbound.
 
 ## Pinned Evidence
 
-Agent-Reach 1.5.0 declares `bili-cli` as the Bilibili execution backend but
-does not expose a structured operation-level execution API. The reviewed
-PyPI wheel has SHA-256
+Agent-Reach 1.5.0 declares `bili-cli` as the Bilibili execution backend. The
+owner fork adds no Bilibili execution v1 descriptor, so these four operations
+remain exact-backend thin wrappers rather than direct fork-runtime calls. The
+reviewed PyPI wheel has SHA-256
 `185b5df16262415c830a74216ca9c4a74df0e63cf542537444fb295a236a9f5d`
 and declares console entry point `bili = bili_cli.cli:cli`. It has no
 `bili_cli.__main__`, so the worker imports that exact Click entry point rather

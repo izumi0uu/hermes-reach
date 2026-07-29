@@ -4,10 +4,19 @@
 
 Hermes Reach 让 Hermes 通过一组统一的只读工具读取网页和公开平台，同时为远程 VPS 保留清晰的安全边界。
 
-它固定引入官方 [Agent-Reach](https://github.com/Panniantong/Agent-Reach) 作为 channel、backend 路由与兼容性证据来源，并通过 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 插件提供搜索、读取、浏览、转写和状态查询。
+它固定引入基于官方 [Agent-Reach](https://github.com/Panniantong/Agent-Reach)
+审查基线的 [owner fork](https://github.com/izumi0uu/Agent-Reach)。官方基线提供
+channel、backend 路由与兼容性证据；fork 只为两条 RSS operation 增加结构化
+execution v1。Hermes Reach 再通过
+[Hermes Agent](https://github.com/NousResearch/hermes-agent) 插件提供搜索、读取、
+浏览、转写和状态查询。
 
 > [!IMPORTANT]
-> 项目目前处于 **Pre-Alpha**。RSS/Atom、Bilibili 和 YouTube 的 9 条固定后端路径已可本地使用。远程 Connector 可以通过双端显式配置启用唯一的 Reddit `read.post` OpenCLI 路径，但默认 Connector 构成仍然为空；Web、GitHub、V2EX 和其他未审计平台保持规划/不可用。
+> 项目目前处于 **Pre-Alpha**。默认本地 registry 已有 2 条 owner-fork RSS
+> runtime 调用，以及 Bilibili/YouTube 的 7 条固定 backend 薄包装。远程
+> Connector 可以通过双端显式配置启用唯一的 Reddit `read.post` OpenCLI
+> 包装，但默认 Connector 构成仍然为空；Web、GitHub、V2EX 和其他未审计平台
+> 保持规划/不可用。fork 并不使其余 61 条目录 operation 自动可执行。
 
 ## 它解决什么问题
 
@@ -68,7 +77,7 @@ VPS 会看到它获准处理的查询和结果。如果 VPS 在授权有效期�
 
 | 状态 | 来源 | 可以做什么 |
 | --- | --- | --- |
-| 本地可用 | RSS/Atom | 读取 feed 和浏览条目；2 条固定 `feedparser` 路径 |
+| 本地可用 | RSS/Atom | 通过 owner fork 的 execution v1 读取 feed 和浏览条目；backend 固定为 `feedparser` |
 | 本地可用 | Bilibili | 搜索和读取视频，浏览热门与排行榜；4 条固定 `bili-cli` 路径 |
 | 本地可用 | YouTube | 搜索和读取视频、读取字幕；3 条固定 `yt-dlp` 路径 |
 | 可显式配置 | Reddit | 仅 `read.post`；需要可信设备和 VPS 双端显式激活，默认仍不可用 |
@@ -96,21 +105,21 @@ Python 3.11 至 3.13、`uv`、GitHub CLI 和 Hermes Agent 0.19.x。
 发布工作流只上传三个资产：wheel、sdist 和 `SHA256SUMS`。GitHub 页面还会单独
 显示自动生成的 `Source code (zip)` 和 `Source code (tar.gz)` 标签快照；它们
 不是工作流上传的资产，也不在 `SHA256SUMS` 或本工作流 attestation 的覆盖范围
-内。`v0.1.0a0` 出现在 GitHub Releases 后，可以在任意空目录下载三个工作流资产：
+内。`v0.1.0a1` 出现在 GitHub Releases 后，可以在任意空目录下载三个工作流资产：
 
 ```bash
-RELEASE_TAG=v0.1.0a0
+RELEASE_TAG=v0.1.0a1
 RELEASE_DIR="hermes-reach-${RELEASE_TAG}"
 gh release download "$RELEASE_TAG" \
   --repo izumi0uu/hermes-reach \
   --dir "$RELEASE_DIR"
 
 gh attestation verify \
-  "$RELEASE_DIR/hermes_reach-0.1.0a0-py3-none-any.whl" \
+  "$RELEASE_DIR/hermes_reach-0.1.0a1-py3-none-any.whl" \
   --repo izumi0uu/hermes-reach \
   --signer-workflow izumi0uu/hermes-reach/.github/workflows/release.yml
 gh attestation verify \
-  "$RELEASE_DIR/hermes_reach-0.1.0a0.tar.gz" \
+  "$RELEASE_DIR/hermes_reach-0.1.0a1.tar.gz" \
   --repo izumi0uu/hermes-reach \
   --signer-workflow izumi0uu/hermes-reach/.github/workflows/release.yml
 ```
@@ -138,7 +147,7 @@ HERMES_BIN=/absolute/path/to/hermes-environment/bin/hermes
 
 uv pip install \
   --python "$HERMES_PYTHON" \
-  "$RELEASE_DIR/hermes_reach-0.1.0a0-py3-none-any.whl"
+  "$RELEASE_DIR/hermes_reach-0.1.0a1-py3-none-any.whl"
 uv pip check --python "$HERMES_PYTHON"
 
 "$HERMES_BIN" plugins enable reach --no-allow-tool-override
@@ -154,9 +163,11 @@ Windows 环境通常使用同一环境下的 `Scripts\python.exe` 和
 "$HERMES_BIN" reach doctor --json
 ```
 
-这个 Pre-release wheel 不是离线依赖包。安装时仍需访问 GitHub 取得固定 commit
-的官方 Agent-Reach，并按 wheel 声明解析其余依赖；它不会读取本仓库的
-`uv.lock`。
+这个 Pre-release wheel 不是离线依赖包。安装时需要 Git、PyPI 网络和 GitHub
+HTTPS，用于取得 `izumi0uu/Agent-Reach` 的精确 owner-fork integration commit，
+并按 wheel 声明解析其余依赖；它不会读取本仓库的 `uv.lock`。发布前必须为该
+commit 建立禁止移动和删除的 immutable integration tag，以保证旧安装与回滚仍可
+获取它；该 tag 只用于恢复定位，不是依赖选择器，精确 commit 始终是权威 pin。
 
 要回滚 wheel 安装，先停用并启动一个不含 Reach 的新会话，再由同一个 Python
 环境的包管理器卸载：
@@ -256,43 +267,59 @@ HERMES_REACH_VPS_STATE_DIRECTORY=/absolute/vps-state hermes ...
 
 ## 系统如何工作
 
-Hermes Reach 通过 `hermes_reach.register` 把官方固定版本的 Agent-Reach 嵌入 Hermes。Agent-Reach 提供 15-channel registry、backend 路由证据、兼容性元数据和受限 doctor；Hermes Reach 提供五个封闭工具、安全策略、Connector、规范化和审计。平台读取由官方 callable（存在且通过审核时）或 Agent-Reach 精确选定的 backend 负责。
+Hermes Reach 通过 `hermes_reach.register` 集成精确固定的 Agent-Reach owner
+fork。官方基线提供 15-channel registry、backend 路由证据、兼容性元数据和受限
+doctor；fork 的 execution v1 当前只拥有两条 RSS operation；Hermes Reach 提供
+五个封闭工具、安全策略、host capability、Connector、规范化和审计。其他平台
+读取仍由 Agent-Reach 精确选定的 backend 负责。
 
 ```mermaid
 flowchart TD
     Hermes["Hermes Agent"] --> Plugin["Hermes Reach<br/>5 个 reach_* 工具"]
-    Upstream["官方 Agent-Reach 1.5.0<br/>15-channel 目录 · backend 证据 · 受限 doctor"] --> Bridge["固定版本兼容性桥"]
+    Upstream["官方 Agent-Reach 1.5.0 基线<br/>15-channel 目录 · backend 证据"] --> Fork["owner fork 精确 commit<br/>execution v1 仅 RSS"]
+    Fork --> Bridge["来源与 capability 兼容性桥"]
     Bridge --> Plugin
     Plugin --> Guard["Hermes 安全与控制平面<br/>校验 · 授权 · 隔离 · 限制 · 审计"]
-    Guard --> Local["9 条默认本地绑定<br/>RSS · Bilibili · YouTube"]
+    Guard --> RSS["2 条直接 owner-fork 调用<br/>RSS read.feed · browse.entries"]
+    Guard --> Local["7 条默认本地薄包装<br/>Bilibili · YouTube"]
     Guard --> Connector["1 条显式 Connector 绑定<br/>Reddit read.post"]
-    Local --> Backends["精确 backend<br/>feedparser · bili-cli · yt-dlp"]
+    RSS --> Feedparser["fork 拥有 feedparser 调用与投影"]
+    Local --> Backends["精确 backend<br/>bili-cli · yt-dlp"]
     Connector --> OpenCLI["固定 OpenCLI 读取"]
-    Backends --> Results["有界 v1 结果与来源证据"]
+    Feedparser --> Results["有界 Hermes v1 结果与审计元数据"]
+    Backends --> Results
     OpenCLI --> Results
 ```
 
 ### Agent-Reach 用到了什么程度
 
-15-channel registry、backend 元数据、版本兼容性和受限 doctor 直接来自官方
-Agent-Reach。当前 Hermes 产品目录有 63 个只读 operation：11 个标记已实现，
-52 个规划中；10 个有具体的精确 backend executor，其中 9 个默认本地绑定、
-1 个是 Connector-only Reddit 绑定。另有 1 个 `youtube:read.comments` 已实现但
-未绑定，因此不计入 concrete executor。
+15-channel registry、backend 元数据和官方兼容性基线来自官方 Agent-Reach。
+owner fork 的 execution v1 直接执行两条 RSS operation。当前 Hermes 产品目录有
+63 个只读 operation：11 个标记已实现、52 个规划中；10 个有 concrete
+executor，其中 2 个是 RSS fork runtime，8 个是 exact-backend wrapper
+（Bilibili 4、YouTube 3、Connector-only Reddit 1）。9 个 binding 默认本地，
+1 个是 Connector-only。另有 1 个 `youtube:read.comments` 已实现但未绑定，因此
+不计入 concrete executor。
 
-Agent-Reach 1.5.0 没有统一、结构化的 operation execution API，所以直接
-调用官方 Agent-Reach runtime 的数量是 0。这是上游边界，不是需要在 Hermes
-或个人 fork 中补齐的工作。正常集成方式是固定包装 Agent-Reach 精确选择的
-backend。Web、GitHub、V2EX 的 13 条 Hermes 平台实现已经关闭；当前
-Hermes-native 和重复实现例外均为 0。
+官方 Agent-Reach 1.5.0 没有统一、结构化的 operation execution API，所以直接
+调用官方 runtime 的数量仍是 0。经过审查的 owner fork 只补充 operation-scoped
+执行边界，目前恰好是两条 RSS；它不是 15-channel 通用 runtime。其余已执行路径
+仍固定包装 Agent-Reach 精确选择的 backend。Web、GitHub、V2EX 的 13 条 Hermes
+平台实现已经关闭；当前 Hermes-native 和重复实现例外均为 0。
 
-Hermes Reach 只拥有协议、授权、安全调用、规范化、限制、脱敏、回执和审计；
-平台知识、backend 选择和读取语义留在官方 Agent-Reach 或其精确 backend。
+Hermes Reach 只拥有协议、授权、host capability、安全调用、规范化、限制、脱敏、
+回执和审计；RSS 调用与投影属于精确 owner fork，其他平台知识、backend 选择和
+读取语义留在官方 Agent-Reach 证据或其精确 backend。
 完整架构见 [Agent-Reach 插件边界](docs/agent-reach-plugin-boundary.md)，
 操作矩阵和重新启用条件见
 [Agent-Reach 复用边界](docs/agent-reach-reuse-boundary.md)。
 
-项目固定使用 Agent-Reach `1.5.0` 和 commit `1494c2ab239e7355a77e7cceaf3271453a1f34b5`。
+项目固定使用 Agent-Reach `1.5.0`：官方审查基线是
+`b4d52c46c9113cb0f653d6df4cf71ebadf4930ac`，owner-fork integration commit 是
+`806205fd106f4f4453624becfd773acce8418cf1`，execution protocol 是 `v1`。
+完整的 63 行状态以
+[operation ledger](docs/agent-reach-operation-ledger.json) 为准；这两个 RSS
+descriptor 不能代表其他 61 行可执行。
 
 ### 显式组成时的 Connector 路径
 
@@ -324,11 +351,11 @@ Roadmap 表示开发顺序，不承诺发布日期。未完成的能力会保持
 | 已完成 | 精确远程执行桥 | 显式 Connector 适配器、已授权操作交付、回执与重试；默认构成仍为空 |
 | 已完成 | 首个来源 executor | Reddit `read.post` 的固定 OpenCLI 读取、封闭 YAML 映射和 WSS 回执测试；默认未绑定 |
 | 已完成 | 双端显式生产组成 | 可信设备证明 OpenCLI 并确认启用；VPS 从 owner-only 配对状态组成唯一 Reddit adapter |
-| 已完成 | 精确本地 backend | RSS 2、Bilibili 4、YouTube 3 条默认本地薄包装；YouTube comments 保持未绑定 |
+| 已完成 | RSS fork execution 与精确本地 backend | RSS 2 条直接 owner-fork runtime 调用；Bilibili 4、YouTube 3 条默认本地薄包装；YouTube comments 保持未绑定 |
 | 已完成 | 冻结严格插件边界 | 关闭 Web/GitHub/V2EX 共 13 条平台例外，保留目录可发现性和历史审核证据 |
 | 已完成 | 验证真实插件生命周期 | 在全新 Hermes 0.19 环境验证默认关闭、启用、停用和包管理器卸载 |
 | 现在 | 建立公开 Pre-release 通道 | 离线安装同一 exact sdist、对同一 exact wheel 跑完整生命周期，然后摘要并验证两者的 GitHub provenance，再以最小权限发布 |
-| 随后 | 审核官方执行证据 | 对规划 operation 只接受官方 callable 或 Agent-Reach 精确 backend，不建立本地或 fork runtime |
+| 随后 | 审核结构化执行证据 | 对规划 operation 逐条选择窄化 owner-fork contract 或 Agent-Reach 精确 backend；不建立 Hermes 平台 runtime，也不开放通用 fork dispatch |
 | 后续 | 支持认证平台和生产运维 | Twitter/X 等平台、一键授权、审计导出、告警、升级与回滚 |
 
 ## 开发
@@ -347,4 +374,4 @@ uv build
 
 维护者发布步骤和仓库保护前提见 [发布指南](docs/releasing.md)。
 
-Hermes Reach 当前版本为 `0.1.0a0`，使用 [MIT License](LICENSE)。
+Hermes Reach 当前版本为 `0.1.0a1`，使用 [MIT License](LICENSE)。
