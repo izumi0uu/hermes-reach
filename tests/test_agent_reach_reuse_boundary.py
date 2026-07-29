@@ -285,7 +285,9 @@ def test_governance_docs_preserve_worker_and_recovery_tag_boundaries() -> None:
     normalized_rss_decision = " ".join(rss_decision.split())
 
     assert "not a kernel-level syscall sandbox" in normalized_plugin_boundary
-    assert "not an operating-system syscall sandbox" in rss_decision
+    assert "both parent package initializers" in normalized_plugin_boundary
+    assert "before any fork code is imported" in normalized_plugin_boundary
+    assert "not an operating-system syscall sandbox" in normalized_rss_decision
     assert "could attempt filesystem or network syscalls" in normalized_rss_decision
     assert "never a branch or tag" in normalized_plugin_boundary
     assert "not a dependency selector" in normalized_plugin_boundary

@@ -424,6 +424,8 @@ async def _cleanup_process_group(
 ) -> None:
     if process.returncode is not None and not terminate_group:
         return
+    # A reaped session leader can leave descendants in its original group.
+    # Deliberately signal that group before any further await on failed paths.
     if terminate_group:
         try:
             os.killpg(process.pid, signal.SIGKILL)

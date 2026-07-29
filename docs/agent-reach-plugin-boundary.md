@@ -49,6 +49,9 @@ registration:
 
 - Agent-Reach version is exactly `1.5.0`;
 - PEP 610 provenance names the owner fork and exact integration commit;
+- before any fork code is imported, RECORD metadata and the current on-disk
+  digest match for both parent package initializers and all four reviewed
+  `execution.v1` files;
 - the fork reports execution protocol `v1`;
 - static discovery contains exactly the two reviewed RSS descriptors, schemas,
   host capability, backend identity/version, and hard limits; and

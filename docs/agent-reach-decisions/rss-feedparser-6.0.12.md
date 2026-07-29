@@ -39,6 +39,9 @@ executing a backend:
 - installed Agent-Reach version is exactly `1.5.0`;
 - PEP 610 provenance names `izumi0uu/Agent-Reach` and exact integration commit
   `806205fd106f4f4453624becfd773acce8418cf1`;
+- RECORD SHA-256, size, and installed content match for the two parent package
+  initializers Python executes and the four reviewed `execution.v1` files
+  before any fork module is imported;
 - execution protocol is exactly `v1`;
 - discovery contains exactly the two reviewed RSS descriptors and closed
   argument/result schemas;

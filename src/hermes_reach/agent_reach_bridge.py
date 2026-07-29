@@ -71,12 +71,24 @@ _INCOMPATIBLE_EXECUTION_CONTRACT: Final = (
 )
 _INCOMPATIBLE_REGISTRY: Final = "Agent-Reach has an incompatible channel registry."
 _INCOMPATIBLE_DOCTOR: Final = "Agent-Reach returned an incompatible doctor report."
-_EXECUTION_MODULE: Final = "agent_reach.execution.v1"
+_AGENT_REACH_MODULE: Final = "agent_reach"
+_EXECUTION_PACKAGE_MODULE: Final = f"{_AGENT_REACH_MODULE}.execution"
+_EXECUTION_MODULE: Final = f"{_EXECUTION_PACKAGE_MODULE}.v1"
 _EXECUTION_CONTRACTS_MODULE: Final = f"{_EXECUTION_MODULE}.contracts"
 _EXECUTION_REGISTRY_MODULE: Final = f"{_EXECUTION_MODULE}.registry"
 _EXECUTION_RSS_MODULE: Final = f"{_EXECUTION_MODULE}.rss"
 _EXECUTION_MODULE_FILES: Final[Mapping[str, tuple[str, str, int]]] = MappingProxyType(
     {
+        _AGENT_REACH_MODULE: (
+            "agent_reach/__init__.py",
+            "nj1R2PRQkU3mBukvsKQF09jpjRrvwOWnb3MCkcLA5Es",
+            603,
+        ),
+        _EXECUTION_PACKAGE_MODULE: (
+            "agent_reach/execution/__init__.py",
+            "MxyIym6KexY2aMfAnfG2EZcPMXZpTH0acTSUC_cQ3FE",
+            122,
+        ),
         _EXECUTION_MODULE: (
             "agent_reach/execution/v1/__init__.py",
             "XFIQw7WGxOfTsgfUm3jmOnhiL_QRUUuO9NcIcr4TaXg",

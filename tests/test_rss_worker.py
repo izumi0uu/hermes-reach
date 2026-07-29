@@ -894,6 +894,13 @@ def test_request_encoder_closes_operation_limits_and_metadata() -> None:
             ATOM,
             operation="read.feed",
             content_type="application/rss+xml",
+            content_location="https://public_feed.example.com/feed.xml",
+            max_entries=1,
+        ),
+        lambda: encode_request(
+            ATOM,
+            operation="read.feed",
+            content_type="application/rss+xml",
             content_location=FEED_URL,
             max_entries=2,
         ),

@@ -391,6 +391,82 @@ def test_static_handshake_rejects_record_content_drift(tmp_path: Path) -> None:
     assert imports == []
 
 
+@pytest.mark.parametrize(
+    "relative",
+    [
+        "agent_reach/__init__.py",
+        "agent_reach/execution/__init__.py",
+    ],
+)
+@pytest.mark.parametrize(
+    "field",
+    ["hash_algorithm", "hash_value", "size"],
+)
+def test_parent_initializer_record_metadata_drift_fails_before_import(
+    relative: str,
+    field: str,
+) -> None:
+    imports: list[str] = []
+    installation = bridge._default_installation_reader(AGENT_REACH_DISTRIBUTION)
+    installed_file = installation.files[relative]
+    if field == "hash_algorithm":
+        drifted_file = replace(installed_file, hash_algorithm="sha512")
+    elif field == "hash_value":
+        drifted_file = replace(installed_file, hash_value="invalid-record-hash")
+    else:
+        drifted_file = replace(
+            installed_file,
+            size=cast(int, installed_file.size) + 1,
+        )
+    drifted_files = dict(installation.files)
+    drifted_files[relative] = drifted_file
+
+    with pytest.raises(AgentReachBridgeError, match="capability contract"):
+        validate_agent_reach_execution_contract(
+            direct_url_reader=_direct_url,
+            installation_reader=lambda _: AgentReachInstallation(
+                installation.direct_url_document,
+                drifted_files,
+            ),
+            execution_module_loader=lambda: imports.append("execution"),
+        )
+
+    assert imports == []
+
+
+@pytest.mark.parametrize(
+    "relative",
+    [
+        "agent_reach/__init__.py",
+        "agent_reach/execution/__init__.py",
+    ],
+)
+def test_static_handshake_rejects_parent_initializer_content_drift_before_import(
+    tmp_path: Path,
+    relative: str,
+) -> None:
+    imports: list[str] = []
+    installation = bridge._default_installation_reader(AGENT_REACH_DISTRIBUTION)
+    installed_file = installation.files[relative]
+    shadow = tmp_path / relative
+    shadow.parent.mkdir(parents=True)
+    shadow.write_bytes(b"x" * cast(int, installed_file.size))
+    drifted_files = dict(installation.files)
+    drifted_files[relative] = replace(installed_file, path=shadow)
+
+    with pytest.raises(AgentReachBridgeError, match="capability contract"):
+        validate_agent_reach_execution_contract(
+            direct_url_reader=_direct_url,
+            installation_reader=lambda _: AgentReachInstallation(
+                installation.direct_url_document,
+                drifted_files,
+            ),
+            execution_module_loader=lambda: imports.append("execution"),
+        )
+
+    assert imports == []
+
+
 def test_static_handshake_requires_the_fork_rss_record() -> None:
     relative = "agent_reach/execution/v1/rss.py"
     imports: list[str] = []
