@@ -107,10 +107,17 @@ gh release download "$RELEASE_TAG" \
 
 gh attestation verify \
   "$RELEASE_DIR/hermes_reach-0.1.0a0-py3-none-any.whl" \
-  --repo izumi0uu/hermes-reach
+  --repo izumi0uu/hermes-reach \
+  --signer-workflow izumi0uu/hermes-reach/.github/workflows/release.yml
+gh attestation verify \
+  "$RELEASE_DIR/hermes_reach-0.1.0a0.tar.gz" \
+  --repo izumi0uu/hermes-reach \
+  --signer-workflow izumi0uu/hermes-reach/.github/workflows/release.yml
 ```
 
-然后检查两个包文件的传输摘要。macOS 使用：
+以上两个命令分别验证 wheel 和 sdist，并把签名者限定为本仓库已审核的 release
+工作流。`SHA256SUMS` 本身不是 attestation subject；它只记录两个发布包的预期
+摘要。然后检查这些摘要。macOS 使用：
 
 ```bash
 cd "$RELEASE_DIR"
@@ -119,9 +126,8 @@ cd ..
 ```
 
 GNU/Linux 将第二行换成 `sha256sum --check SHA256SUMS`。Windows 可以用
-`Get-FileHash -Algorithm SHA256` 与清单逐项比较。GitHub attestation 验证
-制品由这个仓库的 Actions 工作流产生；SHA-256 只检测字节是否变化，不能单独
-证明发布者身份。
+`Get-FileHash -Algorithm SHA256` 与清单逐项比较。attestation 检查验证每个发布
+包的工作流来源；SHA-256 只检测字节是否变化，不能单独证明发布者身份。
 
 必须把 wheel 安装到实际运行 Hermes 的同一个 Python 环境。以下路径是占位符，
 不要替换成当前 shell 中碰巧存在的 Python：
@@ -321,7 +327,7 @@ Roadmap 表示开发顺序，不承诺发布日期。未完成的能力会保持
 | 已完成 | 精确本地 backend | RSS 2、Bilibili 4、YouTube 3 条默认本地薄包装；YouTube comments 保持未绑定 |
 | 已完成 | 冻结严格插件边界 | 关闭 Web/GitHub/V2EX 共 13 条平台例外，保留目录可发现性和历史审核证据 |
 | 已完成 | 验证真实插件生命周期 | 在全新 Hermes 0.19 环境验证默认关闭、启用、停用和包管理器卸载 |
-| 现在 | 建立公开 Pre-release 通道 | 同一 wheel 的生命周期验收、摘要、GitHub provenance 与最小权限发布 |
+| 现在 | 建立公开 Pre-release 通道 | 离线安装同一 exact sdist、对同一 exact wheel 跑完整生命周期，然后摘要并验证两者的 GitHub provenance，再以最小权限发布 |
 | 随后 | 审核官方执行证据 | 对规划 operation 只接受官方 callable 或 Agent-Reach 精确 backend，不建立本地或 fork runtime |
 | 后续 | 支持认证平台和生产运维 | Twitter/X 等平台、一键授权、审计导出、告警、升级与回滚 |
 

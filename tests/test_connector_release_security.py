@@ -87,6 +87,7 @@ _TELEMETRY_IMPORTS = frozenset(
     }
 )
 _URL = re.compile(r"https?://[^\s'\"<>]+", re.IGNORECASE)
+_ACCEPTANCE_COMMAND_TIMEOUT_SECONDS = 600.0
 
 
 def _is_export_call(node: ast.AST) -> TypeGuard[ast.Call]:
@@ -126,8 +127,8 @@ def built_archives(
     assert uv is not None, "Package acceptance requires the project's uv tool."
     environment = os.environ.copy()
     environment.update({"PIP_NO_INDEX": "1", "UV_OFFLINE": "1"})
-    completed = subprocess.run(
-        [
+    _run_acceptance_command(
+        (
             uv,
             "build",
             "--offline",
@@ -138,14 +139,11 @@ def built_archives(
             "--python",
             sys.executable,
             str(source),
-        ],
+        ),
         cwd=source,
-        env=environment,
-        check=False,
-        capture_output=True,
-        text=True,
+        environment=environment,
+        phase="package build",
     )
-    assert completed.returncode == 0, completed.stdout + completed.stderr
 
     wheels = tuple(output.glob("*.whl"))
     source_distributions = tuple(output.glob("*.tar.gz"))
@@ -178,15 +176,30 @@ def _run_acceptance_command(
     environment: dict[str, str],
     phase: str = "acceptance",
     expected_returncode: int = 0,
+    timeout: float = _ACCEPTANCE_COMMAND_TIMEOUT_SECONDS,
 ) -> subprocess.CompletedProcess[str]:
-    completed = subprocess.run(
-        tuple(command),
-        cwd=cwd,
-        env=environment,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
+    try:
+        completed = subprocess.run(
+            tuple(command),
+            cwd=cwd,
+            env=environment,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as expired:
+        stdout = expired.stdout or ""
+        stderr = expired.stderr or ""
+        if isinstance(stdout, bytes):
+            stdout = stdout.decode("utf-8", errors="replace")
+        if isinstance(stderr, bytes):
+            stderr = stderr.decode("utf-8", errors="replace")
+        raise AssertionError(
+            f"{phase} command timed out after {timeout}s: {tuple(command)!r}\n"
+            f"stdout:\n{stdout}\n"
+            f"stderr:\n{stderr}"
+        ) from expired
     assert completed.returncode == expected_returncode, (
         f"{phase} command returned {completed.returncode}, expected "
         f"{expected_returncode}: {tuple(command)!r}\n"
@@ -218,6 +231,11 @@ def _required_platform_environment() -> dict[str, str]:
     }
     assert "SystemRoot" in required or "WINDIR" in required
     return required
+
+
+def _temporary_directory_environment(directory: Path) -> dict[str, str]:
+    value = str(directory)
+    return {"TEMP": value, "TMP": value, "TMPDIR": value}
 
 
 def _tree_snapshot(
@@ -265,7 +283,7 @@ def _assert_plugin_discovery_log_append(
         rf"INFO hermes_cli\.plugins: Plugin discovery complete: 1 found, "
         rf"{enabled} enabled\n",
         appended,
-    )
+    ), f"unexpected plugin discovery log append in {path}:\n{appended!r}"
 
 
 def _run_json_probe(
@@ -307,15 +325,83 @@ def _assert_reach_cli_absent(
     assert "invalid choice: 'reach'" in completed.stderr
 
 
-def test_built_wheel_follows_the_real_hermes_plugin_lifecycle(
+@pytest.mark.parametrize(
+    ("stdout", "stderr"),
+    [
+        (b"partial stdout", b"partial stderr"),
+        ("partial stdout", "partial stderr"),
+    ],
+)
+def test_acceptance_command_timeout_reports_partial_output(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    stdout: str | bytes,
+    stderr: str | bytes,
+) -> None:
+    def raise_timeout(command: tuple[str, ...], **kwargs: object) -> None:
+        assert kwargs["timeout"] == _ACCEPTANCE_COMMAND_TIMEOUT_SECONDS
+        raise subprocess.TimeoutExpired(
+            command,
+            _ACCEPTANCE_COMMAND_TIMEOUT_SECONDS,
+            output=stdout,
+            stderr=stderr,
+        )
+
+    monkeypatch.setattr(subprocess, "run", raise_timeout)
+
+    with pytest.raises(AssertionError) as raised:
+        _run_acceptance_command(
+            ("hung-command",),
+            cwd=tmp_path,
+            environment={},
+            phase="timeout probe",
+        )
+
+    assert str(raised.value) == (
+        "timeout probe command timed out after "
+        f"{_ACCEPTANCE_COMMAND_TIMEOUT_SECONDS}s: {('hung-command',)!r}\n"
+        "stdout:\npartial stdout\n"
+        "stderr:\npartial stderr"
+    )
+
+
+def test_temporary_directory_environment_covers_subprocess_conventions(
+    tmp_path: Path,
+) -> None:
+    value = str(tmp_path)
+    assert _temporary_directory_environment(tmp_path) == {
+        "TEMP": value,
+        "TMP": value,
+        "TMPDIR": value,
+    }
+
+
+def test_discovery_log_failure_reports_observed_append(tmp_path: Path) -> None:
+    path = tmp_path / "agent.log"
+    before = b"existing log entry\n"
+    appended = "unexpected discovery output\n"
+    path.write_bytes(before + appended.encode())
+
+    with pytest.raises(AssertionError) as raised:
+        _assert_plugin_discovery_log_append(path, before, enabled=1)
+
+    message = str(raised.value)
+    assert f"unexpected plugin discovery log append in {path}" in message
+    assert repr(appended) in message
+    assert "existing log entry" not in message
+
+
+def test_built_distributions_install_and_wheel_follows_real_hermes_lifecycle(
     built_archives: tuple[Path, Path],
     tmp_path: Path,
 ) -> None:
     root = Path(__file__).resolve().parents[1]
-    wheel, _ = built_archives
+    wheel, source_distribution = built_archives
     virtual_environment = tmp_path / "venv"
     isolated_python = _virtual_environment_python(virtual_environment)
     isolated_hermes = _virtual_environment_script(virtual_environment, "hermes")
+    sdist_environment = tmp_path / "sdist-venv"
+    sdist_python = _virtual_environment_python(sdist_environment)
     uv = shutil.which("uv")
     assert uv is not None, "Plugin acceptance requires the project's uv tool."
 
@@ -347,7 +433,7 @@ def test_built_wheel_follows_the_real_hermes_plugin_lifecycle(
         "LANG": "C",
         "LC_ALL": "C",
         "PATH": str(Path(uv).parent),
-        "TMPDIR": str(temporary_directory),
+        **_temporary_directory_environment(temporary_directory),
     }
     for name in ("HOME", "USERPROFILE", "UV_CACHE_DIR", "XDG_CACHE_HOME"):
         if value := os.environ.get(name):
@@ -373,11 +459,11 @@ def test_built_wheel_follows_the_real_hermes_plugin_lifecycle(
         "PYTHONDONTWRITEBYTECODE": "1",
         "PYTHONHASHSEED": "0",
         "PYTHONUTF8": "1",
-        "TMPDIR": str(temporary_directory),
         "USERPROFILE": str(hermes_home),
         "XDG_CACHE_HOME": str(xdg_cache),
         "XDG_CONFIG_HOME": str(xdg_config),
         "XDG_DATA_HOME": str(xdg_data),
+        **_temporary_directory_environment(temporary_directory),
     }
     isolated_environment.update(_required_platform_environment())
     bootstrap_environment = {
@@ -388,6 +474,59 @@ def test_built_wheel_follows_the_real_hermes_plugin_lifecycle(
         "UV_PYTHON_DOWNLOADS": "never",
         "VIRTUAL_ENV": str(virtual_environment),
     }
+    sdist_bootstrap_environment = {
+        **bootstrap_environment,
+        "PATH": str(sdist_python.parent),
+        "VIRTUAL_ENV": str(sdist_environment),
+    }
+    _run_acceptance_command(
+        (
+            sys.executable,
+            "-m",
+            "venv",
+            "--without-pip",
+            str(sdist_environment),
+        ),
+        cwd=tmp_path,
+        environment=sdist_bootstrap_environment,
+        phase="source distribution environment creation",
+    )
+    assert sdist_python.is_file()
+
+    _run_acceptance_command(
+        (
+            uv,
+            "pip",
+            "install",
+            "--offline",
+            "--no-python-downloads",
+            "--no-deps",
+            "--python",
+            str(sdist_python),
+            str(source_distribution),
+        ),
+        cwd=tmp_path,
+        environment=sdist_bootstrap_environment,
+        phase="source distribution install",
+    )
+    sdist_probe = _run_acceptance_command(
+        (
+            str(sdist_python),
+            "-I",
+            "-c",
+            "from importlib.metadata import distribution; "
+            "print(next(ep.value for ep in distribution('hermes-reach').entry_points "
+            "if ep.group == 'hermes_agent.plugins' and ep.name == 'reach'))",
+        ),
+        cwd=tmp_path,
+        environment={
+            **isolated_environment,
+            "PATH": str(sdist_python.parent),
+        },
+        phase="source distribution entry point",
+    )
+    assert sdist_probe.stdout == "hermes_reach\n"
+
     _run_acceptance_command(
         (
             sys.executable,
@@ -398,6 +537,7 @@ def test_built_wheel_follows_the_real_hermes_plugin_lifecycle(
         ),
         cwd=tmp_path,
         environment=bootstrap_environment,
+        phase="wheel environment creation",
     )
     assert isolated_python.is_file()
 

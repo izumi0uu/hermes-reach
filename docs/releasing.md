@@ -9,11 +9,11 @@ dependency to make an index upload succeed.
 The release invariant is:
 
 ```text
-build once -> test exact bytes -> checksum exact bytes
-           -> attest exact bytes -> publish exact bytes
+build once -> install exact sdist offline -> lifecycle-test exact wheel
+           -> checksum exact bytes -> attest exact bytes -> publish exact bytes
 ```
 
-No release job rebuilds a package after the installed Hermes lifecycle test.
+No release job rebuilds either distribution after exact-artifact acceptance.
 
 ## Repository prerequisites
 
@@ -43,8 +43,9 @@ uv run mypy
 uv run pytest
 ```
 
-Build the candidate bytes once, without a generated file in `dist/`, then run
-the exact-artifact lifecycle and release metadata checks:
+Build the candidate bytes once, without a generated file in `dist/`, then prove
+the exact sdist installs offline, run the full Hermes lifecycle against the
+exact wheel, and perform the release metadata checks:
 
 ```bash
 uv run python scripts/prepare_release.py version --tag v0.1.0a0
@@ -84,9 +85,11 @@ The workflow then:
 
 1. verifies tag, version, commit, and `main` ancestry;
 2. passes Python 3.11, 3.12, and 3.13 plus static gates;
-3. builds and lifecycle-tests one wheel/sdist pair;
+3. builds one wheel/sdist pair, installs the exact sdist offline, and runs the
+   full Hermes lifecycle against the exact wheel;
 4. hands the checksummed files between jobs through one Actions artifact;
-5. creates GitHub OIDC build attestations from `SHA256SUMS`;
+5. creates separate GitHub OIDC build attestations for the wheel and sdist
+   whose digests are listed in `SHA256SUMS`;
 6. rechecks the remote tag and current remote `main` ancestry, then publishes a
    non-latest pre-release.
 
@@ -118,21 +121,28 @@ the workflow and are not covered by `SHA256SUMS` or this workflow's build
 attestations. Do not count them as part of the workflow's closed three-asset
 set.
 
-Verify the published wheel independently:
+Verify the published wheel and sdist independently, then check their digests:
 
 ```bash
 gh release download v0.1.0a0 --repo izumi0uu/hermes-reach --dir release-audit
 gh attestation verify \
   release-audit/hermes_reach-0.1.0a0-py3-none-any.whl \
-  --repo izumi0uu/hermes-reach
+  --repo izumi0uu/hermes-reach \
+  --signer-workflow izumi0uu/hermes-reach/.github/workflows/release.yml
+gh attestation verify \
+  release-audit/hermes_reach-0.1.0a0.tar.gz \
+  --repo izumi0uu/hermes-reach \
+  --signer-workflow izumi0uu/hermes-reach/.github/workflows/release.yml
 cd release-audit
 shasum -a 256 --check SHA256SUMS
 ```
 
-Checksums establish byte equality, not publisher identity. GitHub provenance
-binds the subject digest to this repository and workflow; it does not prove
-that the reviewed source is defect-free or that repository administrators are
-uncompromised.
+The two attestation commands name only the wheel and sdist as subjects and
+restrict the signer to the reviewed release workflow. `SHA256SUMS` itself is
+not an attestation subject; it is only the manifest used for checksum
+verification. Checksums establish byte equality, not publisher identity.
+GitHub provenance does not prove that the reviewed source is defect-free or
+that repository administrators are uncompromised.
 
 ## Failure and recovery
 

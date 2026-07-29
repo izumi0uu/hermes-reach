@@ -12,6 +12,11 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS = ROOT / ".github" / "workflows"
 SHA_PIN = re.compile(r"\A[^@]+@[0-9a-f]{40}\Z")
+ATTESTATION_COMMAND = re.compile(
+    r"^gh attestation verify \\\n(?:^  .+(?:\n|\Z))+", re.MULTILINE
+)
+RELEASE_REPOSITORY = "izumi0uu/hermes-reach"
+RELEASE_SIGNER_WORKFLOW = "izumi0uu/hermes-reach/.github/workflows/release.yml"
 
 EXPECTED_ACTIONS = {
     "actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373",
@@ -58,6 +63,13 @@ def _commands(workflow: dict[str, Any]) -> list[str]:
         value["run"]
         for value in _walk(workflow)
         if isinstance(value, dict) and isinstance(value.get("run"), str)
+    ]
+
+
+def _attestation_commands(markdown: str) -> list[list[str]]:
+    return [
+        shlex.split(match.group(0).replace("\\\n", " "))
+        for match in ATTESTATION_COMMAND.finditer(markdown)
     ]
 
 
@@ -333,12 +345,57 @@ def test_release_docs_distinguish_uploaded_assets_from_generated_sources() -> No
     )
 
     documents = {path: path.read_text(encoding="utf-8") for path in paths}
-    for text in documents.values():
+    expected_subjects = {
+        ROOT / "README.md": [
+            "$RELEASE_DIR/hermes_reach-0.1.0a0-py3-none-any.whl",
+            "$RELEASE_DIR/hermes_reach-0.1.0a0.tar.gz",
+        ],
+        ROOT / "README_EN.md": [
+            "$RELEASE_DIR/hermes_reach-0.1.0a0-py3-none-any.whl",
+            "$RELEASE_DIR/hermes_reach-0.1.0a0.tar.gz",
+        ],
+        ROOT / "docs" / "releasing.md": [
+            "release-audit/hermes_reach-0.1.0a0-py3-none-any.whl",
+            "release-audit/hermes_reach-0.1.0a0.tar.gz",
+        ],
+    }
+    subject_disclaimers = {
+        ROOT / "README.md": "`SHA256SUMS` 本身不是 attestation subject",
+        ROOT / "README_EN.md": "`SHA256SUMS` itself is not an attestation subject",
+        ROOT / "docs" / "releasing.md": (
+            "`SHA256SUMS` itself is not an attestation subject"
+        ),
+    }
+    for path, text in documents.items():
+        normalized_text = " ".join(text.split())
         assert "`Source code (zip)`" in text
         assert "`Source code (tar.gz)`" in text
         assert "SHA256SUMS" in text
+        assert subject_disclaimers[path] in normalized_text
+        assert text.count("gh attestation verify") == 2
+
+        attestation_commands = _attestation_commands(text)
+        assert attestation_commands == [
+            [
+                "gh",
+                "attestation",
+                "verify",
+                subject,
+                "--repo",
+                RELEASE_REPOSITORY,
+                "--signer-workflow",
+                RELEASE_SIGNER_WORKFLOW,
+            ]
+            for subject in expected_subjects[path]
+        ]
+        assert text.rindex("gh attestation verify") < text.index(
+            "shasum -a 256 --check SHA256SUMS"
+        )
 
     release_guide = documents[ROOT / "docs" / "releasing.md"]
+    assert "installs the exact sdist offline" in release_guide
+    assert "full Hermes lifecycle against the exact wheel" in release_guide
+    assert "lifecycle-tests one wheel/sdist pair" not in release_guide
     assert "failure can be\nambiguous" in release_guide
     assert "gh release view <tag> --json isDraft,isPrerelease,url" in release_guide
     assert "GitHub has no disabled release state" in release_guide
