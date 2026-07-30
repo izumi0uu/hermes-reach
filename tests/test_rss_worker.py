@@ -340,10 +340,10 @@ def test_default_worker_handshake_revalidates_runtime_module_every_time(
 ) -> None:
     validation_calls = 0
 
-    def reject_runtime_drift(*, validate_runtime_module: bool = False) -> object:
+    def reject_runtime_drift(*, runtime_module: str | None = None) -> object:
         nonlocal validation_calls
         validation_calls += 1
-        assert validate_runtime_module is True
+        assert runtime_module == "rss"
         raise AgentReachBridgeError("PRIVATE RUNTIME DRIFT")
 
     monkeypatch.setattr(

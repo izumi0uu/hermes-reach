@@ -48,12 +48,23 @@ OPERATION_LEDGER_FIELDS = frozenset(
 
 DIRECT_AGENT_REACH_RUNTIME: frozenset[tuple[str, str]] = frozenset()
 
-DIRECT_OWNER_FORK_RUNTIME = frozenset(
+P2_BILIBILI_FORK_RUNTIME = frozenset(
+    {
+        ("bilibili", "search.videos"),
+        ("bilibili", "read.video"),
+        ("bilibili", "browse.hot"),
+        ("bilibili", "browse.rank"),
+    }
+)
+
+P1_RSS_FORK_RUNTIME = frozenset(
     {
         ("rss", "browse.entries"),
         ("rss", "read.feed"),
     }
 )
+
+DIRECT_OWNER_FORK_RUNTIME = P1_RSS_FORK_RUNTIME | P2_BILIBILI_FORK_RUNTIME
 
 EXACT_BACKEND_THIN_WRAPPER = frozenset(
     {
@@ -61,10 +72,6 @@ EXACT_BACKEND_THIN_WRAPPER = frozenset(
         ("youtube", "read.video"),
         ("youtube", "read.subtitles"),
         ("reddit", "read.post"),
-        ("bilibili", "search.videos"),
-        ("bilibili", "read.video"),
-        ("bilibili", "browse.hot"),
-        ("bilibili", "browse.rank"),
     }
 )
 
@@ -94,17 +101,6 @@ CLOSED_PLATFORM_EXCEPTIONS = frozenset(
         ("v2ex", "browse.node_topics"),
         ("v2ex", "read.topic"),
         ("v2ex", "read.user"),
-    }
-)
-
-P1_RSS_FORK_RUNTIME = DIRECT_OWNER_FORK_RUNTIME
-
-P2_BILIBILI_EXACT_WRAPPERS = frozenset(
-    {
-        ("bilibili", "search.videos"),
-        ("bilibili", "read.video"),
-        ("bilibili", "browse.hot"),
-        ("bilibili", "browse.rank"),
     }
 )
 
@@ -154,13 +150,13 @@ def test_frozen_reuse_audit_counts_are_review_visible() -> None:
 
     assert len(operations) == 63
     assert len(DIRECT_AGENT_REACH_RUNTIME) == 0
-    assert len(DIRECT_OWNER_FORK_RUNTIME) == 2
+    assert len(DIRECT_OWNER_FORK_RUNTIME) == 6
     assert EXACT_BACKEND_THIN_WRAPPER == (
-        P2_BILIBILI_EXACT_WRAPPERS
-        | P2_YOUTUBE_EXACT_WRAPPERS
-        | REDDIT_CONNECTOR_EXACT_WRAPPER
+        P2_YOUTUBE_EXACT_WRAPPERS | REDDIT_CONNECTOR_EXACT_WRAPPER
     )
-    assert len(EXACT_BACKEND_THIN_WRAPPER) == 8
+    assert len(EXACT_BACKEND_THIN_WRAPPER) == 4
+    assert len(DIRECT_OWNER_FORK_RUNTIME | EXACT_BACKEND_THIN_WRAPPER) == 10
+    assert len(operations) - len(DIRECT_OWNER_FORK_RUNTIME) == 57
     assert IMPLEMENTED_BUT_UNBOUND == {("youtube", "read.comments")}
     assert HERMES_NATIVE_EQUIVALENT == frozenset()
     assert REACH_REIMPLEMENTATION == frozenset()
@@ -222,11 +218,7 @@ def test_operation_ledger_closes_every_catalog_operation_and_fork_contract() -> 
         if operation.implementation_state == "planned"
     }
 
-    default_local = (
-        DIRECT_OWNER_FORK_RUNTIME
-        | P2_BILIBILI_EXACT_WRAPPERS
-        | P2_YOUTUBE_EXACT_WRAPPERS
-    )
+    default_local = DIRECT_OWNER_FORK_RUNTIME | P2_YOUTUBE_EXACT_WRAPPERS
     for key, row in keyed.items():
         assert set(row) == OPERATION_LEDGER_FIELDS
         assert (ROOT / row["decision_record"]).is_file()
@@ -269,6 +261,28 @@ def test_operation_ledger_closes_every_catalog_operation_and_fork_contract() -> 
             "limits": {"maximum_items": maximum_items, **shared_limits},
         }
 
+    bilibili_limits = {
+        **shared_limits,
+        "maximum_output_bytes": 524_288,
+        "maximum_author_characters": 1_024,
+    }
+    for operation, argument_schema, maximum_items in (
+        ("search.videos", "bilibili.search.videos.arguments.v1", 50),
+        ("read.video", "bilibili.read.video.arguments.v1", 1),
+        ("browse.hot", "bilibili.browse.hot.arguments.v1", 50),
+        ("browse.rank", "bilibili.browse.rank.arguments.v1", 50),
+    ):
+        contract = keyed[("bilibili", operation)]["execution_contract"]
+        assert contract == {
+            "protocol_version": AGENT_REACH_PROTOCOL_VERSION,
+            "argument_schema_id": argument_schema,
+            "result_schema_ids": ["bilibili.video.v1"],
+            "backend_id": "bili-cli",
+            "backend_version": BILIBILI_CLI_VERSION,
+            "required_host_capabilities": ["network_access.v1"],
+            "limits": {"maximum_items": maximum_items, **bilibili_limits},
+        }
+
 
 def test_governance_docs_preserve_worker_and_recovery_tag_boundaries() -> None:
     plugin_boundary = (ROOT / "docs" / "agent-reach-plugin-boundary.md").read_text(
@@ -280,9 +294,13 @@ def test_governance_docs_preserve_worker_and_recovery_tag_boundaries() -> None:
     rss_decision = (
         ROOT / "docs" / "agent-reach-decisions" / "rss-feedparser-6.0.12.md"
     ).read_text(encoding="utf-8")
+    bilibili_decision = (
+        ROOT / "docs" / "agent-reach-decisions" / "bilibili-cli-0.6.2.md"
+    ).read_text(encoding="utf-8")
     normalized_plugin_boundary = " ".join(plugin_boundary.split())
     normalized_reuse_boundary = " ".join(reuse_boundary.split())
     normalized_rss_decision = " ".join(rss_decision.split())
+    normalized_bilibili_decision = " ".join(bilibili_decision.split())
 
     assert "not a kernel-level syscall sandbox" in normalized_plugin_boundary
     assert "both parent package initializers" in normalized_plugin_boundary
@@ -293,6 +311,10 @@ def test_governance_docs_preserve_worker_and_recovery_tag_boundaries() -> None:
     assert "not a dependency selector" in normalized_plugin_boundary
     assert "Hermes never depends on that tag" in normalized_reuse_boundary
     assert "the exact commit pin is authoritative" in normalized_reuse_boundary
+    assert "hermes-reach-integration-0.1.0a2" in normalized_plugin_boundary
+    assert AGENT_REACH_FORK_COMMIT in normalized_plugin_boundary
+    assert "hermes-reach-integration-0.1.0a1" in normalized_bilibili_decision
+    assert "806205fd106f4f4453624becfd773acce8418cf1" in (normalized_bilibili_decision)
 
 
 @pytest.mark.parametrize(("source", "operation"), sorted(CLOSED_PLATFORM_EXCEPTIONS))
@@ -340,7 +362,7 @@ def test_review_decisions_are_pinned_to_catalog_and_runtime_state() -> None:
         CLOSED_PLATFORM_EXCEPTIONS
         | P0_BLOCKED_NOT_IMPLEMENTED
         | P1_RSS_FORK_RUNTIME
-        | P2_BILIBILI_EXACT_WRAPPERS
+        | P2_BILIBILI_FORK_RUNTIME
         | P2_YOUTUBE_EXACT_WRAPPERS
     )
     assert {
@@ -362,12 +384,12 @@ def test_review_decisions_are_pinned_to_catalog_and_runtime_state() -> None:
         key
         for key, review in keyed.items()
         if review["classification"] == "direct_owner_fork_runtime"
-    } == P1_RSS_FORK_RUNTIME
+    } == (P1_RSS_FORK_RUNTIME | P2_BILIBILI_FORK_RUNTIME)
     assert {
         key
         for key, review in keyed.items()
         if review["classification"] == "exact_backend_thin_wrapper"
-    } == (P2_BILIBILI_EXACT_WRAPPERS | P2_YOUTUBE_EXACT_WRAPPERS)
+    } == P2_YOUTUBE_EXACT_WRAPPERS
 
     catalog = {
         (operation.source, operation.name): operation for operation in all_operations()
@@ -400,7 +422,7 @@ def test_review_decisions_are_pinned_to_catalog_and_runtime_state() -> None:
             assert availability.backend_id == review["current_backend"]
             if key in P1_RSS_FORK_RUNTIME:
                 assert availability.backend_version == FEEDPARSER_VERSION
-            if key in P2_BILIBILI_EXACT_WRAPPERS:
+            if key in P2_BILIBILI_FORK_RUNTIME:
                 assert availability.backend_version == BILIBILI_CLI_VERSION
             if key in P2_YOUTUBE_EXACT_WRAPPERS:
                 assert availability.backend_version == YTDLP_VERSION

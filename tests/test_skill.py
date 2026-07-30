@@ -73,7 +73,11 @@ def test_safe_skill_contains_no_upstream_execution_escape_hatches() -> None:
     for fragment in forbidden_fragments:
         assert fragment not in text
     assert "b4d52c46c9113cb0f653d6df4cf71ebadf4930ac" in text
-    assert "806205fd106f4f4453624becfd773acce8418cf1" in text
+    assert "f195253d53befdb012d7aa575e732ec627ec29ac" in text
     assert "rss:read.feed" in text
     assert "rss:browse.entries" in text
-    assert "other 61 catalog operations" in text
+    assert "bilibili:search.videos" in text
+    assert "bilibili:read.video" in text
+    assert "bilibili:browse.hot" in text
+    assert "bilibili:browse.rank" in text
+    assert "other 57 catalog operations" in text

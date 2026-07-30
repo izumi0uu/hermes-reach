@@ -10,7 +10,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 PROJECT_VERSION = "0.1.0a1"
-AGENT_REACH_COMMIT = "806205fd106f4f4453624becfd773acce8418cf1"
+AGENT_REACH_COMMIT = "f195253d53befdb012d7aa575e732ec627ec29ac"
 LEGACY_AGENT_REACH_COMMITS = frozenset(
     {
         "1494c2ab239e7355a77e7cceaf3271453a1f34b5",

@@ -179,7 +179,7 @@ ExecutionApiProvider = Callable[[], AgentReachExecutionApi]
 
 
 def _load_execution_api() -> AgentReachExecutionApi:
-    return validate_agent_reach_execution_contract(validate_runtime_module=True)
+    return validate_agent_reach_execution_contract(runtime_module="rss")
 
 
 def encode_request(

@@ -326,12 +326,20 @@ def test_static_handshake_only_discovers_capabilities(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delitem(sys.modules, "agent_reach.execution.v1.rss", raising=False)
+    monkeypatch.delitem(
+        sys.modules,
+        "agent_reach.execution.v1.bilibili",
+        raising=False,
+    )
 
     api = validate_agent_reach_execution_contract(direct_url_reader=_direct_url)
 
     assert api.execute is _execution_module().execute
-    assert len(api.capabilities) == 2
+    assert api.network_access_capability == "network_access.v1"
+    assert api.network_access_type.__name__ == "NetworkAccessV1"
+    assert len(api.capabilities) == 6
     assert "agent_reach.execution.v1.rss" not in sys.modules
+    assert "agent_reach.execution.v1.bilibili" not in sys.modules
 
 
 @pytest.mark.parametrize(
@@ -467,8 +475,14 @@ def test_static_handshake_rejects_parent_initializer_content_drift_before_import
     assert imports == []
 
 
-def test_static_handshake_requires_the_fork_rss_record() -> None:
-    relative = "agent_reach/execution/v1/rss.py"
+@pytest.mark.parametrize(
+    "relative",
+    [
+        "agent_reach/execution/v1/rss.py",
+        "agent_reach/execution/v1/bilibili.py",
+    ],
+)
+def test_static_handshake_requires_every_fork_runtime_record(relative: str) -> None:
     imports: list[str] = []
     installation = bridge._default_installation_reader(AGENT_REACH_DISTRIBUTION)
     drifted_files = dict(installation.files)
@@ -535,7 +549,8 @@ def test_static_handshake_rejects_every_descriptor_drift(
     "drift",
     [
         "protocol",
-        "host_capability",
+        "fetched_document_capability",
+        "network_access_capability",
         "missing_capability",
         "reversed_capabilities",
         "list_capabilities",
@@ -550,8 +565,10 @@ def test_static_handshake_rejects_protocol_host_and_registry_drift(
     capabilities = execution.list_capabilities()
     if drift == "protocol":
         monkeypatch.setattr(execution, "PROTOCOL_VERSION", "v2")
-    elif drift == "host_capability":
+    elif drift == "fetched_document_capability":
         monkeypatch.setattr(execution, "FETCHED_DOCUMENT_CAPABILITY", "fetched_url.v1")
+    elif drift == "network_access_capability":
+        monkeypatch.setattr(execution, "NETWORK_ACCESS_CAPABILITY", "network.v2")
     elif drift == "missing_capability":
         monkeypatch.setattr(registry, "_CAPABILITIES", capabilities[:1])
     elif drift == "reversed_capabilities":
@@ -603,8 +620,33 @@ def test_static_handshake_rejects_a_fake_required_contract_class(
 
 
 @pytest.mark.parametrize(
+    ("name", "drifted"),
+    [
+        ("ArgumentScalarV1", str | bool | None),
+        ("ResultScalarV1", str | None),
+        ("HostCapabilityV1", object | None),
+    ],
+)
+def test_static_handshake_rejects_scalar_and_host_union_drift(
+    monkeypatch: pytest.MonkeyPatch,
+    name: str,
+    drifted: object,
+) -> None:
+    monkeypatch.setattr(
+        import_module("agent_reach.execution.v1.contracts"),
+        name,
+        drifted,
+    )
+
+    with pytest.raises(AgentReachBridgeError, match="capability contract"):
+        validate_agent_reach_execution_contract(direct_url_reader=_direct_url)
+
+
+@pytest.mark.parametrize(
     "module_name",
     [
+        "agent_reach",
+        "agent_reach.execution",
         "agent_reach.execution.v1",
         "agent_reach.execution.v1.registry",
         "agent_reach.execution.v1.contracts",
@@ -623,14 +665,16 @@ def test_static_handshake_rejects_module_origin_drift(
         validate_agent_reach_execution_contract(direct_url_reader=_direct_url)
 
 
-def test_worker_handshake_rejects_rss_runtime_module_origin_drift(
+@pytest.mark.parametrize("runtime_module", ["rss", "bilibili"])
+def test_worker_handshake_rejects_runtime_module_origin_drift(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    runtime_module: str,
 ) -> None:
-    shadow = tmp_path / "rss.py"
+    shadow = tmp_path / f"{runtime_module}.py"
     shadow.write_text("# shadow\n", encoding="ascii")
     monkeypatch.setattr(
-        import_module("agent_reach.execution.v1.rss"),
+        import_module(f"agent_reach.execution.v1.{runtime_module}"),
         "__file__",
         str(shadow),
     )
@@ -638,7 +682,24 @@ def test_worker_handshake_rejects_rss_runtime_module_origin_drift(
     with pytest.raises(AgentReachBridgeError, match="capability contract"):
         validate_agent_reach_execution_contract(
             direct_url_reader=_direct_url,
-            validate_runtime_module=True,
+            runtime_module=cast(bridge.ExecutionRuntimeModule, runtime_module),
+        )
+
+
+def test_worker_handshake_rejects_bilibili_runtime_signature_drift(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = import_module("agent_reach.execution.v1.bilibili")
+
+    def execute_bilibili(request: object) -> object:
+        return request
+
+    monkeypatch.setattr(runtime, "execute_bilibili", execute_bilibili)
+
+    with pytest.raises(AgentReachBridgeError, match="capability contract"):
+        validate_agent_reach_execution_contract(
+            direct_url_reader=_direct_url,
+            runtime_module="bilibili",
         )
 
 
