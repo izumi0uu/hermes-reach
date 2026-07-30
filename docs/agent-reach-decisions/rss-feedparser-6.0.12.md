@@ -10,7 +10,7 @@
 - Official Agent-Reach base: `1.5.0` at commit
   `b4d52c46c9113cb0f653d6df4cf71ebadf4930ac`
 - Owner-fork integration commit:
-  `806205fd106f4f4453624becfd773acce8418cf1`
+  `f195253d53befdb012d7aa575e732ec627ec29ac`
 
 ## Decision
 
@@ -38,7 +38,7 @@ executing a backend:
 
 - installed Agent-Reach version is exactly `1.5.0`;
 - PEP 610 provenance names `izumi0uu/Agent-Reach` and exact integration commit
-  `806205fd106f4f4453624becfd773acce8418cf1`;
+  `f195253d53befdb012d7aa575e732ec627ec29ac`;
 - RECORD SHA-256, size, and installed content match for the two parent package
   initializers Python executes and the four reviewed `execution.v1` files
   before any fork module is imported;

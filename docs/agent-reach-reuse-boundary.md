@@ -1,8 +1,8 @@
 # Agent-Reach reuse boundary
 
-Status: frozen on 2026-07-29 against official Agent-Reach `1.5.0` base
+Status: frozen on 2026-07-30 against official Agent-Reach `1.5.0` base
 `b4d52c46c9113cb0f653d6df4cf71ebadf4930ac` and owner-fork integration
-commit `806205fd106f4f4453624becfd773acce8418cf1`.
+commit `f195253d53befdb012d7aa575e732ec627ec29ac`.
 
 This document is the merge gate for source execution work. The canonical
 plugin architecture and terminology are defined in
@@ -22,7 +22,7 @@ Hermes
 
 Official Agent-Reach owns the reviewed 15-channel baseline and backend-routing
 evidence. The owner fork adds a narrow `execution.v1` boundary and currently
-owns exactly `rss:read.feed` and `rss:browse.entries`. Hermes Reach owns
+owns exactly two RSS and four Bilibili operations. Hermes Reach owns
 protocol admission, authorization, host capabilities, safe invocation,
 isolation, normalization, bounds, redaction, receipts, availability, audit,
 and rollback.
@@ -30,8 +30,8 @@ and rollback.
 Official Agent-Reach 1.5.0 does not expose a unified operation execution API,
 so direct official runtime calls remain zero. That fact does not authorize a
 Hermes platform runtime. The reviewed owner fork is additive and operation
-scoped; its two RSS calls do not imply execution support for the other 61
-Hermes catalog rows.
+scoped; its six calls do not imply execution support for the other 57 Hermes
+catalog rows.
 
 The following work stays fully inside Hermes Reach and is not platform drift:
 
@@ -76,7 +76,7 @@ official 1.5.0 supplies the 15-channel registry and backend routes instead.
 | Reddit | 1 exact backend thin wrapper, 6 not implemented | OpenCLI, then `rdt-cli` | Fixed OpenCLI `read.post` is Connector-only; other operations planned |
 | Facebook | 4 not implemented | OpenCLI | Planned/unavailable |
 | Instagram | 4 not implemented | OpenCLI | Planned/unavailable |
-| Bilibili | 4 exact backend thin wrappers, 2 not implemented | `bili-cli`, OpenCLI, transcription pipeline | Four public operations use pinned bili-cli; subtitles/transcription planned |
+| Bilibili | 4 direct owner-fork runtime calls, 2 not implemented | fork `execution.v1` over `network_access.v1`; `bili-cli`, OpenCLI, transcription pipeline | Four public operations use fork-owned fixed bili-cli execution; subtitles/transcription planned |
 | Xiaohongshu | 5 not implemented | OpenCLI, MCP, `xhs-cli` | Planned/unavailable |
 | LinkedIn | 4 not implemented | scraper MCP, Jina fallback | Planned/unavailable |
 | Xiaoyuzhou | 1 not implemented | Agent-Reach transcription scripts | Planned/unavailable |
@@ -93,12 +93,13 @@ The frozen accounting is:
 | Hermes catalog operations | 63 |
 | Catalog implemented | 11 |
 | Catalog planned | 52 |
-| Direct owner-fork runtime calls | 2 |
-| Exact-backend thin wrappers | 8 |
+| Direct owner-fork runtime calls | 6 |
+| Exact-backend thin wrappers | 4 |
 | Concrete executors | 10 |
 | Default-local bindings | 9 |
 | Connector-only concrete bindings | 1 |
 | Implemented but unbound contracts | 1 |
+| Operations outside fork execution | 57 |
 | Hermes-native equivalents | 0 |
 | Reach reimplementations | 0 |
 | Direct official Agent-Reach runtime calls | 0 |
@@ -108,7 +109,7 @@ The ten concrete executors are:
 | Binding surface | Source | Classification | Operations |
 | --- | --- | --- | --- |
 | Default-local | RSS | Direct owner-fork runtime | `read.feed`, `browse.entries` |
-| Default-local | Bilibili | Exact backend thin wrapper | `search.videos`, `read.video`, `browse.hot`, `browse.rank` |
+| Default-local | Bilibili | Direct owner-fork runtime | `search.videos`, `read.video`, `browse.hot`, `browse.rank` |
 | Default-local | YouTube | Exact backend thin wrapper | `search.videos`, `read.video`, `read.subtitles` |
 | Connector-only | Reddit | Exact backend thin wrapper | `read.post` |
 
@@ -152,10 +153,14 @@ bozo/partial classification, and backend provenance. Hermes independently
 revalidates the closed response before normalization. See
 [RSS feedparser 6.0.12](agent-reach-decisions/rss-feedparser-6.0.12.md).
 
-### Bilibili exact backend
+### Bilibili owner-fork runtime
 
-Four credential-free operations use `bilibili-cli==0.6.2` through a fixed
-worker and closed operation-to-argv mapping. The wrapper exposes no login,
+Four credential-free operations use the fork's closed `execution.v1` API with
+a fieldless `network_access.v1` marker inside a fixed isolated worker. The fork
+owns the operation-to-Click argv mapping, `bilibili-cli==0.6.2` gate and
+invocation, raw envelope validation, backend error mapping, and Bilibili-native
+projection. Hermes owns process containment, timeout/cancellation, one bounded
+retry, public normalization, receipts, and audit. Neither layer exposes login,
 Cookie import, account, download, mutation, or fallback authority. See
 [Bilibili CLI 0.6.2](agent-reach-decisions/bilibili-cli-0.6.2.md).
 
@@ -194,8 +199,9 @@ permanent platform implementations without a migration deadline.
 semantics and actually reusing a selected route.
 
 Strict closure reduced platform-execution drift from 13 of 23 concrete paths
-to zero of 10. Moving RSS invocation and projection into the owner fork then
-raised structured Agent-Reach execution reuse from zero to two operations.
+to zero of 10. Moving RSS and Bilibili invocation/projection into the owner
+fork then raised structured Agent-Reach execution reuse from zero to six
+operations.
 The remaining Hermes code is plugin lifecycle, the v1 product contract,
 security controls, host capabilities, normalization, Connector, secrets,
 receipts, and audit, not a copied platform runtime.
@@ -211,9 +217,9 @@ receipts, and audit, not a copied platform runtime.
    or authority in the fork.
 4. Fork `main` remains a fast-forward mirror of official `main`; execution work
    is rebased onto a recorded official base and consumed by exact commit.
-5. Before release, create and protect an immutable integration tag only as a
-   reachability and recovery reference. Hermes never depends on that tag; the
-   exact commit pin is authoritative.
+5. Protect `hermes-reach-integration-0.1.0a2` as the immutable reachability and
+   recovery reference for the current exact commit. Hermes never depends on
+   that tag; the exact commit pin is authoritative.
 6. Migrated platform invocation and projection must be removed from Hermes so
    there is one platform-semantics owner.
 7. An unbound contract remains `setup_required` or unavailable and is never
@@ -228,7 +234,14 @@ receipts, and audit, not a copied platform runtime.
 The complete machine-readable classifications live in
 [agent-reach-operation-ledger.json](agent-reach-operation-ledger.json). The
 smaller [agent-reach-reuse-decisions.json](agent-reach-reuse-decisions.json)
-contains 24 detailed P0/P1/P2 reviews: 15 not-implemented decisions, two direct
-owner-fork RSS decisions, and seven default-local exact-backend wrappers. The
+contains 24 detailed P0/P1/P2 reviews: 15 not-implemented decisions, six direct
+owner-fork RSS/Bilibili decisions, and three default-local YouTube
+exact-backend wrappers. The
 Connector-only Reddit wrapper and implemented-but-unbound YouTube comments
 contract remain in the complete ledger and their dedicated tests.
+
+Rollback restores the previous Hermes release and exact pin
+`806205fd106f4f4453624becfd773acce8418cf1`, whose immutable recovery reference
+is `hermes-reach-integration-0.1.0a1`. It reactivates the previous Bilibili
+thin wrapper without any public protocol, grant, Connector, database, receipt,
+or audit migration. Neither recovery tag may be moved or deleted.

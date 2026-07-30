@@ -11,7 +11,7 @@
 - Official Agent-Reach base: `Panniantong/Agent-Reach` `1.5.0` at
   `b4d52c46c9113cb0f653d6df4cf71ebadf4930ac`
 - Owner-fork integration pin: `izumi0uu/Agent-Reach` at
-  `806205fd106f4f4453624becfd773acce8418cf1`
+  `f195253d53befdb012d7aa575e732ec627ec29ac`
 
 ## Decision
 

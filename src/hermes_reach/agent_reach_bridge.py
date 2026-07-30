@@ -12,7 +12,7 @@ from importlib import import_module
 from importlib.metadata import PackageNotFoundError, distribution, version
 from inspect import Parameter, signature
 from pathlib import Path
-from types import FunctionType, MappingProxyType, ModuleType, UnionType
+from types import FunctionType, MappingProxyType, ModuleType, NoneType, UnionType
 from typing import Final, Literal, cast, get_args, get_origin
 
 from .catalog import SOURCE_CATALOG
@@ -21,9 +21,10 @@ AGENT_REACH_DISTRIBUTION: Final = "agent-reach"
 AGENT_REACH_VERSION: Final = "1.5.0"
 AGENT_REACH_OFFICIAL_BASE_COMMIT: Final = "b4d52c46c9113cb0f653d6df4cf71ebadf4930ac"
 AGENT_REACH_FORK_URL: Final = "https://github.com/izumi0uu/Agent-Reach.git"
-AGENT_REACH_FORK_COMMIT: Final = "806205fd106f4f4453624becfd773acce8418cf1"
+AGENT_REACH_FORK_COMMIT: Final = "f195253d53befdb012d7aa575e732ec627ec29ac"
 AGENT_REACH_PROTOCOL_VERSION: Final = "v1"
 AGENT_REACH_FETCHED_DOCUMENT_CAPABILITY: Final = "fetched_document.v1"
+AGENT_REACH_NETWORK_ACCESS_CAPABILITY: Final = "network_access.v1"
 # Compatibility alias for callers that previously knew only one exact dependency pin.
 AGENT_REACH_COMMIT: Final = AGENT_REACH_FORK_COMMIT
 BILIBILI_CLI_DISTRIBUTION: Final = "bilibili-cli"
@@ -77,6 +78,7 @@ _EXECUTION_MODULE: Final = f"{_EXECUTION_PACKAGE_MODULE}.v1"
 _EXECUTION_CONTRACTS_MODULE: Final = f"{_EXECUTION_MODULE}.contracts"
 _EXECUTION_REGISTRY_MODULE: Final = f"{_EXECUTION_MODULE}.registry"
 _EXECUTION_RSS_MODULE: Final = f"{_EXECUTION_MODULE}.rss"
+_EXECUTION_BILIBILI_MODULE: Final = f"{_EXECUTION_MODULE}.bilibili"
 _EXECUTION_MODULE_FILES: Final[Mapping[str, tuple[str, str, int]]] = MappingProxyType(
     {
         _AGENT_REACH_MODULE: (
@@ -91,29 +93,35 @@ _EXECUTION_MODULE_FILES: Final[Mapping[str, tuple[str, str, int]]] = MappingProx
         ),
         _EXECUTION_MODULE: (
             "agent_reach/execution/v1/__init__.py",
-            "XFIQw7WGxOfTsgfUm3jmOnhiL_QRUUuO9NcIcr4TaXg",
-            863,
+            "cbG41giKIymO9FSlPRUjsgjaSL_Puq8uvmAZ1ia8KO8",
+            971,
         ),
         _EXECUTION_CONTRACTS_MODULE: (
             "agent_reach/execution/v1/contracts.py",
-            "rrvrIULVngPsezACaeO3NNdQfMoPtOYDgR_sAylUEI8",
-            16_032,
+            "9ScUqK9G5xK54cdg4HE6Dod3vOCz6dFv9Ic7TrDkd2Q",
+            22_145,
         ),
         _EXECUTION_REGISTRY_MODULE: (
             "agent_reach/execution/v1/registry.py",
-            "y-arXYhKnZB-xekN10WsK-RbErC3Xw90HzOuH1HMtvY",
-            5_027,
+            "08PnS6C53urAGBaAhTbtZUZFz6JwLOJEhpUn8BsQdvI",
+            9_183,
         ),
         _EXECUTION_RSS_MODULE: (
             "agent_reach/execution/v1/rss.py",
             "_zKpG9cm_CCdEYiGp8EWWl6UN8cvmZuRyvn6jsbha18",
             9_169,
         ),
+        _EXECUTION_BILIBILI_MODULE: (
+            "agent_reach/execution/v1/bilibili.py",
+            "YGvZLZvSl2SMC2CTejiNF9XtcyqG_D8GNqJN9vAgdNA",
+            20_572,
+        ),
     }
 )
 _EXPECTED_EXECUTION_EXPORTS: Final = (
     "EXECUTION_ERROR_CODES",
     "FETCHED_DOCUMENT_CAPABILITY",
+    "NETWORK_ACCESS_CAPABILITY",
     "PROTOCOL_VERSION",
     "ExecutionContextV1",
     "ExecutionErrorCodeV1",
@@ -124,6 +132,7 @@ _EXPECTED_EXECUTION_EXPORTS: Final = (
     "ExecutionResultV1",
     "ExecutionSuccessV1",
     "FetchedDocumentV1",
+    "NetworkAccessV1",
     "OperationCapabilityV1",
     "execute",
     "list_capabilities",
@@ -138,6 +147,12 @@ _EXPECTED_EXECUTION_ERROR_CODES: Final = (
     "backend_incompatible",
     "deadline_exceeded",
     "cancelled",
+    "invalid_input",
+    "not_found",
+    "authentication",
+    "authorization",
+    "rate_limit",
+    "transient",
     "permanent",
     "backend_contract_violation",
 )
@@ -173,6 +188,7 @@ _EXECUTION_CLASS_FIELDS: Final[Mapping[str, tuple[str, ...]]] = MappingProxyType
             "arguments",
         ),
         "FetchedDocumentV1": ("body", "content_type", "content_location"),
+        "NetworkAccessV1": (),
         "ExecutionLimitsV1": (
             "maximum_items",
             "maximum_text_characters",
@@ -244,8 +260,97 @@ _EXPECTED_EXECUTION_CAPABILITIES: Final = (
         2_048,
         512,
     ),
+    (
+        "v1",
+        "bilibili",
+        "search.videos",
+        "bilibili.search.videos.arguments.v1",
+        ("bilibili.video.v1",),
+        "bili-cli",
+        "0.6.2",
+        ("network_access.v1",),
+        50,
+        1_048_576,
+        16_384,
+        524_288,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        1_024,
+        512,
+    ),
+    (
+        "v1",
+        "bilibili",
+        "read.video",
+        "bilibili.read.video.arguments.v1",
+        ("bilibili.video.v1",),
+        "bili-cli",
+        "0.6.2",
+        ("network_access.v1",),
+        1,
+        1_048_576,
+        16_384,
+        524_288,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        1_024,
+        512,
+    ),
+    (
+        "v1",
+        "bilibili",
+        "browse.hot",
+        "bilibili.browse.hot.arguments.v1",
+        ("bilibili.video.v1",),
+        "bili-cli",
+        "0.6.2",
+        ("network_access.v1",),
+        50,
+        1_048_576,
+        16_384,
+        524_288,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        1_024,
+        512,
+    ),
+    (
+        "v1",
+        "bilibili",
+        "browse.rank",
+        "bilibili.browse.rank.arguments.v1",
+        ("bilibili.video.v1",),
+        "bili-cli",
+        "0.6.2",
+        ("network_access.v1",),
+        50,
+        1_048_576,
+        16_384,
+        524_288,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        1_024,
+        512,
+    ),
 )
 HealthState = Literal["available", "setup_required", "degraded", "unavailable"]
+ExecutionRuntimeModule = Literal["rss", "bilibili"]
 
 
 class AgentReachBridgeError(RuntimeError):
@@ -298,10 +403,12 @@ class AgentReachExecutionApi:
 
     protocol_version: str
     fetched_document_capability: str
+    network_access_capability: str
     capabilities: tuple[object, ...]
     operation_capability_type: type[object]
     execution_request_type: type[object]
     fetched_document_type: type[object]
+    network_access_type: type[object]
     execution_limits_type: type[object]
     execution_context_type: type[object]
     execution_item_type: type[object]
@@ -433,7 +540,7 @@ def validate_agent_reach_execution_contract(
     installation_reader: InstallationReader | None = None,
     execution_module_loader: ExecutionModuleLoader | None = None,
     module_loader: ModuleLoader = import_module,
-    validate_runtime_module: bool = False,
+    runtime_module: ExecutionRuntimeModule | None = None,
 ) -> AgentReachExecutionApi:
     """Return the closed v1 API only after provenance and origin validation."""
 
@@ -459,6 +566,9 @@ def validate_agent_reach_execution_contract(
     except Exception:
         raise AgentReachBridgeError(_INCOMPATIBLE_PROVENANCE) from None
 
+    if runtime_module not in {None, "rss", "bilibili"}:
+        raise AgentReachBridgeError(_INCOMPATIBLE_EXECUTION_CONTRACT)
+
     _validate_execution_installation(installation)
     loader = (
         execution_module_loader
@@ -471,7 +581,7 @@ def validate_agent_reach_execution_contract(
             execution_module,
             installation,
             module_loader,
-            validate_runtime_module=validate_runtime_module,
+            runtime_module=runtime_module,
         )
     except AgentReachBridgeError:
         raise
@@ -617,8 +727,15 @@ def _validated_execution_api(
     installation: AgentReachInstallation,
     module_loader: ModuleLoader,
     *,
-    validate_runtime_module: bool,
+    runtime_module: ExecutionRuntimeModule | None,
 ) -> AgentReachExecutionApi:
+    for parent_module_name in (_AGENT_REACH_MODULE, _EXECUTION_PACKAGE_MODULE):
+        _validated_execution_module(
+            module_loader(parent_module_name),
+            parent_module_name,
+            installation,
+            expected_package=parent_module_name,
+        )
     public_module = _validated_execution_module(
         execution_module,
         _EXECUTION_MODULE,
@@ -640,10 +757,15 @@ def _validated_execution_api(
     )
 
     protocol = _owned_export(public_module, contracts_module, "PROTOCOL_VERSION")
-    host_capability = _owned_export(
+    fetched_document_capability = _owned_export(
         public_module,
         contracts_module,
         "FETCHED_DOCUMENT_CAPABILITY",
+    )
+    network_access_capability = _owned_export(
+        public_module,
+        contracts_module,
+        "NETWORK_ACCESS_CAPABILITY",
     )
     error_codes = _owned_export(
         public_module,
@@ -653,8 +775,10 @@ def _validated_execution_api(
     if (
         type(protocol) is not str
         or protocol != AGENT_REACH_PROTOCOL_VERSION
-        or type(host_capability) is not str
-        or host_capability != AGENT_REACH_FETCHED_DOCUMENT_CAPABILITY
+        or type(fetched_document_capability) is not str
+        or fetched_document_capability != AGENT_REACH_FETCHED_DOCUMENT_CAPABILITY
+        or type(network_access_capability) is not str
+        or network_access_capability != AGENT_REACH_NETWORK_ACCESS_CAPABILITY
         or type(error_codes) is not frozenset
         or error_codes != frozenset(_EXPECTED_EXECUTION_ERROR_CODES)
     ):
@@ -684,9 +808,22 @@ def _validated_execution_api(
         contracts_module,
         "ExecutionResultV1",
     )
+    argument_scalar_type = getattr(contracts_module, "ArgumentScalarV1", None)
+    result_scalar_type = getattr(contracts_module, "ResultScalarV1", None)
+    host_capability_type = getattr(contracts_module, "HostCapabilityV1", None)
     if (
         get_origin(error_type) is not Literal
         or get_args(error_type) != _EXPECTED_EXECUTION_ERROR_CODES
+        or get_origin(argument_scalar_type) is not UnionType
+        or get_args(argument_scalar_type) != (str, int, bool, NoneType)
+        or get_origin(result_scalar_type) is not UnionType
+        or get_args(result_scalar_type) != (str, int, NoneType)
+        or get_origin(host_capability_type) is not UnionType
+        or get_args(host_capability_type)
+        != (
+            class_exports["FetchedDocumentV1"],
+            class_exports["NetworkAccessV1"],
+        )
         or get_origin(result_type) is not UnionType
         or get_args(result_type)
         != (
@@ -710,19 +847,31 @@ def _validated_execution_api(
         _installation_file(installation, _EXECUTION_REGISTRY_MODULE),
         _EXECUTION_REGISTRY_MODULE,
     )
-    rss_origin = _installation_file(installation, _EXECUTION_RSS_MODULE)
-    if validate_runtime_module:
-        rss_module = _validated_execution_module(
-            module_loader(_EXECUTION_RSS_MODULE),
-            _EXECUTION_RSS_MODULE,
+    if runtime_module is not None:
+        runtime_module_name = (
+            _EXECUTION_RSS_MODULE
+            if runtime_module == "rss"
+            else _EXECUTION_BILIBILI_MODULE
+        )
+        runtime_function_name = (
+            "execute_rss" if runtime_module == "rss" else "execute_bilibili"
+        )
+        runtime_parameters = (
+            ("request", "context", "document")
+            if runtime_module == "rss"
+            else ("request", "context")
+        )
+        validated_runtime_module = _validated_execution_module(
+            module_loader(runtime_module_name),
+            runtime_module_name,
             installation,
         )
         _validated_execution_function(
-            getattr(rss_module, "execute_rss", None),
-            "execute_rss",
-            ("request", "context", "document"),
-            rss_origin,
-            _EXECUTION_RSS_MODULE,
+            getattr(validated_runtime_module, runtime_function_name, None),
+            runtime_function_name,
+            runtime_parameters,
+            _installation_file(installation, runtime_module_name),
+            runtime_module_name,
         )
     capabilities = capability_loader()
     capability_type = class_exports["OperationCapabilityV1"]
@@ -743,11 +892,13 @@ def _validated_execution_api(
 
     return AgentReachExecutionApi(
         protocol_version=protocol,
-        fetched_document_capability=host_capability,
+        fetched_document_capability=fetched_document_capability,
+        network_access_capability=network_access_capability,
         capabilities=capabilities,
         operation_capability_type=capability_type,
         execution_request_type=class_exports["ExecutionRequestV1"],
         fetched_document_type=class_exports["FetchedDocumentV1"],
+        network_access_type=class_exports["NetworkAccessV1"],
         execution_limits_type=class_exports["ExecutionLimitsV1"],
         execution_context_type=class_exports["ExecutionContextV1"],
         execution_item_type=class_exports["ExecutionItemV1"],
@@ -762,6 +913,8 @@ def _validated_execution_module(
     value: object,
     expected_name: str,
     installation: AgentReachInstallation,
+    *,
+    expected_package: str = _EXECUTION_MODULE,
 ) -> ModuleType:
     if type(value) is not ModuleType:
         raise AgentReachBridgeError(_INCOMPATIBLE_EXECUTION_CONTRACT)
@@ -770,7 +923,7 @@ def _validated_execution_module(
     specification = module.__spec__
     if (
         module.__name__ != expected_name
-        or module.__package__ != _EXECUTION_MODULE
+        or module.__package__ != expected_package
         or specification is None
         or specification.name != expected_name
         or type(module.__file__) is not str
@@ -850,16 +1003,26 @@ def _validated_execution_class(
     dataclass_fields = getattr(value_type, "__dataclass_fields__", None)
     slots = getattr(value_type, "__slots__", None)
     post_init = value_type.__dict__.get("__post_init__")
+    is_fieldless_marker = expected_name == "NetworkAccessV1"
     if (
         getattr(parameters, "frozen", False) is not True
         or type(dataclass_fields) is not dict
         or tuple(dataclass_fields) != expected_fields
         or type(slots) is not tuple
         or slots != expected_fields
-        or type(post_init) is not FunctionType
-        or post_init.__module__ != _EXECUTION_CONTRACTS_MODULE
+        or (is_fieldless_marker and post_init is not None)
+        or (
+            not is_fieldless_marker
+            and (
+                type(post_init) is not FunctionType
+                or post_init.__module__ != _EXECUTION_CONTRACTS_MODULE
+            )
+        )
     ):
         raise AgentReachBridgeError(_INCOMPATIBLE_EXECUTION_CONTRACT)
+    if is_fieldless_marker:
+        return value_type
+    assert isinstance(post_init, FunctionType)
     try:
         implementation_origin = Path(post_init.__code__.co_filename).resolve(
             strict=True

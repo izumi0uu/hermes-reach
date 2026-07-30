@@ -6,7 +6,7 @@ Status: owner-approved fail-closed decision on 2026-07-27.
 
 Official Agent-Reach `1.5.0` at base commit
 `b4d52c46c9113cb0f653d6df4cf71ebadf4930ac`, carried by owner-fork
-integration commit `806205fd106f4f4453624becfd773acce8418cf1`, selects these methods.
+integration commit `f195253d53befdb012d7aa575e732ec627ec29ac`, selects these methods.
 The fork execution v1 ledger contains no Exa capability:
 
 - `search.web`: `exa.web_search_exa(query, numResults)` through mcporter.

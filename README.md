@@ -6,17 +6,17 @@ Hermes Reach 让 Hermes 通过一组统一的只读工具读取网页和公开�
 
 它固定引入基于官方 [Agent-Reach](https://github.com/Panniantong/Agent-Reach)
 审查基线的 [owner fork](https://github.com/izumi0uu/Agent-Reach)。官方基线提供
-channel、backend 路由与兼容性证据；fork 只为两条 RSS operation 增加结构化
-execution v1。Hermes Reach 再通过
+channel、backend 路由与兼容性证据；fork 的结构化 execution v1 当前承载 2 条
+RSS 与 4 条 Bilibili operation。Hermes Reach 再通过
 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 插件提供搜索、读取、
 浏览、转写和状态查询。
 
 > [!IMPORTANT]
-> 项目目前处于 **Pre-Alpha**。默认本地 registry 已有 2 条 owner-fork RSS
-> runtime 调用，以及 Bilibili/YouTube 的 7 条固定 backend 薄包装。远程
+> 项目目前处于 **Pre-Alpha**。默认本地 registry 已有 6 条 owner-fork
+> RSS/Bilibili runtime 调用，以及 YouTube 的 3 条固定 backend 薄包装。远程
 > Connector 可以通过双端显式配置启用唯一的 Reddit `read.post` OpenCLI
 > 包装，但默认 Connector 构成仍然为空；Web、GitHub、V2EX 和其他未审计平台
-> 保持规划/不可用。fork 并不使其余 61 条目录 operation 自动可执行。
+> 保持规划/不可用。fork 并不使其余 57 条目录 operation 自动可执行。
 
 ## 它解决什么问题
 
@@ -78,7 +78,7 @@ VPS 会看到它获准处理的查询和结果。如果 VPS 在授权有效期�
 | 状态 | 来源 | 可以做什么 |
 | --- | --- | --- |
 | 本地可用 | RSS/Atom | 通过 owner fork 的 execution v1 读取 feed 和浏览条目；backend 固定为 `feedparser` |
-| 本地可用 | Bilibili | 搜索和读取视频，浏览热门与排行榜；4 条固定 `bili-cli` 路径 |
+| 本地可用 | Bilibili | 通过 owner-fork execution v1 搜索和读取视频、浏览热门与排行榜；backend 固定为 `bili-cli` |
 | 本地可用 | YouTube | 搜索和读取视频、读取字幕；3 条固定 `yt-dlp` 路径 |
 | 可显式配置 | Reddit | 仅 `read.post`；需要可信设备和 VPS 双端显式激活，默认仍不可用 |
 | 已实现、未绑定 | YouTube | `read.comments` 保持 `setup_required`，没有 backend 调用 |
@@ -269,24 +269,24 @@ HERMES_REACH_VPS_STATE_DIRECTORY=/absolute/vps-state hermes ...
 
 Hermes Reach 通过 `hermes_reach.register` 集成精确固定的 Agent-Reach owner
 fork。官方基线提供 15-channel registry、backend 路由证据、兼容性元数据和受限
-doctor；fork 的 execution v1 当前只拥有两条 RSS operation；Hermes Reach 提供
+doctor；fork 的 execution v1 当前拥有 2 条 RSS 与 4 条 Bilibili operation；Hermes Reach 提供
 五个封闭工具、安全策略、host capability、Connector、规范化和审计。其他平台
 读取仍由 Agent-Reach 精确选定的 backend 负责。
 
 ```mermaid
 flowchart TD
     Hermes["Hermes Agent"] --> Plugin["Hermes Reach<br/>5 个 reach_* 工具"]
-    Upstream["官方 Agent-Reach 1.5.0 基线<br/>15-channel 目录 · backend 证据"] --> Fork["owner fork 精确 commit<br/>execution v1 仅 RSS"]
+    Upstream["官方 Agent-Reach 1.5.0 基线<br/>15-channel 目录 · backend 证据"] --> Fork["owner fork 精确 commit<br/>execution v1: RSS 2 · Bilibili 4"]
     Fork --> Bridge["来源与 capability 兼容性桥"]
     Bridge --> Plugin
     Plugin --> Guard["Hermes 安全与控制平面<br/>校验 · 授权 · 隔离 · 限制 · 审计"]
-    Guard --> RSS["2 条直接 owner-fork 调用<br/>RSS read.feed · browse.entries"]
-    Guard --> Local["7 条默认本地薄包装<br/>Bilibili · YouTube"]
+    Guard --> ForkOps["6 条直接 owner-fork 调用<br/>RSS 2 · Bilibili 4"]
+    Guard --> Local["3 条默认本地薄包装<br/>YouTube"]
     Guard --> Connector["1 条显式 Connector 绑定<br/>Reddit read.post"]
-    RSS --> Feedparser["fork 拥有 feedparser 调用与投影"]
-    Local --> Backends["精确 backend<br/>bili-cli · yt-dlp"]
+    ForkOps --> ForkBackends["fork 拥有调用与投影<br/>feedparser · bili-cli"]
+    Local --> Backends["精确 backend<br/>yt-dlp"]
     Connector --> OpenCLI["固定 OpenCLI 读取"]
-    Feedparser --> Results["有界 Hermes v1 结果与审计元数据"]
+    ForkBackends --> Results["有界 Hermes v1 结果与审计元数据"]
     Backends --> Results
     OpenCLI --> Results
 ```
@@ -294,21 +294,21 @@ flowchart TD
 ### Agent-Reach 用到了什么程度
 
 15-channel registry、backend 元数据和官方兼容性基线来自官方 Agent-Reach。
-owner fork 的 execution v1 直接执行两条 RSS operation。当前 Hermes 产品目录有
+owner fork 的 execution v1 直接执行 2 条 RSS 与 4 条 Bilibili operation。当前 Hermes 产品目录有
 63 个只读 operation：11 个标记已实现、52 个规划中；10 个有 concrete
-executor，其中 2 个是 RSS fork runtime，8 个是 exact-backend wrapper
-（Bilibili 4、YouTube 3、Connector-only Reddit 1）。9 个 binding 默认本地，
+executor，其中 6 个是 owner-fork runtime，4 个是 exact-backend wrapper
+（YouTube 3、Connector-only Reddit 1）。9 个 binding 默认本地，
 1 个是 Connector-only。另有 1 个 `youtube:read.comments` 已实现但未绑定，因此
 不计入 concrete executor。
 
 官方 Agent-Reach 1.5.0 没有统一、结构化的 operation execution API，所以直接
 调用官方 runtime 的数量仍是 0。经过审查的 owner fork 只补充 operation-scoped
-执行边界，目前恰好是两条 RSS；它不是 15-channel 通用 runtime。其余已执行路径
+执行边界，目前恰好是 6 条 RSS/Bilibili；它不是 15-channel 通用 runtime。其余已执行路径
 仍固定包装 Agent-Reach 精确选择的 backend。Web、GitHub、V2EX 的 13 条 Hermes
 平台实现已经关闭；当前 Hermes-native 和重复实现例外均为 0。
 
 Hermes Reach 只拥有协议、授权、host capability、安全调用、规范化、限制、脱敏、
-回执和审计；RSS 调用与投影属于精确 owner fork，其他平台知识、backend 选择和
+回执和审计；RSS/Bilibili 调用与平台投影属于精确 owner fork，其他平台知识、backend 选择和
 读取语义留在官方 Agent-Reach 证据或其精确 backend。
 完整架构见 [Agent-Reach 插件边界](docs/agent-reach-plugin-boundary.md)，
 操作矩阵和重新启用条件见
@@ -316,10 +316,13 @@ Hermes Reach 只拥有协议、授权、host capability、安全调用、规范�
 
 项目固定使用 Agent-Reach `1.5.0`：官方审查基线是
 `b4d52c46c9113cb0f653d6df4cf71ebadf4930ac`，owner-fork integration commit 是
-`806205fd106f4f4453624becfd773acce8418cf1`，execution protocol 是 `v1`。
+`f195253d53befdb012d7aa575e732ec627ec29ac`，execution protocol 是 `v1`。
 完整的 63 行状态以
 [operation ledger](docs/agent-reach-operation-ledger.json) 为准；这两个 RSS
-descriptor 不能代表其他 61 行可执行。
+与四个 Bilibili descriptor 不能代表其他 57 行可执行。当前精确 commit 的
+immutable recovery tag 是 `hermes-reach-integration-0.1.0a2`；回滚版本使用精确
+commit `806205fd106f4f4453624becfd773acce8418cf1` 与 recovery tag
+`hermes-reach-integration-0.1.0a1`。tag 只保证可达性，依赖权威始终是精确 commit。
 
 ### 显式组成时的 Connector 路径
 
@@ -351,7 +354,7 @@ Roadmap 表示开发顺序，不承诺发布日期。未完成的能力会保持
 | 已完成 | 精确远程执行桥 | 显式 Connector 适配器、已授权操作交付、回执与重试；默认构成仍为空 |
 | 已完成 | 首个来源 executor | Reddit `read.post` 的固定 OpenCLI 读取、封闭 YAML 映射和 WSS 回执测试；默认未绑定 |
 | 已完成 | 双端显式生产组成 | 可信设备证明 OpenCLI 并确认启用；VPS 从 owner-only 配对状态组成唯一 Reddit adapter |
-| 已完成 | RSS fork execution 与精确本地 backend | RSS 2 条直接 owner-fork runtime 调用；Bilibili 4、YouTube 3 条默认本地薄包装；YouTube comments 保持未绑定 |
+| 已完成 | RSS/Bilibili fork execution 与精确本地 backend | RSS 2、Bilibili 4 条直接 owner-fork runtime 调用；YouTube 3 条默认本地薄包装；YouTube comments 保持未绑定 |
 | 已完成 | 冻结严格插件边界 | 关闭 Web/GitHub/V2EX 共 13 条平台例外，保留目录可发现性和历史审核证据 |
 | 已完成 | 验证真实插件生命周期 | 在全新 Hermes 0.19 环境验证默认关闭、启用、停用和包管理器卸载 |
 | 现在 | 建立公开 Pre-release 通道 | 离线安装同一 exact sdist、对同一 exact wheel 跑完整生命周期，然后摘要并验证两者的 GitHub provenance，再以最小权限发布 |

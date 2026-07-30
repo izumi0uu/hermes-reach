@@ -16,6 +16,17 @@ deletion so old installs and rollback remain reachable. The tag is only a
 recovery reference and never the dependency selector; the commit in wheel
 metadata remains authoritative.
 
+The current and rollback integration references are fixed:
+
+| Purpose | Immutable recovery tag | Exact dependency commit |
+| --- | --- | --- |
+| Current RSS + Bilibili execution v1 | `hermes-reach-integration-0.1.0a2` | `f195253d53befdb012d7aa575e732ec627ec29ac` |
+| Previous RSS execution v1 / Hermes Bilibili wrapper | `hermes-reach-integration-0.1.0a1` | `806205fd106f4f4453624becfd773acce8418cf1` |
+
+Do not confuse these fork recovery tags with the Hermes package release tag
+`v0.1.0a1`. Installation metadata always selects the exact commit, never an
+integration tag.
+
 The release invariant is:
 
 ```text
@@ -356,6 +367,11 @@ Retain `$SMOKE_ROOT` with the release evidence until the audit is complete.
   assets, move the old tag, or reuse the withdrawn version.
 - User rollback remains: disable Reach, start a new Hermes session, uninstall
   from the same Hermes Python environment, then run `uv pip check`.
+- A code rollback that specifically reverses Bilibili fork execution restores
+  the previous Hermes release and exact fork pin
+  `806205fd106f4f4453624becfd773acce8418cf1`, recoverable through
+  `hermes-reach-integration-0.1.0a1`. It needs no protocol, grant, Connector,
+  database, receipt, or audit migration. Never move either integration tag.
 
 Publishing to PyPI requires a separately reviewed, index-compatible dependency
 strategy for the reviewed Agent-Reach integration. The current exact owner-fork

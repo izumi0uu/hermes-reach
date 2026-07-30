@@ -7,92 +7,64 @@ import pytest
 
 from hermes_reach.runtime.adapters import AdapterResult, MediaMetadata
 from hermes_reach.sources.bilibili import (
+    BilibiliWorkerError,
     ProductionBilibiliClient,
     production_bilibili_backend,
 )
+from hermes_reach.sources.bilibili_worker import (
+    BilibiliProjection,
+    BilibiliVideoProjection,
+)
 
 
-def _summary(
-    bvid: str = "BV1xx411c7mD", *, description: str = "Description"
-) -> dict[str, object]:
-    return {
-        "id": bvid,
-        "bvid": bvid,
-        "aid": 123,
-        "title": "Video title",
-        "description": description,
-        "duration_seconds": 125,
-        "duration": "02:05",
-        "url": f"https://www.bilibili.com/video/{bvid}",
-        "owner": {"id": "7", "name": "Author"},
-        "stats": {
-            "view": 99,
-            "danmaku": 8,
-            "like": 7,
-            "coin": 6,
-            "favorite": 5,
-            "share": 4,
-        },
-    }
-
-
-def _video_command() -> dict[str, object]:
-    return {
-        "video": _summary(),
-        "subtitle": {"available": False, "format": "plain", "text": "", "items": []},
-        "ai_summary": "",
-        "comments": [],
-        "related": [],
-        "warnings": [],
-    }
+def _video(*, text: str = "Description") -> BilibiliVideoProjection:
+    return BilibiliVideoProjection(
+        text,
+        "BV1xx411c7mD",
+        "Video title",
+        "https://www.bilibili.com/video/BV1xx411c7mD",
+        "Author",
+        125,
+        99,
+    )
 
 
 class FixtureWorker:
-    def __init__(self, responses: Mapping[str, Mapping[str, object]]) -> None:
+    def __init__(
+        self,
+        responses: Mapping[str, BilibiliProjection | BilibiliWorkerError],
+    ) -> None:
         self.responses = responses
         self.calls: list[tuple[str, dict[str, object]]] = []
 
-    async def execute(self, operation: str, **kwargs: object) -> Mapping[str, object]:
+    async def execute(self, operation: str, **kwargs: object) -> BilibiliProjection:
         self.calls.append((operation, kwargs))
-        return self.responses[operation]
+        response = self.responses[operation]
+        if isinstance(response, BilibiliWorkerError):
+            raise response
+        return response
 
 
 def _client(
-    responses: Mapping[str, Mapping[str, object]],
+    responses: Mapping[str, BilibiliProjection | BilibiliWorkerError],
 ) -> tuple[ProductionBilibiliClient, FixtureWorker]:
     fixture = FixtureWorker(responses)
     return ProductionBilibiliClient(fixture), fixture  # type: ignore[arg-type]
 
 
-def test_client_projects_all_four_exact_backend_shapes() -> None:
+def test_client_maps_fork_items_using_only_operation_product_semantics() -> None:
     responses = {
-        "search.videos": {
-            "ok": True,
-            "schema_version": "1",
-            "data": [
-                {
-                    "id": "BV1xx411c7mD",
-                    "bvid": "BV1xx411c7mD",
-                    "title": "Search title",
-                    "author": "Search author",
-                    "play": 42,
-                    "duration": "01:30",
-                }
-            ],
-        },
-        "read.video": {"ok": True, "schema_version": "1", "data": _video_command()},
-        "browse.hot": {
-            "ok": True,
-            "schema_version": "1",
-            "data": {"items": [_summary()], "page": 1, "count": 2},
-        },
-        "browse.rank": {
-            "ok": True,
-            "schema_version": "1",
-            "data": {"items": [_summary(description="")], "day": 3, "count": 3},
-        },
+        operation: BilibiliProjection(
+            operation, (_video(),), operation == "browse.rank"
+        )
+        for operation in (
+            "search.videos",
+            "read.video",
+            "browse.hot",
+            "browse.rank",
+        )
     }
-    client, worker = _client(responses)
+    client, worker = _client(responses)  # type: ignore[arg-type]
 
     search, video, hot, rank = asyncio.run(
         _all(
@@ -109,19 +81,22 @@ def test_client_projects_all_four_exact_backend_shapes() -> None:
         True,
         True,
     ]
-    assert search.items[0].media == MediaMetadata(
-        duration_seconds=90,
-        view_count=42,
-        coverage="partial",
-    )
-    assert video.items[0].text == "Description"
-    assert video.items[0].media == MediaMetadata(
-        duration_seconds=125,
-        view_count=99,
-        coverage="complete",
-    )
-    assert hot.items[0].kind == "entry"
-    assert rank.items[0].text == "Video title"
+    assert [result.items[0].kind for result in (search, video, hot, rank)] == [
+        "result",
+        "content",
+        "entry",
+        "entry",
+    ]
+    assert [result.items[0].media for result in (search, video, hot, rank)] == [
+        MediaMetadata(duration_seconds=125, view_count=99, coverage="partial"),
+        MediaMetadata(duration_seconds=125, view_count=99, coverage="complete"),
+        MediaMetadata(duration_seconds=125, view_count=99, coverage="partial"),
+        MediaMetadata(duration_seconds=125, view_count=99, coverage="partial"),
+    ]
+    assert [result.items[0].text for result in (search, video, hot, rank)] == [
+        "Description"
+    ] * 4
+    assert rank.truncated is True
     assert [call[0] for call in worker.calls] == [
         "search.videos",
         "read.video",
@@ -135,52 +110,34 @@ async def _all(*awaitables: object) -> tuple[AdapterResult, ...]:
 
 
 @pytest.mark.parametrize(
-    ("code", "expected"),
+    "failure_class",
     [
-        ("invalid_input", "invalid_input"),
-        ("not_found", "not_found"),
-        ("not_authenticated", "authentication"),
-        ("permission_denied", "authorization"),
-        ("rate_limited", "rate_limit"),
-        ("network_error", "transient"),
-        ("upstream_error", "permanent"),
-        ("internal_error", "permanent"),
-        ("future_error", "permanent"),
+        "invalid_input",
+        "not_found",
+        "authentication",
+        "authorization",
+        "rate_limit",
+        "transient",
+        "permanent",
     ],
 )
-def test_client_maps_only_allowlisted_error_codes(code: str, expected: str) -> None:
+def test_client_preserves_worker_failure_class(failure_class: str) -> None:
     client, _ = _client(
         {
-            "browse.hot": {
-                "ok": False,
-                "schema_version": "1",
-                "error": {
-                    "code": code,
-                    "message": "/private/path query=secret",
-                    "details": {"credential": "hidden"},
-                },
-            }
+            "browse.hot": BilibiliWorkerError(failure_class),  # type: ignore[arg-type]
         }
     )
 
     result = asyncio.run(client.browse_hot(1))
 
-    assert result.failure_class == expected
-    assert "secret" not in str(result)
+    assert result.failure_class == failure_class
 
 
-@pytest.mark.parametrize(
-    "data",
-    [
-        {**_video_command(), "comments": [{"message": "unexpected"}]},
-        {**_video_command(), "subtitle": {"available": True}},
-        {**_video_command(), "unknown": True},
-        {**_video_command(), "video": {**_summary(), "url": "https://evil.test"}},
-    ],
-)
-def test_video_optional_or_schema_drift_fails_closed(data: dict[str, object]) -> None:
+def test_client_rejects_cross_operation_projection() -> None:
     client, _ = _client(
-        {"read.video": {"ok": True, "schema_version": "1", "data": data}}
+        {
+            "read.video": BilibiliProjection("browse.hot", (_video(),), False),
+        }
     )
 
     result = asyncio.run(

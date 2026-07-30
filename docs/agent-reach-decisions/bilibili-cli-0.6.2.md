@@ -1,49 +1,61 @@
-# Bilibili CLI 0.6.2 Exact Backend Decision
+# Bilibili CLI 0.6.2 Owner-Fork Runtime Decision
 
 - Status: approved
-- Date: 2026-07-28
+- Date: 2026-07-30
 - Operations: `bilibili:search.videos`, `bilibili:read.video`,
   `bilibili:browse.hot`, `bilibili:browse.rank`
-- Classification: `exact_backend_thin_wrapper`
+- Classification: `direct_owner_fork_runtime`
+- Execution contract: `agent_reach.execution.v1`
 - Backend: `bili-cli` version `0.6.2`
 - Official Agent-Reach base: `Panniantong/Agent-Reach` `1.5.0` at
   `b4d52c46c9113cb0f653d6df4cf71ebadf4930ac`
 - Owner-fork integration pin: `izumi0uu/Agent-Reach` at
-  `806205fd106f4f4453624becfd773acce8418cf1`
+  `f195253d53befdb012d7aa575e732ec627ec29ac`
+- Recovery reference: `hermes-reach-integration-0.1.0a2`
 
 ## Decision
 
-Activate the four existing credential-free Bilibili contracts through the
-exact `bili-cli` backend selected by Agent-Reach. Hermes invokes the pinned
-Click entry point inside a fixed, killable worker and projects its stable JSON
-v1 envelope into the existing `RawItem` schema. Hermes does not call
-`bilibili-api-python` directly and owns no Bilibili endpoint, response parser,
-pagination behavior, ranking behavior, or fallback.
+Move the four credential-free Bilibili operations atomically from
+Hermes-owned exact-backend wrappers to the owner fork's closed execution v1
+runtime. Agent-Reach now owns the operation-to-Click argv mapping, lazy
+`bilibili-cli==0.6.2` version and entry-point gate, backend invocation, raw JSON
+envelope validation, backend error mapping, and Bilibili-native projection.
 
-The default registry now binds these four operations with provenance backend
-`bili-cli`, version `0.6.2`. `read.subtitles` and `transcribe.video` remain
-planned and unbound.
+Hermes keeps the fixed isolated worker process, private environment, framing,
+hard timeout and cancellation, process-group kill/reap, one bounded retry,
+policy, normalization, provenance, receipts, and audit. The public Reach tools,
+catalog, grants, database, result envelope, and backend provenance do not
+change. `read.subtitles` and `transcribe.video` remain planned and unbound.
 
-## Pinned Evidence
+## Closed Execution Contract
 
-Agent-Reach 1.5.0 declares `bili-cli` as the Bilibili execution backend. The
-owner fork adds no Bilibili execution v1 descriptor, so these four operations
-remain exact-backend thin wrappers rather than direct fork-runtime calls. The
-reviewed PyPI wheel has SHA-256
-`185b5df16262415c830a74216ca9c4a74df0e63cf542537444fb295a236a9f5d`
-and declares console entry point `bili = bili_cli.cli:cli`. It has no
-`bili_cli.__main__`, so the worker imports that exact Click entry point rather
-than discovering an executable through PATH.
+The fork statically registers these exact descriptors, all with protocol `v1`,
+backend `bili-cli@0.6.2`, result schema `bilibili.video.v1`, and required host
+capability `network_access.v1`:
 
-Version 0.6.2 emits `{ok,schema_version,data|error}` JSON envelopes. The four
-selected public command paths use no credential: base video explicitly passes
-`credential=None`, while search, hot, and rank do not call credential helpers.
-Search defaults to page 1, hot defaults to page 1, and rank defaults to the
-three-day ranking. Those defaults remain backend-owned semantics.
+| Operation | Argument schema | Maximum items |
+| --- | --- | ---: |
+| `search.videos` | `bilibili.search.videos.arguments.v1`: trimmed query 1..4096 characters and limit 1..50 | 50 |
+| `read.video` | `bilibili.read.video.arguments.v1`: canonical `https://www.bilibili.com/video/BV...` URL | 1 |
+| `browse.hot` | `bilibili.browse.hot.arguments.v1`: limit 1..50 | 50 |
+| `browse.rank` | `bilibili.browse.rank.arguments.v1`: limit 1..50 | 50 |
 
-## Fixed Invocation
+Each result item contains exactly `text`, `native_id`, `title`, `url`,
+`author`, `duration_seconds`, and `view_count`. Text and identifiers are
+bounded; the two numeric fields are non-boolean integers from zero through
+`2^53-1`. The descriptor caps fork result payloads at 512 KiB and Bilibili
+authors at 1024 characters.
 
-The only in-memory command shapes are:
+`NetworkAccessV1` is a frozen fieldless marker. It records the host's approval
+to invoke this already-registered network backend; it cannot carry an endpoint,
+proxy, header, Cookie, credential, path, command, backend selector, or fallback.
+It is not an operating-system syscall sandbox. Hermes creates it only inside
+the existing isolated Bilibili worker after validating the request and exact
+fork runtime.
+
+## Fork-Owned Invocation
+
+Only the fork owns these in-memory command shapes:
 
 ```text
 search --type video --max <limit> --json -- <query>
@@ -52,61 +64,80 @@ hot --max <limit> --json
 rank --max <limit> --json
 ```
 
-The search option terminator is required so a query beginning with `-` remains
-positional input. Query and URL values cross the OS process boundary only in a
-bounded framed stdin request; the worker process argv is always
-`python -I -m hermes_reach.sources.bilibili_worker`. The worker calls
-`cli.main(args=..., prog_name="bili", standalone_mode=False)` and captures
-bounded stdout. A structured backend error writes JSON then exits 1; the worker
-accepts that exact combination and rejects Click usage errors or exit drift.
+The search option terminator keeps a leading-hyphen query positional. The fork
+loads only the reviewed `bili = bili_cli.cli:cli` console entry point and calls
+its Click `main` with `standalone_mode=False`. It accepts only the closed,
+unique-key, finite `{ok,schema_version,data|error}` envelope, maps a fixed error
+taxonomy without messages or details, and returns typed execution v1 objects.
+Hermes does not import `bili_cli`, construct Click argv, parse its raw envelope,
+or project platform-native response fields.
+
+The fork's backend lock is intentionally nonblocking. An overlapping invocation
+returns `transient`; Hermes may spend its existing single bounded retry within
+the caller deadline. Waiting inside the fork would bypass Hermes timeout and
+cancellation budgeting.
+
+Worker-time `backend_unavailable`, `backend_incompatible`, and fork-returned
+`backend_contract_violation` failures also map to `transient` at the Hermes
+boundary. Unexpected worker exceptions retain the same classification. This
+preserves the pre-migration single bounded retry for dependency metadata,
+import, version, entry-point, backend-envelope, and projection drift; the
+registration and release handshakes still reject known dependency drift before
+a tool is exposed. Hermes-detected malformed framing, bounds, identity, or
+scalar values remain `permanent`.
 
 ## Security Composition
 
+The worker process argv remains exactly
+`python -I -m hermes_reach.sources.bilibili_worker`; query and URL data cross
+only the bounded binary stdin frame. Each invocation receives private HOME,
+XDG config/cache/data, and TMP directories, an explicit minimal environment,
+empty proxy variables, no PATH lookup, no user site, discarded stderr, closed
+file descriptors, and a new process session. This containment matters because
+lazy import of the CLI auth module evaluates a home-directory path even though
+the four selected commands use no credential.
+
 The `bilibili-cli` distribution also contains login, browser-cookie import,
-account reads, audio download, dynamic posting/deletion, likes, coins, triples,
-and unfollow operations. Those commands and every optional video flag are
-unreachable from the closed operation-to-argv mapping. No shell, PATH lookup,
-runtime install, OpenCLI route, yt-dlp route, SDK fallback, or request-selected
-backend exists.
-
-Each invocation starts with a private HOME, XDG config/cache/data directories,
-and TMP directory. The child receives a minimal environment with empty proxy
-variables and no ambient credential, Cookie, output-mode, or user-site state.
-This is important because importing the upstream CLI also imports its auth
-module, which computes `Path.home()/.bilibili-cli`, although the selected
-commands never perform credential I/O.
-
-Stdin, stdout, JSON depth, item counts, scalar sizes, and final normalized
-results are bounded. Stderr is discarded. Timeout, cancellation, output
-overflow, malformed framing, or invalid output kills and reaps the worker
-process group before temporary state is removed. Backend messages, details,
-query text, URLs, credentials, and exception strings never enter public errors,
-provenance, receipts, audit, or logs.
+account reads, downloads, posting/deletion, likes, coins, triples, and unfollow
+operations. None is registered by execution v1. Malformed framing, integrity
+drift, output overflow, timeout, cancellation, or invalid fork output kills and
+reaps the process group before private temporary state is removed. Backend
+messages, details, requests, credentials, and exception strings do not enter
+public errors, receipts, audit, or logs.
 
 The exact pin accepts the distribution's mandatory dependency closure,
 including `browser-cookie3`; the optional audio extra and `av` are not
-installed. The lock file freezes the complete closure. The process boundary
-prevents caller-selected authority and ambient credential discovery; it is not
-a claim that an actively malicious pinned dependency is an OS sandbox.
+installed. The process boundary and closed marker constrain caller-selected
+authority. They do not make an actively malicious pinned dependency safe.
 
-## Semantic Delta
+## Integrity and Release Evidence
 
-There is no platform backend substitution. Hermes narrows authority and adds
-product-level normalization, bounds, stable failures, provenance, receipts,
-and audit. Canonical result URLs are derived only from validated BV IDs. The
-public Hermes request and result envelopes do not change.
+Before importing fork execution code, Hermes verifies exact PEP 610 owner-fork
+URL and commit provenance, complete import-chain RECORD algorithm/digest/size
+and disk bytes, module origins, exports, dataclass fields, union members, error
+codes, function signatures, the ordered six capability descriptors, and the
+unchanged 15-channel catalog. Immediately before execution it also checks the
+origin and signature of `execute_bilibili(request, context)`.
+
+The exact commit pin is the dependency authority. The protected immutable tag
+`hermes-reach-integration-0.1.0a2` is only a reachability and recovery reference
+for `f195253d53befdb012d7aa575e732ec627ec29ac`; Hermes never resolves the
+dependency by tag or branch.
 
 ## Review Milestone
 
-Review this decision on any Agent-Reach or `bilibili-cli` pin change, dependency
-closure change, Click entry-point or command shape change, JSON schema change,
-credential behavior change, worker protocol change, backend identity change,
-or classification change. An Agent-Reach pin change reopens all 63 catalog
-operations.
+Reopen this decision and the complete 63-operation audit for any official base
+or owner-fork commit change, execution protocol or descriptor change,
+`bilibili-cli` pin or dependency closure change, Click entry point/command or
+JSON schema change, credential behavior change, worker protocol change,
+backend identity change, projection change, or classification change.
 
 ## Rollback
 
-Remove the direct `bilibili-cli` pin and production worker/client, restore the
-four default `setup_required` markers, and return the four review rows to
-reviewed-but-unbound contracts. `read.subtitles` and `transcribe.video` are
-unaffected. No database, grant, wire, or stored-content migration is required.
+Rollback restores the previous Hermes release and exact owner-fork pin
+`806205fd106f4f4453624becfd773acce8418cf1`, whose immutable recovery reference
+is `hermes-reach-integration-0.1.0a1`. That reactivates the previous
+Hermes-owned Bilibili exact-backend wrapper as one atomic unit; do not split
+execution ownership between the two versions. No public protocol, grant,
+Connector, database, receipt, audit, or stored-content migration is required.
+Neither consumed commit nor recovery tag may be moved or deleted.

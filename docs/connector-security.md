@@ -6,8 +6,8 @@
 > `ConnectorService` authorizes and delivers that fixed operation; it does not
 > select a provider, credential, browser session, or local path. Default
 > Connector execution composition remains unbound; this is distinct from the
-> default local registry, which has two owner-fork RSS runtime bindings and
-> seven credential-free exact-backend bindings for Bilibili and YouTube. The
+> default local registry, which has six owner-fork RSS/Bilibili runtime
+> bindings and three credential-free YouTube exact-backend bindings. The
 > only Connector production composition
 > path is the explicit two-sided activation of Reddit `read.post` through one
 > attested OpenCLI executable. Treat the controls below as approval for that
@@ -80,8 +80,8 @@ or Bitwarden state.
 
 This unbound Connector default does not make the complete local registry empty.
 The default local registry contains two direct owner-fork RSS execution
-bindings, four Bilibili/bili-cli thin wrappers, and three YouTube/yt-dlp thin
-wrappers. `youtube:read.comments` is implemented but unbound and reports
+bindings, four direct owner-fork Bilibili/bili-cli execution bindings, and
+three YouTube/yt-dlp thin wrappers. `youtube:read.comments` is implemented but unbound and reports
 `setup_required`. The Connector contributes only the tenth concrete executor,
 `reddit:read.post`, after both explicit activation gates pass; it does not
 replace or proxy those nine local operations.
@@ -90,6 +90,12 @@ The RSS fork path is credential-free and local. Hermes gives it only an
 already-fetched bounded document through `fetched_document.v1`; it receives no
 Bitwarden secret plan, Connector identity, grant, paired-device state, browser
 session, or Connector execution authority.
+
+The Bilibili fork path is also credential-free and local. Hermes gives it only
+a fieldless `network_access.v1` marker inside a private worker; the marker
+contains no endpoint, proxy, Cookie, credential, path, command, backend
+selector, or Connector authority. It is explicit host approval for four fixed
+registered operations, not generic network access or an OS sandbox.
 
 ### Exact activation sequence
 
@@ -160,8 +166,8 @@ HERMES_REACH_VPS_STATE_DIRECTORY=/absolute/vps-state hermes ...
 owner-only local state. It is not a credential, is never sent in an operation,
 and cannot add a scope absent from the signed grant. If it is absent, plugin
 registration performs no Connector file or network work. If it is invalid,
-only `reddit:read.post` is unavailable; the two local owner-fork RSS bindings
-and seven Bilibili/YouTube exact-backend bindings continue to load. Web,
+only `reddit:read.post` is unavailable; all six local owner-fork RSS/Bilibili
+bindings and three YouTube exact-backend bindings continue to load. Web,
 GitHub, and V2EX remain
 planned/unavailable independently of Connector state. Pairing or local state
 changes require restarting Hermes because the runtime is composed once at
@@ -176,8 +182,8 @@ short-lived TLS leaf key, and start WSS. `lock` and `exit` close connections and
 discard the in-memory key lease. Device sleep interrupts reachability as well.
 
 Sleep, lock, or exit therefore makes Connector-backed operations degraded. It
-does not disable the two credential-free owner-fork RSS bindings or the seven
-credential-free local Bilibili/YouTube exact-backend bindings. Status reads a
+does not disable the six credential-free owner-fork RSS/Bilibili bindings or
+the three credential-free local YouTube exact-backend bindings. Status reads a
 bounded local snapshot and does not contact the Connector.
 
 A verified paired profile with a valid exact grant but no recent authenticated

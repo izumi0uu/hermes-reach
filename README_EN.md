@@ -7,18 +7,18 @@ Hermes Reach gives Hermes a consistent set of read-only tools for public web and
 It pins an [owner fork](https://github.com/izumi0uu/Agent-Reach) based on a
 reviewed official [Agent-Reach](https://github.com/Panniantong/Agent-Reach)
 baseline. The official baseline supplies channel, backend-routing, and
-compatibility evidence; the fork adds structured execution v1 for only two RSS
-operations. Hermes Reach then exposes search, read, browse, transcribe, and
+compatibility evidence; the fork's structured execution v1 currently carries
+two RSS and four Bilibili operations. Hermes Reach then exposes search, read, browse, transcribe, and
 status operations through a
 [Hermes Agent](https://github.com/NousResearch/hermes-agent) plugin.
 
 > [!IMPORTANT]
-> The project is **pre-alpha**. The default local registry has two owner-fork RSS
-> runtime calls and seven fixed backend wrappers for Bilibili and YouTube. The
+> The project is **pre-alpha**. The default local registry has six owner-fork
+> RSS/Bilibili runtime calls and three fixed YouTube backend wrappers. The
 > remote Connector can explicitly activate the single Reddit `read.post`
 > OpenCLI wrapper at both ends, while default Connector composition remains
 > empty; Web, GitHub, V2EX, and other unaudited platforms remain planned and
-> unavailable. The fork does not make the other 61 catalog operations
+> unavailable. The fork does not make the other 57 catalog operations
 > executable.
 
 ## The problem Hermes Reach solves
@@ -81,7 +81,7 @@ The default installation registers five tools, but `reach_status` remains author
 | State | Sources | Available operations |
 | --- | --- | --- |
 | Locally available | RSS/Atom | Read feeds and browse entries through owner-fork execution v1 with fixed `feedparser` provenance |
-| Locally available | Bilibili | Search/read videos and browse hot/rank through four fixed `bili-cli` paths |
+| Locally available | Bilibili | Search/read videos and browse hot/rank through owner-fork execution v1 with fixed `bili-cli` provenance |
 | Locally available | YouTube | Search/read videos and read subtitles through three fixed `yt-dlp` paths |
 | Explicitly configurable | Reddit | `read.post` only; requires activation on both the trusted device and VPS and remains unavailable by default |
 | Implemented, unbound | YouTube | `read.comments` remains `setup_required` and performs no backend call |
@@ -288,7 +288,7 @@ This environment value is only a pointer to owner-only local paired state. It is
 Hermes Reach integrates the exact pinned Agent-Reach owner fork through
 `hermes_reach.register`. The official baseline supplies the 15-channel
 registry, backend-routing evidence, compatibility metadata, and restricted
-doctor. Fork execution v1 currently owns only two RSS operations. Hermes Reach
+doctor. Fork execution v1 currently owns two RSS and four Bilibili operations. Hermes Reach
 supplies the five closed tools, security policy, host capability, Connector,
 normalization, and audit. Other platform retrieval remains with the exact
 backend selected by Agent-Reach.
@@ -296,17 +296,17 @@ backend selected by Agent-Reach.
 ```mermaid
 flowchart TD
     Hermes["Hermes Agent"] --> Plugin["Hermes Reach<br/>five reach_* tools"]
-    Upstream["Official Agent-Reach 1.5.0 baseline<br/>15 channels · backend evidence"] --> Fork["Owner fork at exact commit<br/>execution v1: RSS only"]
+    Upstream["Official Agent-Reach 1.5.0 baseline<br/>15 channels · backend evidence"] --> Fork["Owner fork at exact commit<br/>execution v1: RSS 2 · Bilibili 4"]
     Fork --> Bridge["Provenance and capability bridge"]
     Bridge --> Plugin
     Plugin --> Guard["Hermes security and control plane<br/>validation · grants · isolation · bounds · audit"]
-    Guard --> RSS["2 direct owner-fork calls<br/>RSS read.feed · browse.entries"]
-    Guard --> Local["7 default-local thin wrappers<br/>Bilibili · YouTube"]
+    Guard --> ForkOps["6 direct owner-fork calls<br/>RSS 2 · Bilibili 4"]
+    Guard --> Local["3 default-local thin wrappers<br/>YouTube"]
     Guard --> Connector["1 explicit Connector binding<br/>Reddit read.post"]
-    RSS --> Feedparser["Fork-owned feedparser invocation and projection"]
-    Local --> Backends["Exact backends<br/>bili-cli · yt-dlp"]
+    ForkOps --> ForkBackends["Fork-owned invocation and projection<br/>feedparser · bili-cli"]
+    Local --> Backends["Exact backend<br/>yt-dlp"]
     Connector --> OpenCLI["Fixed OpenCLI read"]
-    Feedparser --> Results["Bounded Hermes v1 results and audit metadata"]
+    ForkBackends --> Results["Bounded Hermes v1 results and audit metadata"]
     Backends --> Results
     OpenCLI --> Results
 ```
@@ -314,25 +314,25 @@ flowchart TD
 ### How much of Agent-Reach is reused
 
 The 15-channel registry, backend metadata, and official compatibility baseline
-come from official Agent-Reach. Owner-fork execution v1 directly runs two RSS
+come from official Agent-Reach. Owner-fork execution v1 directly runs two RSS and four Bilibili
 operations. The Hermes product catalog has 63 read-only operations: 11 are
-marked implemented and 52 are planned. Ten have concrete executors: two RSS
-fork-runtime calls and eight exact-backend wrappers (four Bilibili, three
-YouTube, and one Connector-only Reddit). Nine bindings are default-local and
+marked implemented and 52 are planned. Ten have concrete executors: six
+owner-fork runtime calls and four exact-backend wrappers (three YouTube and one
+Connector-only Reddit). Nine bindings are default-local and
 one is Connector-only. One additional contract, `youtube:read.comments`, is
 implemented but unbound and is not counted as a concrete executor.
 
 Official Agent-Reach 1.5.0 has no unified structured operation execution API,
 so the number of direct official runtime calls remains zero. The reviewed owner
-fork adds only operation-scoped execution and currently owns exactly the two
-RSS calls; it is not a general 15-channel runtime. Other executable paths use
+fork adds only operation-scoped execution and currently owns exactly six
+RSS/Bilibili calls; it is not a general 15-channel runtime. Other executable paths use
 fixed wrappers around exact Agent-Reach-selected backends. The 13 former Hermes
 platform implementations for Web, GitHub, and V2EX are disabled; Hermes-native
 and reimplementation exceptions are both zero.
 
 Hermes Reach owns protocol, authorization, host capabilities, safe invocation,
-normalization, bounds, redaction, receipts, and audit. RSS invocation and
-projection belong to the exact owner fork; other platform knowledge, backend
+normalization, bounds, redaction, receipts, and audit. RSS/Bilibili invocation
+and source-native projection belong to the exact owner fork; other platform knowledge, backend
 selection, and retrieval semantics stay in official Agent-Reach evidence or
 its exact backend. See
 [Agent-Reach as a Hermes plugin](docs/agent-reach-plugin-boundary.md) for the
@@ -342,10 +342,15 @@ operation matrix and reactivation gates.
 
 The project pins Agent-Reach `1.5.0`: the reviewed official base is
 `b4d52c46c9113cb0f653d6df4cf71ebadf4930ac`, the owner-fork integration commit
-is `806205fd106f4f4453624becfd773acce8418cf1`, and the execution protocol is
+is `f195253d53befdb012d7aa575e732ec627ec29ac`, and the execution protocol is
 `v1`. The complete 63-row state lives in the
-[operation ledger](docs/agent-reach-operation-ledger.json); the two RSS
-descriptors do not claim execution support for the other 61 rows.
+[operation ledger](docs/agent-reach-operation-ledger.json); the two RSS and four
+Bilibili descriptors do not claim execution support for the other 57 rows. The
+current commit's immutable recovery tag is
+`hermes-reach-integration-0.1.0a2`; rollback uses exact commit
+`806205fd106f4f4453624becfd773acce8418cf1` and recovery tag
+`hermes-reach-integration-0.1.0a1`. Tags preserve reachability only; the exact
+commit remains dependency authority.
 
 ### Connector path when explicitly composed
 
@@ -377,7 +382,7 @@ The roadmap describes development order, not release dates. Incomplete capabilit
 | Complete | Exact remote execution bridge | Explicit Connector adapters, authorized-operation delivery, receipts, and retries; default composition remains empty |
 | Complete | First source executor | Fixed OpenCLI read, closed YAML mapping, and WSS receipt test for Reddit `read.post`; unbound by default |
 | Complete | Explicit two-sided production composition | Attest and confirm OpenCLI on the trusted device; build the sole Reddit adapter from owner-only paired VPS state |
-| Complete | RSS fork execution and exact local backends | Two direct owner-fork RSS runtime calls; four Bilibili and three YouTube default-local wrappers; YouTube comments remains unbound |
+| Complete | RSS/Bilibili fork execution and exact local backends | Two RSS and four Bilibili direct owner-fork runtime calls; three YouTube default-local wrappers; YouTube comments remains unbound |
 | Complete | Freeze strict plugin boundary | Disable 13 Web/GitHub/V2EX platform exceptions while retaining catalog discovery and historical evidence |
 | Complete | Verify the real plugin lifecycle | Prove default-disabled install, enable, disable, and package-manager uninstall in a clean Hermes 0.19 environment |
 | Now | Establish a public pre-release channel | Install one exact sdist offline, lifecycle-test the exact wheel, then checksum and attest both before least-privilege publication |
