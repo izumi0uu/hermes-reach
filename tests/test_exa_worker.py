@@ -292,6 +292,35 @@ def test_worker_converts_fork_contract_drift_to_closed_failure(result: object) -
     assert QUERY not in repr(value)
 
 
+@pytest.mark.parametrize("artifacts_type", [None, object()])
+def test_worker_rejects_invalid_fork_artifact_capability_type(
+    artifacts_type: object,
+) -> None:
+    api = _api(lambda *_: _Success())
+    api.mcporter_artifacts_type = artifacts_type
+
+    value = worker._execute_request(
+        worker.WorkerRequest("search.web", QUERY, 1, _artifacts()),
+        execution_api_provider=_provider(api),
+    )
+
+    assert value == worker._failure_value("backend_contract_violation")
+    assert QUERY not in repr(value)
+
+
+def test_worker_rejects_missing_fork_artifact_capability_type() -> None:
+    api = _api(lambda *_: _Success())
+    del api.mcporter_artifacts_type
+
+    value = worker._execute_request(
+        worker.WorkerRequest("search.web", QUERY, 1, _artifacts()),
+        execution_api_provider=_provider(api),
+    )
+
+    assert value == worker._failure_value("backend_contract_violation")
+    assert QUERY not in repr(value)
+
+
 @pytest.mark.parametrize(
     "mutation",
     [
@@ -383,6 +412,92 @@ def test_duplicate_json_keys_and_trailing_frame_bytes_fail_closed() -> None:
         worker._read_request(io.BytesIO(framed))
     with pytest.raises(worker.ExaProtocolError):
         worker.decode_response(_framed(_success_value()) + b"x", limit=1)
+
+
+@pytest.mark.parametrize(
+    "selected",
+    [
+        {"oversized": QUERY + "x" * worker.MAX_OUTPUT_BYTES},
+        {"invalid_unicode": QUERY + "\ud800"},
+    ],
+)
+def test_main_frames_unencodable_selected_result_as_closed_permanent_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    selected: Mapping[str, object],
+) -> None:
+    stdout = io.BytesIO()
+    monkeypatch.setattr(
+        worker.sys,
+        "stdin",
+        SimpleNamespace(
+            buffer=io.BytesIO(worker.encode_request(QUERY, 1, _artifacts()))
+        ),
+    )
+    monkeypatch.setattr(worker.sys, "stdout", SimpleNamespace(buffer=stdout))
+    monkeypatch.setattr(worker, "_execute_request", lambda _: selected)
+
+    assert worker.MAX_OUTPUT_BYTES == 524_288
+    assert worker._main() == 0
+    assert len(stdout.getvalue()) <= worker.MAX_OUTPUT_BYTES + 4
+    assert worker.decode_response(stdout.getvalue(), limit=1) == (
+        worker.ForkExecutionFailure("search.web", "backend_contract_violation")
+    )
+    assert QUERY.encode() not in stdout.getvalue()
+
+
+def test_main_preserves_nonzero_exit_for_execution_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stdout = io.BytesIO()
+    monkeypatch.setattr(
+        worker.sys,
+        "stdin",
+        SimpleNamespace(
+            buffer=io.BytesIO(worker.encode_request(QUERY, 1, _artifacts()))
+        ),
+    )
+    monkeypatch.setattr(worker.sys, "stdout", SimpleNamespace(buffer=stdout))
+
+    def fail_execution(_: worker.WorkerRequest) -> Mapping[str, object]:
+        raise RuntimeError("private execution failure")
+
+    monkeypatch.setattr(worker, "_execute_request", fail_execution)
+
+    assert worker._main() == 1
+    assert stdout.getvalue() == b""
+
+
+@pytest.mark.parametrize("failure_stage", ["write", "flush"])
+def test_main_preserves_nonzero_exit_for_output_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    failure_stage: str,
+) -> None:
+    class FailingOutput(io.BytesIO):
+        def write(self, value: bytes, /) -> int:
+            if failure_stage == "write":
+                raise OSError("private write failure")
+            return super().write(value)
+
+        def flush(self) -> None:
+            if failure_stage == "flush":
+                raise OSError("private flush failure")
+            super().flush()
+
+    monkeypatch.setattr(
+        worker.sys,
+        "stdin",
+        SimpleNamespace(
+            buffer=io.BytesIO(worker.encode_request(QUERY, 1, _artifacts()))
+        ),
+    )
+    monkeypatch.setattr(
+        worker.sys,
+        "stdout",
+        SimpleNamespace(buffer=FailingOutput()),
+    )
+    monkeypatch.setattr(worker, "_execute_request", lambda _: _success_value())
+
+    assert worker._main() == 1
 
 
 def test_runtime_loader_requests_only_the_exa_module(
