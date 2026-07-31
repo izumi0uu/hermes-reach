@@ -49,6 +49,38 @@ EXPECTED_EXECUTION_CAPABILITY_FIELDS = (
     "maximum_author_characters",
     "maximum_published_characters",
 )
+EXPECTED_RUNTIME_HANDSHAKES = (
+    (
+        "rss",
+        "agent_reach.execution.v1.rss",
+        "execute_rss",
+        ("request", "context", "document"),
+    ),
+    (
+        "bilibili",
+        "agent_reach.execution.v1.bilibili",
+        "execute_bilibili",
+        ("request", "context"),
+    ),
+    (
+        "youtube",
+        "agent_reach.execution.v1.youtube",
+        "execute_youtube",
+        ("request", "context"),
+    ),
+    (
+        "v2ex",
+        "agent_reach.execution.v1.v2ex",
+        "execute_v2ex",
+        ("request", "context"),
+    ),
+    (
+        "exa",
+        "agent_reach.execution.v1.exa",
+        "execute_exa",
+        ("request", "context"),
+    ),
+)
 EXPECTED_EXECUTION_CAPABILITIES = (
     (
         "v1",
@@ -640,16 +672,16 @@ def test_public_wheel_resolution_is_clean_three_version_and_pin_checked() -> Non
     fixture_source = (ROOT / "tests" / "fixtures" / "hermes_plugin_probe.py").read_text(
         encoding="utf-8"
     )
-    assert (
-        'validate_agent_reach_execution_contract(runtime_module="youtube")'
-        in handshake_source
-    )
+    assert "runtime_module=runtime_module" in handshake_source
     assert "load_agent_reach_catalog()" in handshake_source
     assert "assert len(catalog.channels) == 15" in handshake_source
-    assert 'sys.modules.get("agent_reach.execution.v1.youtube")' in handshake_source
-    assert "tuple(signature(execute_youtube).parameters)" in handshake_source
+    assert "getattr(runtime, function_name)" in handshake_source
+    assert (
+        'sys.modules.get("agent_reach.execution.v1._v2ex_transport")'
+        in handshake_source
+    )
     assert "api.execute(" not in handshake_source
-    assert "execute_youtube(" not in handshake_source
+    assert "execute_runtime(" not in handshake_source
 
     assert (
         _literal_assignment(handshake_source, "capability_fields")
@@ -660,6 +692,10 @@ def test_public_wheel_resolution_is_clean_three_version_and_pin_checked() -> Non
         == EXPECTED_EXECUTION_CAPABILITIES
     )
     assert (
+        _literal_assignment(handshake_source, "runtime_handshakes")
+        == EXPECTED_RUNTIME_HANDSHAKES
+    )
+    assert (
         _literal_assignment(fixture_source, "EXPECTED_EXECUTION_CAPABILITY_FIELDS")
         == EXPECTED_EXECUTION_CAPABILITY_FIELDS
     )
@@ -667,8 +703,16 @@ def test_public_wheel_resolution_is_clean_three_version_and_pin_checked() -> Non
         _literal_assignment(fixture_source, "EXPECTED_EXECUTION_CAPABILITIES")
         == EXPECTED_EXECUTION_CAPABILITIES
     )
+    assert (
+        _literal_assignment(fixture_source, "EXPECTED_RUNTIME_HANDSHAKES")
+        == EXPECTED_RUNTIME_HANDSHAKES
+    )
     assert fixture_source.count("validate_agent_reach_execution_contract(") == 1
-    assert 'runtime_module="youtube"' in fixture_source
+    assert "runtime_module=runtime_module" in fixture_source
+    assert "getattr(runtime, function_name)" in fixture_source
+    assert (
+        'sys.modules.get("agent_reach.execution.v1._v2ex_transport")' in fixture_source
+    )
     assert 'for module_name in ("yt_dlp", "yt_dlp_ejs", "deno")' in fixture_source
 
 

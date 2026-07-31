@@ -376,6 +376,38 @@ EXPECTED_EXECUTION_CAPABILITIES = (
         512,
     ),
 )
+EXPECTED_RUNTIME_HANDSHAKES = (
+    (
+        "rss",
+        "agent_reach.execution.v1.rss",
+        "execute_rss",
+        ("request", "context", "document"),
+    ),
+    (
+        "bilibili",
+        "agent_reach.execution.v1.bilibili",
+        "execute_bilibili",
+        ("request", "context"),
+    ),
+    (
+        "youtube",
+        "agent_reach.execution.v1.youtube",
+        "execute_youtube",
+        ("request", "context"),
+    ),
+    (
+        "v2ex",
+        "agent_reach.execution.v1.v2ex",
+        "execute_v2ex",
+        ("request", "context"),
+    ),
+    (
+        "exa",
+        "agent_reach.execution.v1.exa",
+        "execute_exa",
+        ("request", "context"),
+    ),
+)
 FROZEN_CALLS: tuple[tuple[str, dict[str, object], str, str], ...] = (
     (
         "reach_read",
@@ -476,6 +508,21 @@ FROZEN_CALLS: tuple[tuple[str, dict[str, object], str, str], ...] = (
         },
         "github",
         "browse.releases",
+    ),
+    (
+        "reach_search",
+        {
+            "requests": [
+                {
+                    "source": "exa",
+                    "operation": "search.code",
+                    "query": "code search",
+                    "options": {"limit": 3},
+                }
+            ]
+        },
+        "exa",
+        "search.code",
     ),
 )
 
@@ -836,11 +883,12 @@ def _assert_frozen_calls(registry: Any, client: FixtureHttpClient) -> None:
     catalog_operations = {
         (source.name, operation.name)
         for source in SOURCE_CATALOG
-        if source.name in {"web", "github"}
+        if source.name in {"web", "github", "exa"}
         for operation in source.operations
+        if operation.implementation_state == "planned"
     }
-    assert len(requested_operations) == 9
-    assert len(set(requested_operations)) == 9
+    assert len(requested_operations) == 10
+    assert len(set(requested_operations)) == 10
     assert set(requested_operations) == catalog_operations
 
     effects: list[str] = []
@@ -1025,22 +1073,37 @@ def main() -> None:
                 validate_agent_reach_execution_contract,
             )
 
-            execution_api = validate_agent_reach_execution_contract(
-                runtime_module="youtube"
+            execution_apis = []
+            for (
+                runtime_module,
+                module_name,
+                function_name,
+                expected_parameters,
+            ) in EXPECTED_RUNTIME_HANDSHAKES:
+                execution_api = validate_agent_reach_execution_contract(
+                    runtime_module=runtime_module
+                )
+                assert execution_api.protocol_version == "v1"
+                assert execution_api.list_capabilities() == execution_api.capabilities
+                assert _execution_capabilities(execution_api) == (
+                    EXPECTED_EXECUTION_CAPABILITIES
+                )
+                runtime = sys.modules.get(module_name)
+                assert runtime is not None
+                execute_runtime = getattr(runtime, function_name)
+                assert execute_runtime.__module__ == module_name
+                assert execute_runtime.__qualname__ == function_name
+                assert (
+                    tuple(inspect.signature(execute_runtime).parameters)
+                    == expected_parameters
+                )
+                execution_apis.append(execution_api)
+            assert all(
+                api.capabilities == execution_apis[0].capabilities
+                for api in execution_apis
             )
-            assert execution_api.protocol_version == "v1"
-            assert execution_api.list_capabilities() == execution_api.capabilities
-            assert _execution_capabilities(execution_api) == (
-                EXPECTED_EXECUTION_CAPABILITIES
-            )
-            youtube_runtime = sys.modules.get("agent_reach.execution.v1.youtube")
-            assert youtube_runtime is not None
-            execute_youtube = youtube_runtime.execute_youtube
-            assert execute_youtube.__module__ == "agent_reach.execution.v1.youtube"
-            assert execute_youtube.__qualname__ == "execute_youtube"
-            assert tuple(inspect.signature(execute_youtube).parameters) == (
-                "request",
-                "context",
+            assert (
+                sys.modules.get("agent_reach.execution.v1._v2ex_transport") is not None
             )
             assert all(
                 module_name not in sys.modules
