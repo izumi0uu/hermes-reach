@@ -27,7 +27,11 @@ DataScope = Literal["public", "account_visible"]
 CATALOG_VERSION: Final = "v1"
 PROTOCOL_VERSION: Final = "v1"
 EXA_SETUP_REQUIRED_REASON: Final = (
-    "Exact Agent-Reach-selected mcporter execution remains frozen pending review."
+    "The exact Agent-Reach-selected mcporter artifact bundle requires setup."
+)
+EXA_CODE_UNAVAILABLE_REASON: Final = (
+    "The Agent-Reach-selected Exa code method has an incompatible deprecated "
+    "live contract."
 )
 WEB_UNAVAILABLE_REASON: Final = (
     "The pinned Agent-Reach Web callable remains frozen pending a bounded, "
@@ -36,10 +40,6 @@ WEB_UNAVAILABLE_REASON: Final = (
 GITHUB_UNAVAILABLE_REASON: Final = (
     "The Agent-Reach-selected gh backend remains frozen pending a credential-free, "
     "read-only execution review."
-)
-V2EX_UNAVAILABLE_REASON: Final = (
-    "The pinned Agent-Reach V2EX callables remain frozen pending a bounded, "
-    "cancellable execution review."
 )
 
 
@@ -592,7 +592,7 @@ SOURCE_CATALOG: Final[tuple[SourceSpec, ...]] = (
                 1,
                 "credential_free",
                 (LIMIT,),
-                unavailable_reason=V2EX_UNAVAILABLE_REASON,
+                implementation_state="implemented",
             ),
             _operation(
                 "v2ex",
@@ -601,7 +601,7 @@ SOURCE_CATALOG: Final[tuple[SourceSpec, ...]] = (
                 1,
                 "credential_free",
                 (NODE, LIMIT, PAGE),
-                unavailable_reason=V2EX_UNAVAILABLE_REASON,
+                implementation_state="implemented",
             ),
             _operation(
                 "v2ex",
@@ -610,7 +610,7 @@ SOURCE_CATALOG: Final[tuple[SourceSpec, ...]] = (
                 1,
                 "credential_free",
                 targets=(POSITIVE_ID_TARGET,),
-                unavailable_reason=V2EX_UNAVAILABLE_REASON,
+                implementation_state="implemented",
             ),
             _operation(
                 "v2ex",
@@ -619,7 +619,7 @@ SOURCE_CATALOG: Final[tuple[SourceSpec, ...]] = (
                 1,
                 "credential_free",
                 targets=(USERNAME_TARGET,),
-                unavailable_reason=V2EX_UNAVAILABLE_REASON,
+                implementation_state="implemented",
             ),
         ),
     ),
@@ -672,15 +672,16 @@ SOURCE_CATALOG: Final[tuple[SourceSpec, ...]] = (
         "exa",
         "Exa",
         1,
-        "api_key",
+        "credential_free",
         (
             _operation(
                 "exa",
                 "search.web",
                 "search",
                 1,
-                "api_key",
+                "credential_free",
                 (LIMIT,),
+                implementation_state="implemented",
                 unavailable_reason=EXA_SETUP_REQUIRED_REASON,
             ),
             _operation(
@@ -688,9 +689,9 @@ SOURCE_CATALOG: Final[tuple[SourceSpec, ...]] = (
                 "search.code",
                 "search",
                 1,
-                "api_key",
+                "credential_free",
                 (LIMIT,),
-                unavailable_reason=EXA_SETUP_REQUIRED_REASON,
+                unavailable_reason=EXA_CODE_UNAVAILABLE_REASON,
             ),
         ),
     ),

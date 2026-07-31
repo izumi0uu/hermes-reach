@@ -73,7 +73,7 @@ def test_safe_skill_contains_no_upstream_execution_escape_hatches() -> None:
     for fragment in forbidden_fragments:
         assert fragment not in text
     assert "b4d52c46c9113cb0f653d6df4cf71ebadf4930ac" in text
-    assert "2a5829cf3b50bc435c647bfae4c050b1837d0235" in text
+    assert "2755b0c140a03ab5793540fb3245288891526586" in text
     assert "f195253d53befdb012d7aa575e732ec627ec29ac" not in text
     assert "rss:read.feed" in text
     assert "rss:browse.entries" in text
@@ -84,6 +84,6 @@ def test_safe_skill_contains_no_upstream_execution_escape_hatches() -> None:
     assert "youtube:read.video" in text
     assert "youtube:search.videos" in text
     assert "youtube:read.subtitles" in text
-    assert "seven direct owner-fork operations" in text
-    assert "three exact-backend thin wrappers" in text
-    assert "other 56 catalog operations" in text
+    assert "14 direct owner-fork operations" in text
+    assert "one exact-backend thin wrapper" in text
+    assert "other 49 catalog operations" in text

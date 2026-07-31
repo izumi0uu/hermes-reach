@@ -13,7 +13,7 @@
 - Original audit pin: `izumi0uu/Agent-Reach` at
   `f195253d53befdb012d7aa575e732ec627ec29ac`
 - Current revalidation pin:
-  `2a5829cf3b50bc435c647bfae4c050b1837d0235`
+  `2755b0c140a03ab5793540fb3245288891526586`
 
 ## Decision
 
@@ -27,7 +27,7 @@ The owner selected strict adapter purity on 2026-07-28. The earlier exception
 approval is preserved only as historical evidence; it no longer grants
 production authority to `web-public-http-v1`.
 
-The 2026-07-31 full-pin audit against `2a5829cf3b50bc435c647bfae4c050b1837d0235`
+The 2026-07-31 full-pin audit against `2755b0c140a03ab5793540fb3245288891526586`
 found no Web execution descriptor or safety-contract change, so this disabled
 decision remains in force.
 

@@ -17,6 +17,7 @@ _NON_RETRYABLE_FAILURES: Final[frozenset[FailureClass]] = frozenset(
     {
         "invalid_input",
         "not_found",
+        "setup_required",
         "authentication",
         "authorization",
         "policy",

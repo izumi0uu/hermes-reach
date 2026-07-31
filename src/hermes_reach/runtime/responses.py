@@ -29,6 +29,11 @@ _FAILURES: Final[dict[FailureClass, tuple[str, str, str]]] = {
         "The requested source resource was not found.",
         "Verify the source-native identifier or URL.",
     ),
+    "setup_required": (
+        "setup_required",
+        "The source requires an unavailable configured capability.",
+        "Complete operator setup for this exact source operation.",
+    ),
     "authentication": (
         "setup_required",
         "The source requires an unavailable configured capability.",
@@ -233,7 +238,7 @@ def _attempt_data(attempt: AttemptProvenance) -> dict[str, object]:
 def _failure_availability(failure: FailureClass) -> str:
     if failure in {"not_found", "invalid_input"}:
         return "available"
-    if failure == "authentication":
+    if failure in {"setup_required", "authentication"}:
         return "setup_required"
     if failure in {"authorization", "policy"}:
         return "unavailable"

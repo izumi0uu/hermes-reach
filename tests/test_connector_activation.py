@@ -34,6 +34,15 @@ from hermes_reach.connector.protocol import (
 )
 from hermes_reach.connector.tls import ConnectorTLSStore, verify_connector_ca_der
 from hermes_reach.connector.transport import PairingExchange, WssEndpoint
+from hermes_reach.sources.exa_artifacts import (
+    EXA_CONFIG_PATH_ENVIRONMENT,
+    EXA_CONFIG_SHA256_ENVIRONMENT,
+    EXA_MCPORTER_CLI_ENVIRONMENT,
+    EXA_MCPORTER_ROOT_ENVIRONMENT,
+    EXA_MCPORTER_TREE_SHA256_ENVIRONMENT,
+    EXA_NODE_EXECUTABLE_ENVIRONMENT,
+    EXA_NODE_SHA256_ENVIRONMENT,
+)
 
 _LEAF_FINGERPRINT = "ab" * 32
 
@@ -181,6 +190,60 @@ def test_absent_environment_pointer_returns_default_without_factory_work(
     assert runtime_from_environment({}) is DEFAULT_RUNTIME
 
 
+def _exa_environment() -> dict[str, str]:
+    return {
+        EXA_NODE_EXECUTABLE_ENVIRONMENT: "/operator/node",
+        EXA_NODE_SHA256_ENVIRONMENT: "1" * 64,
+        EXA_MCPORTER_ROOT_ENVIRONMENT: "/operator/mcporter",
+        EXA_MCPORTER_CLI_ENVIRONMENT: "/operator/mcporter/dist/cli.js",
+        EXA_MCPORTER_TREE_SHA256_ENVIRONMENT: "2" * 64,
+        EXA_CONFIG_PATH_ENVIRONMENT: "/operator/exa-config.json",
+        EXA_CONFIG_SHA256_ENVIRONMENT: "3" * 64,
+    }
+
+
+def test_complete_exa_environment_adds_only_the_fixed_local_binding() -> None:
+    runtime = runtime_from_environment(_exa_environment())
+
+    web = runtime.operation_availability("exa", "search.web")
+    code = runtime.operation_availability("exa", "search.code")
+
+    assert runtime is not DEFAULT_RUNTIME
+    assert web.state == "available"
+    assert web.backend_id == "exa-mcporter"
+    assert web.backend_version == "0.12.3+exa-web.v1"
+    assert code.state == "unavailable"
+
+
+def test_incomplete_exa_environment_fails_closed_without_hiding_local_sources() -> None:
+    environment = _exa_environment()
+    environment.pop(EXA_CONFIG_SHA256_ENVIRONMENT)
+
+    runtime = runtime_from_environment(environment)
+
+    assert runtime.operation_availability("exa", "search.web").state == "setup_required"
+    assert runtime.operation_availability("v2ex", "browse.hot").state == "available"
+    assert runtime.operation_availability("rss", "read.feed").state == "available"
+
+
+@pytest.mark.parametrize(
+    "vps_pointer",
+    ["", "relative/state", "invalid\x00state"],
+)
+def test_invalid_vps_pointer_does_not_discard_valid_exa_artifacts(
+    vps_pointer: str,
+) -> None:
+    environment = {
+        **_exa_environment(),
+        VPS_STATE_DIRECTORY_ENVIRONMENT: vps_pointer,
+    }
+
+    runtime = runtime_from_environment(environment)
+
+    assert runtime.operation_availability("exa", "search.web").state == "available"
+    assert runtime.operation_availability("reddit", "read.post").state == "unavailable"
+
+
 def test_invalid_configured_state_preserves_alpha1_and_creates_nothing(
     tmp_path: Path,
 ) -> None:
@@ -189,6 +252,20 @@ def test_invalid_configured_state_preserves_alpha1_and_creates_nothing(
     runtime = runtime_from_environment({VPS_STATE_DIRECTORY_ENVIRONMENT: str(missing)})
 
     assert runtime.operation_availability("rss", "read.feed").state == "available"
+    assert runtime.operation_availability("reddit", "read.post").state == "unavailable"
+    assert not missing.exists()
+
+
+def test_missing_vps_state_does_not_discard_valid_exa_artifacts(tmp_path: Path) -> None:
+    missing = tmp_path / "missing-with-exa"
+    environment = {
+        **_exa_environment(),
+        VPS_STATE_DIRECTORY_ENVIRONMENT: str(missing),
+    }
+
+    runtime = runtime_from_environment(environment)
+
+    assert runtime.operation_availability("exa", "search.web").state == "available"
     assert runtime.operation_availability("reddit", "read.post").state == "unavailable"
     assert not missing.exists()
 
@@ -268,6 +345,34 @@ def test_verified_reddit_pairing_builds_one_degraded_connector_adapter(
 
     assert runtime.operation_availability("rss", "read.feed").state == "available"
     reddit = runtime.operation_availability("reddit", "read.post")
+    assert reddit.state == "degraded"
+    assert reddit.cause_code == "connector_offline"
+    assert not (state_directory / "receipts.jsonl").exists()
+    assert not (state_directory / "vps-connector-snapshot.json").exists()
+
+
+@pytest.mark.parametrize("exa_valid", [True, False])
+def test_exa_and_verified_connector_states_compose_independently(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    exa_valid: bool,
+) -> None:
+    state_directory = _paired_state(
+        tmp_path, (GrantScope("reddit", "read.post", "public"),)
+    )
+    environment = {
+        **_exa_environment(),
+        VPS_STATE_DIRECTORY_ENVIRONMENT: str(state_directory),
+    }
+    if not exa_valid:
+        environment.pop(EXA_CONFIG_SHA256_ENVIRONMENT)
+
+    monkeypatch.setattr(connector_identity.sys, "platform", "linux")
+    runtime = runtime_from_environment(environment)
+
+    exa_web = runtime.operation_availability("exa", "search.web")
+    reddit = runtime.operation_availability("reddit", "read.post")
+    assert exa_web.state == ("available" if exa_valid else "setup_required")
     assert reddit.state == "degraded"
     assert reddit.cause_code == "connector_offline"
     assert not (state_directory / "receipts.jsonl").exists()

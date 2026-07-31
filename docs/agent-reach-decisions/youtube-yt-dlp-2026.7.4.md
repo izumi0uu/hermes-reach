@@ -1,29 +1,30 @@
-# YouTube yt-dlp 2026.7.4 Mixed Execution Decision
+# YouTube yt-dlp 2026.7.4 Owner-Fork Execution Decision
 
-- Status: integrated with protected immutable recovery tag
+- Status: reviewed batch candidate; not yet merged or tagged
 - Date: 2026-07-31
-- Direct owner-fork operation: `youtube:read.video`
-- Exact-backend wrapper operations: `youtube:search.videos`,
+- Direct owner-fork operations: `youtube:search.videos`, `youtube:read.video`,
   `youtube:read.subtitles`
 - Backend: `yt-dlp` version `2026.7.4`
 - Execution closure: `yt-dlp-ejs==0.8.0`, `deno==2.8.3`
 - Official Agent-Reach base: `Panniantong/Agent-Reach` `1.5.0` at
   `b4d52c46c9113cb0f653d6df4cf71ebadf4930ac`
-- Final owner-fork integration: `izumi0uu/Agent-Reach` at
-  `2a5829cf3b50bc435c647bfae4c050b1837d0235`
-- Audited feature candidate: `9e744d0c33f9e6498cf66c2ea376a653000e9be4`
-- Candidate/final tree: `070e4507fde7e55eceaba4d29e6a459c4a972f60`
-- Recovery reference: `hermes-reach-integration-0.1.0a3`
-- Rollback integration pin: `f195253d53befdb012d7aa575e732ec627ec29ac`
-  (`hermes-reach-integration-0.1.0a2`)
+- Reviewed owner-fork batch candidate: `izumi0uu/Agent-Reach` at
+  `2755b0c140a03ab5793540fb3245288891526586`
+- Candidate tree: `55648469505908aa655745f5ca7704d495f12183`
+- Rollback integration pin: `2a5829cf3b50bc435c647bfae4c050b1837d0235`
+  (`hermes-reach-integration-0.1.0a3`)
+- Previous read-video candidate: `9e744d0c33f9e6498cf66c2ea376a653000e9be4`;
+  final integration `2a5829cf3b50bc435c647bfae4c050b1837d0235`;
+  shared tree `070e4507fde7e55eceaba4d29e6a459c4a972f60`
 
 ## Decision
 
-Move only `youtube:read.video` into the closed Agent-Reach owner-fork
-`execution.v1` runtime. Keep search and subtitles on the existing exact
-`yt-dlp` backend wrappers. This mixed state increases real Agent-Reach execution
-reuse without expanding the public operation set or moving Hermes policy and
-containment into the fork.
+Move all three executable YouTube operations into the closed Agent-Reach
+owner-fork `execution.v1` runtime. Search and subtitles keep the same exact
+`yt-dlp`/EJS/Deno backend closure and public behavior while their fixed
+invocation, raw validation, and YouTube-native projection move out of Hermes.
+This completes the source migration without expanding the public operation set
+or moving Hermes policy and containment into the fork.
 
 The default registry still binds the same three credential-free operations
 with provenance `yt-dlp` version `2026.7.4`. `read.comments` remains
@@ -39,28 +40,32 @@ backend selector or a claim that all Agent-Reach YouTube behavior is exposed.
 ## Pinned Evidence
 
 Agent-Reach 1.5.0 selects yt-dlp for YouTube metadata, search, and subtitles.
-The reviewed owner-fork integration adds exactly one YouTube descriptor:
+The reviewed owner-fork batch adds exactly three YouTube descriptors:
 
 ```text
 source: youtube
-operation: read.video
-argument schema: youtube.read.video.arguments.v1
-result schema: youtube.video.v1
+operations: search.videos, read.video, read.subtitles
+argument schemas: youtube.search.videos.arguments.v1,
+                  youtube.read.video.arguments.v1,
+                  youtube.read.subtitles.arguments.v1
+result schemas: youtube.video.v1, youtube.subtitle.v1
 backend: yt-dlp@2026.7.4
-host capability: network_access.v1
-items: exactly 1
+host capabilities: network_access.v1;
+                   network_access.v1 + private_workspace.v1 for subtitles
+items: search 0..50; video exactly 1; subtitles exactly 1
 ```
 
-Together with two RSS and four Bilibili descriptors, static discovery contains
-exactly seven ordered operations. Discovery and rejected requests do not import
-or probe yt-dlp, yt-dlp-ejs, Deno, the network, or the filesystem.
+Together with two RSS, four Bilibili, four V2EX, and one Exa Web descriptor,
+static discovery contains exactly 14 ordered operations. Discovery and
+rejected requests do not import or probe yt-dlp, yt-dlp-ejs, Deno, the network,
+or the filesystem.
 
 Hermes pins the exact integration commit in package metadata and `uv.lock`. The
 bridge validates exact PEP 610 provenance and RECORD hash, size, resolved path,
-and current bytes for both parent initializers plus all six reviewed
+and current bytes for both parent initializers plus all nine reviewed
 `execution/v1` files, including `youtube.py`, before importing fork execution
 code. It then validates loaded origins, exports, signatures, type shapes, error
-codes, and all seven descriptors. The YouTube worker repeats the durable
+codes, and all 14 descriptors. The YouTube worker repeats the durable
 handshake with `runtime_module="youtube"` before every fork-backed read.
 
 The backend closure remains directly pinned and locked:
@@ -92,28 +97,24 @@ in one length-prefixed UTF-8 JSON v1 frame. Operation ownership inside the
 worker is exact:
 
 ```text
-search.videos  -> existing Hermes exact-backend wrapper
+search.videos  -> Agent-Reach execution.v1
 read.video     -> Agent-Reach execution.v1
-read.subtitles -> existing Hermes exact-backend wrapper
+read.subtitles -> Agent-Reach execution.v1
 ```
 
-For `read.video`, Hermes validates the public target, reconstructs the literal
-canonical watch URL, and creates only `ExecutionRequestV1`, fieldless
-`NetworkAccessV1`, and narrowed execution limits. The owner fork alone checks
-the exact yt-dlp/EJS/Deno closure, constructs fixed `YoutubeDL` options, and
-invokes:
-
-```text
-extract_info(<canonical-watch-url>, download=False, ie_key="Youtube")
-```
-
-For the two operations not migrated in this decision, Hermes retains the
-reviewed calls:
+Hermes validates the public request and creates only `ExecutionRequestV1`, a
+fieldless `NetworkAccessV1`, narrowed execution limits, and, for subtitles, a
+fieldless `PrivateWorkspaceV1`. The owner fork alone checks the exact
+yt-dlp/EJS/Deno closure, constructs fixed `YoutubeDL` options, and invokes the
+operation-specific calls:
 
 ```text
 search.videos:
   extract_info("ytsearch<limit>:<query>", download=False,
                ie_key="YoutubeSearch")
+
+read.video:
+  extract_info(<canonical-watch-url>, download=False, ie_key="Youtube")
 
 read.subtitles:
   writesubtitles=True, writeautomaticsub=True, subtitlesformat="vtt",
@@ -134,19 +135,22 @@ npm, or host configuration. The fixed worker, hard timeout/cancellation,
 process-group kill/reap, bounded stdin/stdout, discarded stderr, and cleanup
 remain Hermes responsibilities for all three operations.
 
-For `read.video`, the fork enforces no config/cache/proxy/Cookie/netrc/browser,
-no plugins or remote components, no shell or CLI, and no alternate JavaScript
-runtime. Packaged EJS plus the regular, executable, single-link Deno installed
-beside the running Python interpreter are the only JavaScript route. Search and
-subtitle wrappers retain the same closure locally until separate migrations.
+The fork enforces no config/cache/proxy/Cookie/netrc/browser, no plugins or
+remote components, no shell or CLI, and no alternate JavaScript runtime.
+Packaged EJS plus the regular, executable, single-link Deno installed beside
+the running Python interpreter are the only JavaScript route. Subtitle files
+must remain below the worker's private current directory and pass regular-file,
+symlink, hardlink, inode, size, and cleanup checks before parsing.
 
-The fork returns exactly one `youtube.video.v1` item with `text`, `native_id`,
-`title`, `url`, `author`, `published_at`, `duration_seconds`, `view_count`, and
-`comment_count`. It owns raw yt-dlp validation, backend error interpretation,
-identity correlation, date/integer normalization, source-field byte bounds,
-and YouTube-native projection. Hermes independently validates the complete
-typed result before stdout and again in the parent before constructing
-`RawItem` and `MediaMetadata`.
+The fork returns zero to 50 `youtube.video.v1` search items, exactly one
+`youtube.video.v1` read item, or exactly one `youtube.subtitle.v1` item. It owns
+raw yt-dlp validation, backend error interpretation, identity correlation,
+language and manual-before-automatic selection, VTT normalization,
+date/integer normalization, source-field byte bounds, and YouTube-native
+projection. Hermes independently validates the complete typed result before
+stdout and again in the parent before constructing `RawItem` and
+`MediaMetadata`; the parent also correlates read-video and subtitle results
+with the original requested URL.
 
 Source-field UTF-8 truncation remains the existing projection behavior.
 Execution-context text truncation is bounded to 16,000 Unicode code points and
@@ -183,14 +187,12 @@ Hermes owns public validation and canonicalization, grants, fixed worker
 containment, deadlines and cancellation, retry policy, independent frame/result
 validation, product normalization, provenance, receipts, and audit.
 
-The owner fork owns only `read.video` platform execution: exact dependency and
-Deno validation, fixed yt-dlp options and call, raw result validation, error
-mapping, identity/date/integer normalization, and native projection. Search
-limit mapping, subtitle language preference, manual-before-automatic caption
-selection, VTT file containment, and those two backend projections remain in
-Hermes because search and subtitles are outside this migration.
-
-This split is intentional temporary migration state. It does not authorize new
+The owner fork owns all three executable YouTube platform paths: exact
+dependency and Deno validation, fixed yt-dlp options and calls, search limit
+mapping, subtitle language preference, manual-before-automatic caption
+selection, private-workspace file safety, raw result validation, error mapping,
+identity/date/integer normalization, and native projection. Hermes retains no
+yt-dlp call or YouTube response parser. This split does not authorize new
 YouTube platform logic in Hermes or a broader Agent-Reach execution surface.
 
 ## Review Milestone
@@ -204,20 +206,21 @@ Agent-Reach pin movement reopens all 63 catalog operations.
 
 ## Rollout And Rollback
 
-`9e744d0c33f9e6498cf66c2ea376a653000e9be4` is the audited feature candidate.
-GitHub rebase merge produced final integration
-`2a5829cf3b50bc435c647bfae4c050b1837d0235`; both commits resolve to tree
-`070e4507fde7e55eceaba4d29e6a459c4a972f60`. Hermes pins the final commit;
-protected immutable tag `hermes-reach-integration-0.1.0a3` preserves its
-reachability but is not a dependency selector.
+`2755b0c140a03ab5793540fb3245288891526586` is the reviewed batch candidate,
+with tree `55648469505908aa655745f5ca7704d495f12183`. Hermes pins this exact
+candidate for cross-repository review. It has not been rebase-integrated or
+tagged. After explicit owner approval, the final integration must be proven
+tree-equivalent, Hermes must move to its final SHA, and every pin-sensitive
+gate must pass again before a new immutable recovery tag is created.
 
-Before final fork integration, rollback restores exact pin
-`f195253d53befdb012d7aa575e732ec627ec29ac`, recoverable through immutable tag
-`hermes-reach-integration-0.1.0a2`, and restores `read.video` to its former
-exact-backend wrapper. Search, subtitles, comments, and transcription are
-unchanged. No database, grant, wire, Connector, receipt, audit, or stored-
-content migration is required.
+Rollback restores exact pin `2a5829cf3b50bc435c647bfae4c050b1837d0235`,
+recoverable through immutable tag `hermes-reach-integration-0.1.0a3`, and
+restores search and subtitles to their former exact-backend wrappers.
+`read.video`, comments, and transcription retain their previous states. No
+database, grant, wire, Connector, receipt, audit, or stored-content migration
+is required.
 
 The active integration-tag ruleset prevents update and deletion of
 `hermes-reach-integration-0.1.0a3` with no bypass actor. Runtime authority
-remains the exact integration commit.
+remains the exact commit selected by Hermes package metadata; the tag is not a
+dependency selector.

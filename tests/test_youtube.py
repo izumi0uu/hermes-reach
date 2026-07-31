@@ -15,6 +15,8 @@ from hermes_reach.sources.youtube_worker import WorkerOperation
 
 VIDEO_ID = "dQw4w9WgXcQ"
 VIDEO_URL = f"https://www.youtube.com/watch?v={VIDEO_ID}"
+OTHER_VIDEO_ID = "aaaaaaaaaaa"
+OTHER_VIDEO_URL = f"https://www.youtube.com/watch?v={OTHER_VIDEO_ID}"
 
 
 def _video() -> dict[str, object]:
@@ -305,6 +307,40 @@ def test_read_video_accepts_exact_text_limit_and_nullable_fields() -> None:
     assert result.items[0].author is None
     assert result.items[0].published_at is None
     assert result.items[0].media == MediaMetadata(coverage="complete")
+
+
+def test_parent_correlates_read_results_with_the_original_request_url() -> None:
+    client, _ = _client(
+        {
+            "read.video": _success(
+                "read.video",
+                _fork_video_result(
+                    item=_fork_video_item(
+                        native_id=OTHER_VIDEO_ID,
+                        url=OTHER_VIDEO_URL,
+                    )
+                ),
+            ),
+            "read.subtitles": _success(
+                "read.subtitles",
+                {
+                    "id": OTHER_VIDEO_ID,
+                    "title": "Other video",
+                    "language": "en",
+                    "origin": "manual",
+                    "text": "WEBVTT\n\n00:00.000 --> 00:01.000\nOther",
+                    "truncated": False,
+                    "url": OTHER_VIDEO_URL,
+                },
+            ),
+        }
+    )
+
+    video = asyncio.run(client.read_video(VIDEO_URL))
+    subtitles = asyncio.run(client.read_subtitles(VIDEO_URL, "en"))
+
+    assert video.failure_class == "permanent"
+    assert subtitles.failure_class == "permanent"
 
 
 @pytest.mark.parametrize("field", ["title", "author"])

@@ -66,30 +66,40 @@ P1_RSS_FORK_RUNTIME = frozenset(
     }
 )
 
-P2_YOUTUBE_FORK_RUNTIME = frozenset({("youtube", "read.video")})
-
-DIRECT_OWNER_FORK_RUNTIME = (
-    P1_RSS_FORK_RUNTIME | P2_BILIBILI_FORK_RUNTIME | P2_YOUTUBE_FORK_RUNTIME
-)
-
-EXACT_BACKEND_THIN_WRAPPER = frozenset(
+P2_YOUTUBE_FORK_RUNTIME = frozenset(
     {
         ("youtube", "search.videos"),
+        ("youtube", "read.video"),
         ("youtube", "read.subtitles"),
-        ("reddit", "read.post"),
     }
 )
+
+P2_V2EX_FORK_RUNTIME = frozenset(
+    {
+        ("v2ex", "browse.hot"),
+        ("v2ex", "browse.node_topics"),
+        ("v2ex", "read.topic"),
+        ("v2ex", "read.user"),
+    }
+)
+
+P2_EXA_FORK_RUNTIME = frozenset({("exa", "search.web")})
+
+DIRECT_OWNER_FORK_RUNTIME = (
+    P1_RSS_FORK_RUNTIME
+    | P2_BILIBILI_FORK_RUNTIME
+    | P2_YOUTUBE_FORK_RUNTIME
+    | P2_V2EX_FORK_RUNTIME
+    | P2_EXA_FORK_RUNTIME
+)
+
+EXACT_BACKEND_THIN_WRAPPER = frozenset({("reddit", "read.post")})
 
 IMPLEMENTED_BUT_UNBOUND = frozenset({("youtube", "read.comments")})
 
 HERMES_NATIVE_EQUIVALENT: frozenset[tuple[str, str]] = frozenset()
 
-P0_BLOCKED_NOT_IMPLEMENTED = frozenset(
-    {
-        ("exa", "search.web"),
-        ("exa", "search.code"),
-    }
-)
+P0_BLOCKED_NOT_IMPLEMENTED = frozenset({("exa", "search.code")})
 
 CLOSED_PLATFORM_EXCEPTIONS = frozenset(
     {
@@ -102,17 +112,6 @@ CLOSED_PLATFORM_EXCEPTIONS = frozenset(
         ("github", "read.action_run"),
         ("github", "browse.releases"),
         ("web", "read.url"),
-        ("v2ex", "browse.hot"),
-        ("v2ex", "browse.node_topics"),
-        ("v2ex", "read.topic"),
-        ("v2ex", "read.user"),
-    }
-)
-
-P2_YOUTUBE_EXACT_WRAPPERS = frozenset(
-    {
-        ("youtube", "search.videos"),
-        ("youtube", "read.subtitles"),
     }
 )
 
@@ -154,23 +153,21 @@ def test_frozen_reuse_audit_counts_are_review_visible() -> None:
 
     assert len(operations) == 63
     assert len(DIRECT_AGENT_REACH_RUNTIME) == 0
-    assert len(DIRECT_OWNER_FORK_RUNTIME) == 7
-    assert EXACT_BACKEND_THIN_WRAPPER == (
-        P2_YOUTUBE_EXACT_WRAPPERS | REDDIT_CONNECTOR_EXACT_WRAPPER
-    )
-    assert len(EXACT_BACKEND_THIN_WRAPPER) == 3
-    assert len(DIRECT_OWNER_FORK_RUNTIME | EXACT_BACKEND_THIN_WRAPPER) == 10
-    assert len(operations) - len(DIRECT_OWNER_FORK_RUNTIME) == 56
+    assert len(DIRECT_OWNER_FORK_RUNTIME) == 14
+    assert EXACT_BACKEND_THIN_WRAPPER == REDDIT_CONNECTOR_EXACT_WRAPPER
+    assert len(EXACT_BACKEND_THIN_WRAPPER) == 1
+    assert len(DIRECT_OWNER_FORK_RUNTIME | EXACT_BACKEND_THIN_WRAPPER) == 15
+    assert len(operations) - len(DIRECT_OWNER_FORK_RUNTIME) == 49
     assert IMPLEMENTED_BUT_UNBOUND == {("youtube", "read.comments")}
     assert HERMES_NATIVE_EQUIVALENT == frozenset()
     assert REACH_REIMPLEMENTATION == frozenset()
     assert (
         sum(operation.implementation_state == "implemented" for operation in operations)
-        == 11
+        == 16
     )
     assert (
         sum(operation.implementation_state == "planned" for operation in operations)
-        == 52
+        == 47
     )
 
 
@@ -222,7 +219,7 @@ def test_operation_ledger_closes_every_catalog_operation_and_fork_contract() -> 
         if operation.implementation_state == "planned"
     }
 
-    default_local = DIRECT_OWNER_FORK_RUNTIME | P2_YOUTUBE_EXACT_WRAPPERS
+    default_local = DIRECT_OWNER_FORK_RUNTIME
     for key, row in keyed.items():
         assert set(row) == OPERATION_LEDGER_FIELDS
         assert (ROOT / row["decision_record"]).is_file()
@@ -287,14 +284,80 @@ def test_operation_ledger_closes_every_catalog_operation_and_fork_contract() -> 
             "limits": {"maximum_items": maximum_items, **bilibili_limits},
         }
 
-    assert keyed[("youtube", "read.video")]["execution_contract"] == {
+    for operation, argument_schema, result_schema, host_capabilities, maximum_items in (
+        (
+            "read.video",
+            "youtube.read.video.arguments.v1",
+            "youtube.video.v1",
+            ["network_access.v1"],
+            1,
+        ),
+        (
+            "search.videos",
+            "youtube.search.videos.arguments.v1",
+            "youtube.video.v1",
+            ["network_access.v1"],
+            50,
+        ),
+        (
+            "read.subtitles",
+            "youtube.read.subtitles.arguments.v1",
+            "youtube.subtitle.v1",
+            ["network_access.v1", "private_workspace.v1"],
+            1,
+        ),
+    ):
+        assert keyed[("youtube", operation)]["execution_contract"] == {
+            "protocol_version": AGENT_REACH_PROTOCOL_VERSION,
+            "argument_schema_id": argument_schema,
+            "result_schema_ids": [result_schema],
+            "backend_id": "yt-dlp",
+            "backend_version": YTDLP_VERSION,
+            "required_host_capabilities": host_capabilities,
+            "limits": {"maximum_items": maximum_items, **bilibili_limits},
+        }
+
+    for operation, argument_schema, result_schemas, maximum_items in (
+        ("browse.hot", "v2ex.browse.hot.arguments.v1", ["v2ex.topic.v1"], 50),
+        (
+            "browse.node_topics",
+            "v2ex.browse.node_topics.arguments.v1",
+            ["v2ex.topic.v1"],
+            50,
+        ),
+        (
+            "read.topic",
+            "v2ex.read.topic.arguments.v1",
+            ["v2ex.topic.v1", "v2ex.reply.v1"],
+            21,
+        ),
+        ("read.user", "v2ex.read.user.arguments.v1", ["v2ex.profile.v1"], 1),
+    ):
+        assert keyed[("v2ex", operation)]["execution_contract"] == {
+            "protocol_version": AGENT_REACH_PROTOCOL_VERSION,
+            "argument_schema_id": argument_schema,
+            "result_schema_ids": result_schemas,
+            "backend_id": "v2ex-public-api",
+            "backend_version": "legacy-json-2026-07-31",
+            "required_host_capabilities": ["network_access.v1"],
+            "limits": {"maximum_items": maximum_items, **shared_limits},
+        }
+
+    assert keyed[("exa", "search.web")]["execution_contract"] == {
         "protocol_version": AGENT_REACH_PROTOCOL_VERSION,
-        "argument_schema_id": "youtube.read.video.arguments.v1",
-        "result_schema_ids": ["youtube.video.v1"],
-        "backend_id": "yt-dlp",
-        "backend_version": YTDLP_VERSION,
-        "required_host_capabilities": ["network_access.v1"],
-        "limits": {"maximum_items": 1, **bilibili_limits},
+        "argument_schema_id": "exa.search.web.arguments.v1",
+        "result_schema_ids": ["exa.search.result.v1"],
+        "backend_id": "exa-mcporter",
+        "backend_version": "0.12.3+exa-web.v1",
+        "required_host_capabilities": [
+            "network_access.v1",
+            "mcporter_artifacts.v1",
+        ],
+        "limits": {
+            "maximum_items": 20,
+            **shared_limits,
+            "maximum_output_bytes": 524_288,
+        },
     }
 
 
@@ -390,7 +453,8 @@ def test_review_decisions_are_pinned_to_catalog_and_runtime_state() -> None:
         | P1_RSS_FORK_RUNTIME
         | P2_BILIBILI_FORK_RUNTIME
         | P2_YOUTUBE_FORK_RUNTIME
-        | P2_YOUTUBE_EXACT_WRAPPERS
+        | P2_V2EX_FORK_RUNTIME
+        | P2_EXA_FORK_RUNTIME
     )
     assert {
         key
@@ -411,12 +475,12 @@ def test_review_decisions_are_pinned_to_catalog_and_runtime_state() -> None:
         key
         for key, review in keyed.items()
         if review["classification"] == "direct_owner_fork_runtime"
-    } == (P1_RSS_FORK_RUNTIME | P2_BILIBILI_FORK_RUNTIME | P2_YOUTUBE_FORK_RUNTIME)
+    } == DIRECT_OWNER_FORK_RUNTIME
     assert {
         key
         for key, review in keyed.items()
         if review["classification"] == "exact_backend_thin_wrapper"
-    } == P2_YOUTUBE_EXACT_WRAPPERS
+    } == set()
 
     catalog = {
         (operation.source, operation.name): operation for operation in all_operations()
@@ -440,6 +504,12 @@ def test_review_decisions_are_pinned_to_catalog_and_runtime_state() -> None:
         elif key in P0_BLOCKED_NOT_IMPLEMENTED:
             assert catalog[key].implementation_state == "planned"
             assert review["current_backend"] is None
+            assert availability.state == "unavailable"
+            assert availability.backend_id is None
+            assert registry.has_binding(*key) is False
+        elif key in P2_EXA_FORK_RUNTIME:
+            assert catalog[key].implementation_state == "implemented"
+            assert review["current_backend"] == "exa-mcporter"
             assert availability.state == "setup_required"
             assert availability.backend_id is None
             assert registry.has_binding(*key) is False
@@ -451,14 +521,17 @@ def test_review_decisions_are_pinned_to_catalog_and_runtime_state() -> None:
                 assert availability.backend_version == FEEDPARSER_VERSION
             if key in P2_BILIBILI_FORK_RUNTIME:
                 assert availability.backend_version == BILIBILI_CLI_VERSION
-            if key in (P2_YOUTUBE_FORK_RUNTIME | P2_YOUTUBE_EXACT_WRAPPERS):
+            if key in P2_YOUTUBE_FORK_RUNTIME:
                 assert availability.backend_version == YTDLP_VERSION
+            if key in P2_V2EX_FORK_RUNTIME:
+                assert availability.backend_version == "legacy-json-2026-07-31"
 
-    default_local_bindings = DIRECT_OWNER_FORK_RUNTIME | (
-        EXACT_BACKEND_THIN_WRAPPER - REDDIT_CONNECTOR_EXACT_WRAPPER
+    default_local_bindings = DIRECT_OWNER_FORK_RUNTIME
+    assert len(default_local_bindings) == 14
+    assert all(
+        registry.has_binding(*key)
+        for key in default_local_bindings - P2_EXA_FORK_RUNTIME
     )
-    assert len(default_local_bindings) == 9
-    assert all(registry.has_binding(*key) for key in default_local_bindings)
 
     reddit = registry.availability("reddit", "read.post")
     assert reddit.state == "unavailable"

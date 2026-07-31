@@ -1,4 +1,4 @@
-"""Production binding for the exact Agent-Reach-selected YouTube backend."""
+"""Production binding for the closed Agent-Reach YouTube runtime."""
 
 from __future__ import annotations
 
@@ -22,6 +22,7 @@ from ..runtime.adapters import (
     RawItem,
     SubtitleOrigin,
 )
+from ._worker_cleanup import cleanup_worker_resources
 from .documents import normalize_whitespace
 from .media import (
     YOUTUBE_OPERATIONS,
@@ -87,7 +88,7 @@ class YouTubeWorkerClient(Protocol):
 
 
 class YouTubeWorker:
-    """Supervise one fixed isolated yt-dlp worker invocation."""
+    """Supervise one fixed isolated Agent-Reach YouTube worker invocation."""
 
     async def execute(
         self,
@@ -108,6 +109,8 @@ class YouTubeWorker:
             )
         except YouTubeProtocolError:
             raise YouTubeWorkerError("permanent") from None
+        if not os.path.isabs(sys.executable):
+            raise YouTubeWorkerError("permanent")
 
         process: asyncio.subprocess.Process | None = None
         temporary: tempfile.TemporaryDirectory[str] | None = None
@@ -154,12 +157,17 @@ class YouTubeWorker:
         except Exception:
             raise YouTubeWorkerError("transient") from None
         finally:
-            if process is not None:
-                await _cleanup_process_group(
-                    process, terminate_group=not response_validated
-                )
-            if temporary is not None:
-                temporary.cleanup()
+            await cleanup_worker_resources(
+                (
+                    _cleanup_process_group(
+                        process,
+                        terminate_group=not response_validated,
+                    )
+                    if process is not None
+                    else None
+                ),
+                temporary,
+            )
 
 
 class ProductionYouTubeClient:
@@ -196,7 +204,12 @@ class ProductionYouTubeClient:
                 limit=limit,
                 language=language,
             )
-            return _project_envelope(operation, envelope, limit)
+            return _project_envelope(
+                operation,
+                envelope,
+                limit,
+                requested_url=url,
+            )
         except asyncio.CancelledError:
             raise
         except YouTubeWorkerError as error:
@@ -235,6 +248,8 @@ def _project_envelope(
     operation: WorkerOperation,
     envelope: Mapping[str, object],
     limit: int | None,
+    *,
+    requested_url: str | None = None,
 ) -> AdapterResult:
     if (
         envelope.get("protocol_version") != "v1"
@@ -261,9 +276,9 @@ def _project_envelope(
             raise YouTubeProtocolError("backend_data_invalid")
         return AdapterResult(tuple(_video_item(item, search=True) for item in data))
     if operation == "read.video":
-        return _fork_video_result(data)
+        return _fork_video_result(data, requested_url=requested_url)
     if operation == "read.subtitles":
-        item, truncated = _subtitle_item(data)
+        item, truncated = _subtitle_item(data, requested_url=requested_url)
         return AdapterResult((item,), truncated=truncated)
     raise YouTubeProtocolError("backend_operation_invalid")
 
@@ -303,7 +318,11 @@ def _video_item(value: object, *, search: bool) -> RawItem:
     )
 
 
-def _fork_video_result(value: object) -> AdapterResult:
+def _fork_video_result(
+    value: object,
+    *,
+    requested_url: str | None,
+) -> AdapterResult:
     result = _copied_closed_mapping(value, _FORK_VIDEO_RESULT_FIELDS)
     truncated = result["truncated"]
     if type(truncated) is not bool:
@@ -317,6 +336,7 @@ def _fork_video_result(value: object) -> AdapterResult:
         _VIDEO_ID.fullmatch(video_id) is None
         or type(video_url) is not str
         or video_url != expected_url
+        or requested_url != expected_url
     ):
         raise YouTubeProtocolError("backend_identity_invalid")
 
@@ -353,7 +373,11 @@ def _fork_video_result(value: object) -> AdapterResult:
     )
 
 
-def _subtitle_item(value: object) -> tuple[RawItem, bool]:
+def _subtitle_item(
+    value: object,
+    *,
+    requested_url: str | None,
+) -> tuple[RawItem, bool]:
     item = _closed_mapping(
         value,
         {"id", "title", "language", "origin", "text", "truncated", "url"},
@@ -363,6 +387,8 @@ def _subtitle_item(value: object) -> tuple[RawItem, bool]:
     if type(truncated) is not bool or origin not in {"manual", "automatic"}:
         raise YouTubeProtocolError("backend_subtitle_invalid")
     video_id, video_url = _video_identity(item)
+    if requested_url != video_url:
+        raise YouTubeProtocolError("backend_identity_invalid")
     return (
         RawItem(
             text=_required_raw_text(item.get("text")),

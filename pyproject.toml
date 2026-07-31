@@ -12,13 +12,13 @@ license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Booker" }]
 dependencies = [
-  "agent-reach @ git+https://github.com/izumi0uu/Agent-Reach.git@2a5829cf3b50bc435c647bfae4c050b1837d0235",
+  "agent-reach @ git+https://github.com/izumi0uu/Agent-Reach.git@2755b0c140a03ab5793540fb3245288891526586",
   "bilibili-cli==0.6.2",
   "cryptography>=46.0.7,<47",
   "deno==2.8.3",
   "feedparser==6.0.12",
   "hermes-agent>=0.19.0,<0.20.0",
-  "httpcore>=1.0.9,<2",
+  "httpcore==1.0.9",
   "PyYAML>=6.0.2,<7",
   "websockets>=15.0.1,<16",
   "yt-dlp==2026.7.4",

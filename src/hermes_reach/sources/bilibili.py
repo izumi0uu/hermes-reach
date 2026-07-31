@@ -20,6 +20,7 @@ from ..runtime.adapters import (
     MediaMetadata,
     RawItem,
 )
+from ._worker_cleanup import cleanup_worker_resources
 from .bilibili_worker import (
     MAX_OUTPUT_BYTES,
     BilibiliProjection,
@@ -79,6 +80,8 @@ class BilibiliWorker:
             request = encode_request(operation, query=query, url=url, limit=limit)
         except BilibiliProtocolError:
             raise BilibiliWorkerError("permanent") from None
+        if not os.path.isabs(sys.executable):
+            raise BilibiliWorkerError("permanent")
 
         process: asyncio.subprocess.Process | None = None
         temporary: tempfile.TemporaryDirectory[str] | None = None
@@ -129,13 +132,17 @@ class BilibiliWorker:
         except Exception:
             raise BilibiliWorkerError("transient") from None
         finally:
-            if process is not None:
-                await _cleanup_process_group(
-                    process,
-                    terminate_group=not response_validated,
-                )
-            if temporary is not None:
-                temporary.cleanup()
+            await cleanup_worker_resources(
+                (
+                    _cleanup_process_group(
+                        process,
+                        terminate_group=not response_validated,
+                    )
+                    if process is not None
+                    else None
+                ),
+                temporary,
+            )
 
 
 class ProductionBilibiliClient:

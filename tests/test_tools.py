@@ -187,7 +187,7 @@ def test_status_is_local_and_lists_all_sources() -> None:
     }
     assert availability["web"] == "unavailable"
     assert availability["rss"] == "available"
-    assert availability["v2ex"] == "unavailable"
+    assert availability["v2ex"] == "available"
     assert availability["exa"] == "setup_required"
     assert availability["github"] == "unavailable"
     assert availability["youtube"] == "available"
@@ -200,12 +200,19 @@ def test_status_can_filter_planned_operations_without_hiding_released_rows() -> 
 
     assert sources["web"]["operations"] == []
     assert sources["web"]["availability"] == "unavailable"
-    assert sources["exa"]["operations"] == []
-    assert sources["exa"]["availability"] == "unavailable"
+    assert [operation["name"] for operation in sources["exa"]["operations"]] == [
+        "search.web"
+    ]
+    assert sources["exa"]["availability"] == "setup_required"
     assert sources["github"]["operations"] == []
     assert sources["github"]["availability"] == "unavailable"
-    assert sources["v2ex"]["operations"] == []
-    assert sources["v2ex"]["availability"] == "unavailable"
+    assert [operation["name"] for operation in sources["v2ex"]["operations"]] == [
+        "browse.hot",
+        "browse.node_topics",
+        "read.topic",
+        "read.user",
+    ]
+    assert sources["v2ex"]["availability"] == "available"
     assert [operation["name"] for operation in sources["rss"]["operations"]] == [
         "read.feed",
         "browse.entries",

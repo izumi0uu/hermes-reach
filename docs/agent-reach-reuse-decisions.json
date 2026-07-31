@@ -5,7 +5,7 @@
     "official_repository": "Panniantong/Agent-Reach",
     "official_base_commit": "b4d52c46c9113cb0f653d6df4cf71ebadf4930ac",
     "fork_repository": "izumi0uu/Agent-Reach",
-    "fork_execution_commit": "2a5829cf3b50bc435c647bfae4c050b1837d0235",
+    "fork_execution_commit": "2755b0c140a03ab5793540fb3245288891526586",
     "execution_protocol": "v1"
   },
   "reviews": [
@@ -111,12 +111,12 @@
     {
       "source": "exa",
       "operation": "search.web",
-      "upstream_execution": "mcporter call exa.web_search_exa(query, numResults)",
-      "classification": "not_implemented",
-      "semantic_delta": "No production binding: Agent-Reach does not pin mcporter or Node and the hosted provider logs submitted queries.",
-      "approval": "owner-approved-fail-closed-2026-07-27",
-      "current_backend": null,
-      "review_milestone": "pinned executable closure and approved provider-query retention contract",
+      "upstream_execution": "agent_reach.execution.v1.execute(exa:search.web, network_access.v1 + mcporter_artifacts.v1) -> mcporter 0.12.3 web_search_exa",
+      "classification": "direct_owner_fork_runtime",
+      "semantic_delta": "The owner fork owns the fixed keyless mcporter invocation, stdin argument mapping, bounded process lifecycle, MCP envelope validation, Exa text projection, and backend error mapping; Hermes supplies operator-attested artifact identities, worker containment, public normalization, receipts, and audit. Exa receives and may retain the query.",
+      "approval": "owner-approved-fork-runtime-exa-web-2026-07-31",
+      "current_backend": "exa-mcporter",
+      "review_milestone": "any official base, fork commit, execution protocol/capability, Node or mcporter closure, Exa endpoint/method/schema/formatter, provider-query visibility, worker protocol, backend identity, or projection change",
       "decision_record": "docs/agent-reach-decisions/exa-mcporter-1.5.0.md"
     },
     {
@@ -133,45 +133,45 @@
     {
       "source": "v2ex",
       "operation": "browse.hot",
-      "upstream_execution": "agent_reach.channels.v2ex.V2EXChannel.get_hot_topics(limit)",
-      "classification": "not_implemented",
-      "semantic_delta": "Disabled under strict adapter purity: upstream still performs unbounded blocking urllib retrieval and truncates content while discarding authors; the former bounded transport and projection were a Hermes-owned reimplementation and are no longer bound.",
-      "approval": "owner-approved-strict-adapter-purity-disable-2026-07-28",
-      "current_backend": null,
-      "review_milestone": "next Agent-Reach pin with injectable cancellable bounded transport and a compatible typed topic projection",
+      "upstream_execution": "agent_reach.execution.v1.execute(v2ex:browse.hot, network_access.v1) -> V2EX public API legacy JSON contract",
+      "classification": "direct_owner_fork_runtime",
+      "semantic_delta": "The owner fork owns the fixed public origin, DNS-pinned bounded transport, raw response validation, limit semantics, canonical identities, and topic projection; Hermes supplies worker containment, timeout, retry, public normalization, receipts, and audit.",
+      "approval": "owner-approved-fork-runtime-v2ex-2026-07-31",
+      "current_backend": "v2ex-public-api",
+      "review_milestone": "any official base, fork commit, execution protocol/capability, public API contract, transport policy, V2EX worker protocol, backend identity, error mapping, or projection change",
       "decision_record": "docs/agent-reach-decisions/v2ex-1.5.0.md"
     },
     {
       "source": "v2ex",
       "operation": "browse.node_topics",
-      "upstream_execution": "agent_reach.channels.v2ex.V2EXChannel.get_node_topics(node_name, limit)",
-      "classification": "not_implemented",
-      "semantic_delta": "Disabled under strict adapter purity: upstream remains blocking and unbounded, drops fields, and hard-codes page 1; the former bounded transport, projection, and page handling were a Hermes-owned reimplementation and are no longer bound.",
-      "approval": "owner-approved-strict-adapter-purity-disable-2026-07-28",
-      "current_backend": null,
-      "review_milestone": "next Agent-Reach pin with injectable cancellable bounded transport, page input, and a compatible typed topic projection",
+      "upstream_execution": "agent_reach.execution.v1.execute(v2ex:browse.node_topics, network_access.v1) -> V2EX public API legacy JSON contract",
+      "classification": "direct_owner_fork_runtime",
+      "semantic_delta": "The owner fork owns the fixed public origin, DNS-pinned bounded transport, node/page/limit mapping, response validation, node correlation, canonical identities, and topic projection; Hermes supplies worker containment, timeout, retry, public normalization, receipts, and audit.",
+      "approval": "owner-approved-fork-runtime-v2ex-2026-07-31",
+      "current_backend": "v2ex-public-api",
+      "review_milestone": "any official base, fork commit, execution protocol/capability, public API contract, transport policy, pagination, V2EX worker protocol, backend identity, error mapping, or projection change",
       "decision_record": "docs/agent-reach-decisions/v2ex-1.5.0.md"
     },
     {
       "source": "v2ex",
       "operation": "read.topic",
-      "upstream_execution": "agent_reach.channels.v2ex.V2EXChannel.get_topic(topic_id)",
-      "classification": "not_implemented",
-      "semantic_delta": "Disabled under strict adapter purity: upstream still hides reply failures and discards reply identity; the former bounded transport, not-found semantics, reply IDs, and partial outcomes were a Hermes-owned reimplementation and are no longer bound.",
-      "approval": "owner-approved-strict-adapter-purity-disable-2026-07-28",
-      "current_backend": null,
-      "review_milestone": "next Agent-Reach pin with injectable cancellable bounded transport and typed not-found, partial, and reply identity fields",
+      "upstream_execution": "agent_reach.execution.v1.execute(v2ex:read.topic, network_access.v1) -> V2EX public API legacy JSON contract",
+      "classification": "direct_owner_fork_runtime",
+      "semantic_delta": "The owner fork owns the fixed public origin, DNS-pinned bounded transport, topic/reply sequencing, identity correlation, not-found and partial semantics, duplicate rejection, and typed projection; Hermes supplies worker containment, timeout, retry, public normalization, receipts, and audit.",
+      "approval": "owner-approved-fork-runtime-v2ex-2026-07-31",
+      "current_backend": "v2ex-public-api",
+      "review_milestone": "any official base, fork commit, execution protocol/capability, public API contract, transport policy, reply or partial semantics, V2EX worker protocol, backend identity, error mapping, or projection change",
       "decision_record": "docs/agent-reach-decisions/v2ex-1.5.0.md"
     },
     {
       "source": "v2ex",
       "operation": "read.user",
-      "upstream_execution": "agent_reach.channels.v2ex.V2EXChannel.get_user(username)",
-      "classification": "not_implemented",
-      "semantic_delta": "Disabled under strict adapter purity: upstream still trusts returned identity and URL fields; the former bounded transport, identity correlation, and canonical profile URLs were a Hermes-owned reimplementation and are no longer bound.",
-      "approval": "owner-approved-strict-adapter-purity-disable-2026-07-28",
-      "current_backend": null,
-      "review_milestone": "next Agent-Reach pin with injectable cancellable bounded transport and typed identity-correlated user results",
+      "upstream_execution": "agent_reach.execution.v1.execute(v2ex:read.user, network_access.v1) -> V2EX public API legacy JSON contract",
+      "classification": "direct_owner_fork_runtime",
+      "semantic_delta": "The owner fork owns the fixed public origin, DNS-pinned bounded transport, response validation, username correlation, canonical profile identity, and typed projection; Hermes supplies worker containment, timeout, retry, public normalization, receipts, and audit.",
+      "approval": "owner-approved-fork-runtime-v2ex-2026-07-31",
+      "current_backend": "v2ex-public-api",
+      "review_milestone": "any official base, fork commit, execution protocol/capability, public API contract, transport policy, identity correlation, V2EX worker protocol, backend identity, error mapping, or projection change",
       "decision_record": "docs/agent-reach-decisions/v2ex-1.5.0.md"
     },
     {
@@ -243,12 +243,12 @@
     {
       "source": "youtube",
       "operation": "search.videos",
-      "upstream_execution": "yt-dlp 2026.7.4 Python API: YoutubeDL(...).extract_info(ytsearch<limit>:<query>, download=False, ie_key=YoutubeSearch)",
-      "classification": "exact_backend_thin_wrapper",
-      "semantic_delta": "Hermes invokes the exact selected search route in an isolated worker and projects only bounded video fields; no backend substitution or search fallback.",
-      "approval": "owner-approved-exact-backend-isolation-2026-07-28",
+      "upstream_execution": "agent_reach.execution.v1.execute(youtube:search.videos, network_access.v1) -> yt-dlp 2026.7.4",
+      "classification": "direct_owner_fork_runtime",
+      "semantic_delta": "The owner fork owns exact yt-dlp/EJS/Deno validation, the fixed YouTube search call, raw result validation, error mapping, identity/date/integer normalization, and YouTube-native projection; Hermes supplies worker containment, timeout, retry, public normalization, receipts, and audit.",
+      "approval": "owner-approved-fork-runtime-youtube-search-subtitles-2026-07-31",
       "current_backend": "yt-dlp",
-      "review_milestone": "any Agent-Reach, yt-dlp, yt-dlp-ejs, or Deno pin; EJS source; JS runtime; extractor behavior; dependency closure; worker protocol; or backend identity change",
+      "review_milestone": "any official base, fork commit, execution protocol/capability, yt-dlp/yt-dlp-ejs/Deno pin, fixed options or search API call, worker protocol, backend identity, error mapping, or projection change",
       "decision_record": "docs/agent-reach-decisions/youtube-yt-dlp-2026.7.4.md"
     },
     {
@@ -265,12 +265,12 @@
     {
       "source": "youtube",
       "operation": "read.subtitles",
-      "upstream_execution": "yt-dlp 2026.7.4 Python API with writesubtitles, writeautomaticsub, subtitlesformat=vtt, skip_download, and packaged Deno/EJS",
-      "classification": "exact_backend_thin_wrapper",
-      "semantic_delta": "Hermes reproduces the selected manual-plus-automatic VTT route inside bounded private storage and returns one validated language; no direct subtitle HTTP or transcription fallback.",
-      "approval": "owner-approved-exact-backend-isolation-2026-07-28",
+      "upstream_execution": "agent_reach.execution.v1.execute(youtube:read.subtitles, network_access.v1 + private_workspace.v1) -> yt-dlp 2026.7.4",
+      "classification": "direct_owner_fork_runtime",
+      "semantic_delta": "The owner fork owns exact yt-dlp/EJS/Deno validation, language selection, fixed subtitle download options, private-workspace file safety, VTT normalization, truncation, error mapping, and YouTube-native projection; Hermes supplies the per-attempt private workspace, worker containment, timeout, retry, public normalization, receipts, and audit.",
+      "approval": "owner-approved-fork-runtime-youtube-search-subtitles-2026-07-31",
       "current_backend": "yt-dlp",
-      "review_milestone": "any Agent-Reach, yt-dlp, yt-dlp-ejs, or Deno pin; EJS source; JS runtime; subtitle file behavior; dependency closure; worker protocol; or backend identity change",
+      "review_milestone": "any official base, fork commit, execution protocol/capability, yt-dlp/yt-dlp-ejs/Deno pin, subtitle selection/file behavior, fixed options or API call, worker protocol, backend identity, error mapping, or projection change",
       "decision_record": "docs/agent-reach-decisions/youtube-yt-dlp-2026.7.4.md"
     }
   ]

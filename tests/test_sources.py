@@ -13,6 +13,7 @@ import hermes_reach.sources.registry as source_registry
 from hermes_reach.contracts import validate_browse, validate_read, validate_search
 from hermes_reach.runtime.adapters import AdapterRegistry
 from hermes_reach.runtime.policy import ReadOnlyPolicy
+from hermes_reach.sources.exa_artifacts import ExaArtifactAttestation
 from hermes_reach.sources.public_http import HttpResponse
 from hermes_reach.sources.registry import build_alpha1_registry, build_alpha1_runtime
 from hermes_reach.sources.rss import FeedparserWorker, RssAdapter
@@ -418,18 +419,34 @@ def test_rss_runner_keeps_a_single_overflow_sentinel_for_truncation() -> None:
     assert result.truncated is True
 
 
-def test_web_and_v2ex_rows_fail_closed_without_http_execution() -> None:
+def test_web_remains_planned_without_http_execution() -> None:
     client = FixtureHttpClient()
     registry = build_alpha1_registry(client)
     runtime = build_alpha1_runtime(client)
+    call = validate_read(
+        {
+            "source": "web",
+            "operation": "read.url",
+            "target": {"url": "https://example.com/article"},
+        }
+    )
+    operation = call.operation
+    record = registry.availability("web", operation.name)
+
+    assert operation.implementation_state == "planned"
+    assert record.state == "unavailable"
+    assert record.reason == operation.unavailable_reason
+    assert record.backend_id is None
+    assert record.backend_version is None
+    assert registry.has_binding("web", operation.name) is False
+    assert asyncio.run(runtime.dispatch(call)) is None
+    assert client.calls == []
+
+
+def test_v2ex_rows_have_fixed_fork_bindings_without_registry_io() -> None:
+    client = FixtureHttpClient()
+    registry = build_alpha1_registry(client)
     calls = (
-        validate_read(
-            {
-                "source": "web",
-                "operation": "read.url",
-                "target": {"url": "https://example.com/article"},
-            }
-        ),
         validate_browse({"source": "v2ex", "operation": "browse.hot"}),
         validate_browse(
             {
@@ -453,39 +470,27 @@ def test_web_and_v2ex_rows_fail_closed_without_http_execution() -> None:
             }
         ),
     )
-    expected_reasons = {
-        "web": (
-            "The pinned Agent-Reach Web callable remains frozen pending a bounded, "
-            "cancellable execution review."
-        ),
-        "v2ex": (
-            "The pinned Agent-Reach V2EX callables remain frozen pending a bounded, "
-            "cancellable execution review."
-        ),
-    }
-
     for call in calls:
-        source = call.source.name
         operation = call.operation
-        record = registry.availability(source, operation.name)
+        record = registry.availability("v2ex", operation.name)
 
-        assert operation.implementation_state == "planned"
-        assert operation.unavailable_reason == expected_reasons[source]
-        assert record.state == "unavailable"
-        assert record.reason == operation.unavailable_reason
-        assert record.backend_id is None
-        assert record.backend_version is None
-        assert registry.has_binding(source, operation.name) is False
-        assert asyncio.run(runtime.dispatch(call)) is None
+        assert operation.implementation_state == "implemented"
+        assert record.state == "available"
+        assert record.backend_id == "v2ex-public-api"
+        assert record.backend_version == "legacy-json-2026-07-31"
+        assert registry.has_binding("v2ex", operation.name) is True
 
     assert client.calls == []
 
 
-def test_exa_is_planned_setup_required_and_has_no_runtime_binding() -> None:
+def test_exa_web_requires_artifacts_while_code_search_stays_unavailable() -> None:
     registry = build_alpha1_registry(FixtureHttpClient())
     runtime = build_alpha1_runtime(FixtureHttpClient())
 
-    for operation in ("search.web", "search.code"):
+    for operation, implementation_state, availability in (
+        ("search.web", "implemented", "setup_required"),
+        ("search.code", "planned", "unavailable"),
+    ):
         record = registry.availability("exa", operation)
         call = validate_search(
             {
@@ -500,13 +505,50 @@ def test_exa_is_planned_setup_required_and_has_no_runtime_binding() -> None:
             }
         )[0]
 
-        assert call.operation.implementation_state == "planned"
-        assert record.state == "setup_required"
+        assert call.operation.implementation_state == implementation_state
+        assert record.state == availability
         assert record.reason == call.operation.unavailable_reason
         assert record.backend_id is None
         assert record.backend_version is None
         assert registry.has_binding("exa", operation) is False
         assert asyncio.run(runtime.dispatch(call)) is None
+
+
+def _exa_artifacts() -> ExaArtifactAttestation:
+    return ExaArtifactAttestation(
+        node_executable=Path("/operator/node"),
+        node_sha256="1" * 64,
+        mcporter_root=Path("/operator/mcporter"),
+        mcporter_cli=Path("/operator/mcporter/dist/cli.js"),
+        mcporter_tree_sha256="2" * 64,
+        config_path=Path("/operator/exa-config.json"),
+        config_sha256="3" * 64,
+    )
+
+
+def test_exa_artifacts_enable_only_the_fixed_web_binding() -> None:
+    registry = build_alpha1_registry(exa_artifacts=_exa_artifacts())
+    call = validate_search(
+        {
+            "requests": [
+                {
+                    "source": "exa",
+                    "operation": "search.web",
+                    "query": "bounded query",
+                    "options": {"limit": 3},
+                }
+            ]
+        }
+    )[0]
+
+    candidates = registry.candidates(ReadOnlyPolicy().authorize(call))
+
+    assert len(candidates) == 1
+    assert candidates[0].backend_id == "exa-mcporter"
+    assert candidates[0].backend_version == "0.12.3+exa-web.v1"
+    assert candidates[0].retry_owner == "binding"
+    assert registry.has_binding("exa", "search.code") is False
+    assert registry.availability("exa", "search.code").state == "unavailable"
 
 
 def test_exa_client_injection_is_not_a_registry_activation_path() -> None:
@@ -553,9 +595,12 @@ def test_exa_registry_construction_performs_no_process_network_or_file_io(
     monkeypatch.setattr(subprocess, "Popen", unexpected_io)
     monkeypatch.setattr(asyncio, "create_subprocess_exec", unexpected_io)
 
-    registry = build_alpha1_registry(FixtureHttpClient())
+    registry = build_alpha1_registry(
+        FixtureHttpClient(),
+        exa_artifacts=_exa_artifacts(),
+    )
 
-    assert registry.has_binding("exa", "search.web") is False
+    assert registry.has_binding("exa", "search.web") is True
     assert registry.has_binding("exa", "search.code") is False
 
 
