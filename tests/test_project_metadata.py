@@ -20,6 +20,7 @@ LEGACY_AGENT_REACH_COMMITS = frozenset(
         "b33506ac15f8aad27e4a3c5a595fb5f757347509",
     }
 )
+LEGACY_AGENT_REACH_TREES = frozenset({"55648469505908aa655745f5ca7704d495f12183"})
 OWNER_FORK_AGENT_REACH_DEPENDENCY = (
     "agent-reach @ git+https://github.com/izumi0uu/Agent-Reach.git@"
     f"{AGENT_REACH_COMMIT}"
@@ -145,7 +146,7 @@ def test_lockfile_keeps_the_inspected_agent_reach_commit() -> None:
     )
 
 
-def test_release_surface_contains_no_legacy_agent_reach_commit() -> None:
+def test_release_surface_contains_no_legacy_agent_reach_pin() -> None:
     release_paths = [
         ROOT / ".github" / "workflows" / "quality.yml",
         ROOT / "README.md",
@@ -163,6 +164,8 @@ def test_release_surface_contains_no_legacy_agent_reach_commit() -> None:
         text = path.read_text(encoding="utf-8")
         for legacy_commit in LEGACY_AGENT_REACH_COMMITS:
             assert legacy_commit not in text, path.relative_to(ROOT).as_posix()
+        for legacy_tree in LEGACY_AGENT_REACH_TREES:
+            assert legacy_tree not in text, path.relative_to(ROOT).as_posix()
 
 
 def test_manifest_includes_reviewed_docs_and_prunes_tests() -> None:

@@ -21,8 +21,10 @@ from hermes_reach.sources.registry import build_alpha1_registry
 ROOT = Path(__file__).resolve().parents[1]
 DECISIONS = ROOT / "docs" / "agent-reach-reuse-decisions.json"
 OPERATION_LEDGER = ROOT / "docs" / "agent-reach-operation-ledger.json"
-AGENT_REACH_AUDITED_CANDIDATE_COMMIT = "9e744d0c33f9e6498cf66c2ea376a653000e9be4"
-AGENT_REACH_INTEGRATION_TREE = "070e4507fde7e55eceaba4d29e6a459c4a972f60"
+PREVIOUS_AGENT_REACH_REVIEWED_HEAD = "9e744d0c33f9e6498cf66c2ea376a653000e9be4"
+PREVIOUS_AGENT_REACH_INTEGRATION_TREE = "070e4507fde7e55eceaba4d29e6a459c4a972f60"
+FINAL_AGENT_REACH_REVIEWED_HEAD = "fd93d2ec86511a4a1514b7ebd13cd996be709692"
+FINAL_AGENT_REACH_INTEGRATION_TREE = "e19835071ae6560431b66d5a21e51b598d3d9c81"
 REVIEW_FIELDS = frozenset(
     {
         "source",
@@ -394,12 +396,18 @@ def test_governance_docs_preserve_worker_and_recovery_tag_boundaries() -> None:
     assert "the exact commit pin is authoritative" in normalized_reuse_boundary
     assert "hermes-reach-integration-0.1.0a2" in normalized_plugin_boundary
     assert AGENT_REACH_FORK_COMMIT in normalized_plugin_boundary
-    assert AGENT_REACH_AUDITED_CANDIDATE_COMMIT in normalized_plugin_boundary
-    assert AGENT_REACH_INTEGRATION_TREE in normalized_plugin_boundary
+    assert FINAL_AGENT_REACH_REVIEWED_HEAD in normalized_plugin_boundary
+    assert FINAL_AGENT_REACH_INTEGRATION_TREE in normalized_plugin_boundary
+    assert FINAL_AGENT_REACH_REVIEWED_HEAD in normalized_reuse_boundary
+    assert FINAL_AGENT_REACH_INTEGRATION_TREE in normalized_reuse_boundary
+    assert PREVIOUS_AGENT_REACH_REVIEWED_HEAD in normalized_plugin_boundary
+    assert PREVIOUS_AGENT_REACH_INTEGRATION_TREE in normalized_plugin_boundary
     assert "hermes-reach-integration-0.1.0a3" in normalized_plugin_boundary
     assert "preserves final-integration reachability" in normalized_plugin_boundary
-    assert AGENT_REACH_AUDITED_CANDIDATE_COMMIT in normalized_youtube_decision
-    assert AGENT_REACH_INTEGRATION_TREE in normalized_youtube_decision
+    assert PREVIOUS_AGENT_REACH_REVIEWED_HEAD in normalized_youtube_decision
+    assert PREVIOUS_AGENT_REACH_INTEGRATION_TREE in normalized_youtube_decision
+    assert FINAL_AGENT_REACH_REVIEWED_HEAD in normalized_youtube_decision
+    assert FINAL_AGENT_REACH_INTEGRATION_TREE in normalized_youtube_decision
     assert "hermes-reach-integration-0.1.0a3" in normalized_youtube_decision
     assert "not a dependency selector" in normalized_youtube_decision
     assert "hermes-reach-integration-0.1.0a1" in normalized_bilibili_decision

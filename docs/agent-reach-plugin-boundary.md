@@ -1,6 +1,6 @@
 # Agent-Reach as a Hermes plugin
 
-Status: canonical architecture, frozen on 2026-07-31 against official
+Status: canonical architecture, frozen on 2026-08-01 against official
 Agent-Reach `1.5.0` base
 `b4d52c46c9113cb0f653d6df4cf71ebadf4930ac` and final owner-fork integration
 `9b69146588b1d162515b81db26b51643c15de8eb`.
