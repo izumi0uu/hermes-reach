@@ -10,12 +10,13 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 PROJECT_VERSION = "0.1.0a1"
-AGENT_REACH_COMMIT = "f195253d53befdb012d7aa575e732ec627ec29ac"
+AGENT_REACH_COMMIT = "2a5829cf3b50bc435c647bfae4c050b1837d0235"
 LEGACY_AGENT_REACH_COMMITS = frozenset(
     {
         "1494c2ab239e7355a77e7cceaf3271453a1f34b5",
         "0f0edca8d2d5f6179de2b38cd777d3c93232a99e",
         "3416c83ce588fadb3e8b007395b7175b26df769d",
+        "b33506ac15f8aad27e4a3c5a595fb5f757347509",
     }
 )
 OWNER_FORK_AGENT_REACH_DEPENDENCY = (

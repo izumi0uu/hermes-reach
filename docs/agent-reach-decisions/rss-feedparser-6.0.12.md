@@ -9,8 +9,10 @@
 - Required host capability: `fetched_document.v1`
 - Official Agent-Reach base: `1.5.0` at commit
   `b4d52c46c9113cb0f653d6df4cf71ebadf4930ac`
-- Owner-fork integration commit:
+- Original owner-fork integration commit:
   `f195253d53befdb012d7aa575e732ec627ec29ac`
+- Current YouTube integration revalidation commit:
+  `2a5829cf3b50bc435c647bfae4c050b1837d0235`
 
 ## Decision
 
@@ -37,22 +39,23 @@ Before plugin registration, Hermes validates all of the following without
 executing a backend:
 
 - installed Agent-Reach version is exactly `1.5.0`;
-- PEP 610 provenance names `izumi0uu/Agent-Reach` and exact integration commit
-  `f195253d53befdb012d7aa575e732ec627ec29ac`;
+- PEP 610 provenance names `izumi0uu/Agent-Reach` and exact reviewed integration
+  `2a5829cf3b50bc435c647bfae4c050b1837d0235`;
 - RECORD SHA-256, size, and installed content match for the two parent package
-  initializers Python executes and the four reviewed `execution.v1` files
+  initializers Python executes and all six reviewed `execution.v1` files
   before any fork module is imported;
 - execution protocol is exactly `v1`;
-- discovery contains exactly the two reviewed RSS descriptors and closed
-  argument/result schemas;
+- discovery contains exactly seven ordered descriptors, including exactly the
+  two reviewed RSS descriptors and their closed argument/result schemas;
 - both descriptors require only `fetched_document.v1`; and
 - backend identity, feedparser version, and every hard limit match Hermes's
   frozen expectations.
 
-Any mismatch fails closed before Reach tools, CLI, or skill registration. A
-protected immutable integration tag is required before release as a
-reachability and recovery reference, but Hermes is always pinned by commit and
-never resolves the dependency by tag.
+Any mismatch fails closed before Reach tools, CLI, or skill registration. The
+original RSS/Bilibili integration remains recoverable through
+`hermes-reach-integration-0.1.0a2`. Protected immutable tag
+`hermes-reach-integration-0.1.0a3` preserves reachability for the current
+integration; Hermes is always pinned by commit and never resolves by tag.
 
 ## Ownership and security composition
 

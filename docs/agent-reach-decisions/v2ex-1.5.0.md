@@ -10,8 +10,10 @@
 - Current runtime: none
 - Official Agent-Reach base: `Panniantong/Agent-Reach` `1.5.0` at
   `b4d52c46c9113cb0f653d6df4cf71ebadf4930ac`
-- Owner-fork integration pin: `izumi0uu/Agent-Reach` at
+- Original audit pin: `izumi0uu/Agent-Reach` at
   `f195253d53befdb012d7aa575e732ec627ec29ac`
+- Current revalidation pin:
+  `2a5829cf3b50bc435c647bfae4c050b1837d0235`
 
 ## Decision
 
@@ -24,6 +26,10 @@ gates below.
 The owner selected strict adapter purity on 2026-07-28. The earlier exception
 approval is preserved only as historical evidence; it no longer grants
 production authority to `v2ex-public-api-v1`.
+
+The 2026-07-31 full-pin audit against `2a5829cf3b50bc435c647bfae4c050b1837d0235`
+found no V2EX execution descriptor or safety-contract change, so this disabled
+decision remains in force.
 
 ## Pinned Evidence
 

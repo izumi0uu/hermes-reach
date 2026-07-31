@@ -5,7 +5,7 @@
     "official_repository": "Panniantong/Agent-Reach",
     "official_base_commit": "b4d52c46c9113cb0f653d6df4cf71ebadf4930ac",
     "fork_repository": "izumi0uu/Agent-Reach",
-    "fork_execution_commit": "f195253d53befdb012d7aa575e732ec627ec29ac",
+    "fork_execution_commit": "2a5829cf3b50bc435c647bfae4c050b1837d0235",
     "execution_protocol": "v1"
   },
   "reviews": [
@@ -254,12 +254,12 @@
     {
       "source": "youtube",
       "operation": "read.video",
-      "upstream_execution": "yt-dlp 2026.7.4 Python API: YoutubeDL(...).extract_info(<validated-watch-url>, download=False, ie_key=Youtube)",
-      "classification": "exact_backend_thin_wrapper",
-      "semantic_delta": "Hermes invokes the exact selected metadata route in an isolated worker and derives identity from the validated video ID; no API, browser, account, or fallback backend.",
-      "approval": "owner-approved-exact-backend-isolation-2026-07-28",
+      "upstream_execution": "agent_reach.execution.v1.execute(youtube:read.video, network_access.v1) -> yt-dlp 2026.7.4",
+      "classification": "direct_owner_fork_runtime",
+      "semantic_delta": "The owner fork owns exact yt-dlp/EJS/Deno validation, fixed metadata extraction, raw result validation, error mapping, identity/date/integer normalization, and YouTube-native projection; Hermes supplies process containment, public URL canonicalization, timeout, retry, product normalization, receipts, and audit.",
+      "approval": "owner-approved-fork-runtime-youtube-read-video-2026-07-31",
       "current_backend": "yt-dlp",
-      "review_milestone": "any Agent-Reach, yt-dlp, yt-dlp-ejs, or Deno pin; EJS source; JS runtime; extractor behavior; dependency closure; worker protocol; or backend identity change",
+      "review_milestone": "any official base, fork commit, execution protocol/capability, yt-dlp/yt-dlp-ejs/Deno pin, fixed options or API call, worker protocol, backend identity, error mapping, or projection change",
       "decision_record": "docs/agent-reach-decisions/youtube-yt-dlp-2026.7.4.md"
     },
     {

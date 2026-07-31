@@ -4,6 +4,7 @@ import asyncio
 import builtins
 import hashlib
 import importlib.metadata
+import inspect
 import io
 import json
 import os
@@ -42,6 +43,184 @@ EXPECTED_SOURCES = (
     "rss",
     "exa",
     "web",
+)
+EXPECTED_EXECUTION_CAPABILITY_FIELDS = (
+    "protocol_version",
+    "source",
+    "operation",
+    "argument_schema_id",
+    "result_schema_ids",
+    "backend_id",
+    "backend_version",
+    "required_host_capabilities",
+    "maximum_items",
+    "maximum_document_bytes",
+    "maximum_metadata_bytes",
+    "maximum_output_bytes",
+    "maximum_content_type_characters",
+    "maximum_content_location_characters",
+    "maximum_text_characters",
+    "maximum_title_characters",
+    "maximum_url_characters",
+    "maximum_native_id_characters",
+    "maximum_author_characters",
+    "maximum_published_characters",
+)
+EXPECTED_EXECUTION_CAPABILITIES = (
+    (
+        "v1",
+        "rss",
+        "read.feed",
+        "rss.read.feed.arguments.v1",
+        ("rss.feed.v1",),
+        "feedparser",
+        "6.0.12",
+        ("fetched_document.v1",),
+        1,
+        1_048_576,
+        16_384,
+        1_048_576,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        2_048,
+        512,
+    ),
+    (
+        "v1",
+        "rss",
+        "browse.entries",
+        "rss.browse.entries.arguments.v1",
+        ("rss.entry.v1",),
+        "feedparser",
+        "6.0.12",
+        ("fetched_document.v1",),
+        21,
+        1_048_576,
+        16_384,
+        1_048_576,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        2_048,
+        512,
+    ),
+    (
+        "v1",
+        "bilibili",
+        "search.videos",
+        "bilibili.search.videos.arguments.v1",
+        ("bilibili.video.v1",),
+        "bili-cli",
+        "0.6.2",
+        ("network_access.v1",),
+        50,
+        1_048_576,
+        16_384,
+        524_288,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        1_024,
+        512,
+    ),
+    (
+        "v1",
+        "bilibili",
+        "read.video",
+        "bilibili.read.video.arguments.v1",
+        ("bilibili.video.v1",),
+        "bili-cli",
+        "0.6.2",
+        ("network_access.v1",),
+        1,
+        1_048_576,
+        16_384,
+        524_288,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        1_024,
+        512,
+    ),
+    (
+        "v1",
+        "bilibili",
+        "browse.hot",
+        "bilibili.browse.hot.arguments.v1",
+        ("bilibili.video.v1",),
+        "bili-cli",
+        "0.6.2",
+        ("network_access.v1",),
+        50,
+        1_048_576,
+        16_384,
+        524_288,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        1_024,
+        512,
+    ),
+    (
+        "v1",
+        "bilibili",
+        "browse.rank",
+        "bilibili.browse.rank.arguments.v1",
+        ("bilibili.video.v1",),
+        "bili-cli",
+        "0.6.2",
+        ("network_access.v1",),
+        50,
+        1_048_576,
+        16_384,
+        524_288,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        1_024,
+        512,
+    ),
+    (
+        "v1",
+        "youtube",
+        "read.video",
+        "youtube.read.video.arguments.v1",
+        ("youtube.video.v1",),
+        "yt-dlp",
+        "2026.7.4",
+        ("network_access.v1",),
+        1,
+        1_048_576,
+        16_384,
+        524_288,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        1_024,
+        512,
+    ),
 )
 FROZEN_CALLS: tuple[tuple[str, dict[str, object], str, str], ...] = (
     (
@@ -499,6 +678,15 @@ def _json_dispatch(registry: Any, name: str, arguments: dict[str, object]) -> An
     return json.loads(raw)
 
 
+def _execution_capabilities(api: Any) -> tuple[tuple[object, ...], ...]:
+    return tuple(
+        tuple(
+            getattr(capability, field) for field in EXPECTED_EXECUTION_CAPABILITY_FIELDS
+        )
+        for capability in api.capabilities
+    )
+
+
 class FixtureHttpClient:
     def __init__(self) -> None:
         self.calls: list[str] = []
@@ -717,6 +905,32 @@ def main() -> None:
             assert availability["web"] == "unavailable"
             assert availability["github"] == "unavailable"
             assert availability["v2ex"] == "unavailable"
+
+            from hermes_reach.agent_reach_bridge import (
+                validate_agent_reach_execution_contract,
+            )
+
+            execution_api = validate_agent_reach_execution_contract(
+                runtime_module="youtube"
+            )
+            assert execution_api.protocol_version == "v1"
+            assert execution_api.list_capabilities() == execution_api.capabilities
+            assert _execution_capabilities(execution_api) == (
+                EXPECTED_EXECUTION_CAPABILITIES
+            )
+            youtube_runtime = sys.modules.get("agent_reach.execution.v1.youtube")
+            assert youtube_runtime is not None
+            execute_youtube = youtube_runtime.execute_youtube
+            assert execute_youtube.__module__ == "agent_reach.execution.v1.youtube"
+            assert execute_youtube.__qualname__ == "execute_youtube"
+            assert tuple(inspect.signature(execute_youtube).parameters) == (
+                "request",
+                "context",
+            )
+            assert all(
+                module_name not in sys.modules
+                for module_name in ("yt_dlp", "yt_dlp_ejs", "deno")
+            )
 
         assert effects == [], effects
         assert capability_probe_binds == []
