@@ -705,8 +705,23 @@ def _contains_control(value: str) -> bool:
 def _main() -> int:
     try:
         request = _read_request(sys.stdin.buffer)
+    except Exception:
+        return 1
+    try:
         value = _execute_request(request)
+    except Exception:
+        return 1
+    try:
         output = _encode_frame(value, MAX_OUTPUT_BYTES)
+    except ExaProtocolError:
+        try:
+            output = _encode_frame(
+                _failure_value("backend_contract_violation"),
+                MAX_OUTPUT_BYTES,
+            )
+        except Exception:
+            return 1
+    try:
         sys.stdout.buffer.write(output)
         sys.stdout.buffer.flush()
         return 0
