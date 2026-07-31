@@ -237,6 +237,45 @@ def test_eligible_media_backends_receive_only_their_typed_validated_methods() ->
     assert results[0].selected_backend_id == "yt-dlp"
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://youtu.be/dQw4w9WgXcQ",
+        "https://www.youtube.com/embed/dQw4w9WgXcQ",
+        "https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=private",
+        "https://www.youtube.com/watch?v=dQw4w9WgXcQ#fragment",
+    ],
+)
+def test_noncanonical_youtube_urls_are_rejected_before_backend_execution(
+    monkeypatch: pytest.MonkeyPatch,
+    url: str,
+) -> None:
+    youtube_client = FixtureYouTubeClient()
+    runtime = build_alpha1_runtime(
+        youtube_backend=AuditedYouTubeBackend(
+            youtube_client,
+            _youtube_attestation(),
+        )
+    )
+    monkeypatch.setattr(reach_tools, "_RUNTIME", runtime)
+
+    response = json.loads(
+        asyncio.run(
+            reach_read(
+                {
+                    "source": "youtube",
+                    "operation": "read.video",
+                    "target": {"url": url},
+                }
+            )
+        )
+    )
+
+    assert response["outcome"] == "error"
+    assert response["error"]["code"] == "invalid_argument"
+    assert youtube_client.calls == []
+
+
 def test_failed_or_cross_source_attestation_never_binds_or_attempts() -> None:
     youtube_client = FixtureYouTubeClient()
     invalid_youtube = AuditedYouTubeBackend(

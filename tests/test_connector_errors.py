@@ -187,5 +187,5 @@ def test_connector_dependencies_are_direct_and_bounded() -> None:
     assert "hermes-agent>=0.19.0,<0.20.0" in dependencies
     assert (
         "agent-reach @ git+https://github.com/izumi0uu/Agent-Reach.git@"
-        "2755b0c140a03ab5793540fb3245288891526586"
+        "9b69146588b1d162515b81db26b51643c15de8eb"
     ) in dependencies

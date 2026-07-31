@@ -551,6 +551,36 @@ def test_exa_artifacts_enable_only_the_fixed_web_binding() -> None:
     assert registry.availability("exa", "search.code").state == "unavailable"
 
 
+def test_invalid_exa_attestation_degrades_only_exa_web() -> None:
+    builder: Callable[..., AdapterRegistry] = build_alpha1_registry
+
+    registry = builder(exa_artifacts=object())
+
+    assert registry.has_binding("exa", "search.web") is False
+    assert registry.availability("exa", "search.web").state == "setup_required"
+    assert registry.has_binding("exa", "search.code") is False
+    assert registry.availability("exa", "search.code").state == "unavailable"
+    for source, operation in (
+        ("rss", "read.feed"),
+        ("v2ex", "browse.hot"),
+        ("youtube", "read.video"),
+        ("bilibili", "read.video"),
+    ):
+        assert registry.has_binding(source, operation) is True
+
+
+def test_exa_composition_does_not_mask_unrelated_programmer_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_composition(_: ExaArtifactAttestation) -> tuple[()]:
+        raise RuntimeError("programmer error")
+
+    monkeypatch.setattr(source_registry, "exa_bindings", fail_composition)
+
+    with pytest.raises(RuntimeError, match="programmer error"):
+        build_alpha1_registry(exa_artifacts=_exa_artifacts())
+
+
 def test_exa_client_injection_is_not_a_registry_activation_path() -> None:
     builder: Callable[..., object] = build_alpha1_runtime
 

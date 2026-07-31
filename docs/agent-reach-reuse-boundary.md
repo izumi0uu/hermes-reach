@@ -1,8 +1,8 @@
 # Agent-Reach reuse boundary
 
 Status: frozen on 2026-07-31 against official Agent-Reach `1.5.0` base
-`b4d52c46c9113cb0f653d6df4cf71ebadf4930ac` and reviewed owner-fork integration
-candidate `2755b0c140a03ab5793540fb3245288891526586`.
+`b4d52c46c9113cb0f653d6df4cf71ebadf4930ac` and final owner-fork integration
+`9b69146588b1d162515b81db26b51643c15de8eb`.
 
 This document is the merge gate for source execution work. The canonical
 plugin architecture and terminology are defined in
@@ -261,9 +261,11 @@ receipts, and audit, not a copied platform runtime.
    `f195253d53befdb012d7aa575e732ec627ec29ac`, and keep
    `hermes-reach-integration-0.1.0a3` as the protected immutable reference for
    the previous integration `2a5829cf3b50bc435c647bfae4c050b1837d0235`.
-   Candidate `2755b0c140a03ab5793540fb3245288891526586` receives no tag before
-   explicit merge approval and final-pin validation. Hermes never depends on
-   either tag; the exact commit pin is authoritative.
+   Final integration `9b69146588b1d162515b81db26b51643c15de8eb` was rebase-merged
+   from reviewed head `fd93d2ec86511a4a1514b7ebd13cd996be709692` with an identical
+   tree. It has no recovery tag yet and remains release-ineligible until one is
+   protected. Hermes never depends on either tag or any future tag; the exact
+   commit pin is authoritative.
 6. Migrated platform invocation and projection must be removed from Hermes so
    there is one platform-semantics owner.
 7. A catalog contract classified `implemented_but_unbound` remains

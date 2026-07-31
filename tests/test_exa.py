@@ -228,6 +228,26 @@ def test_adapter_rejects_forged_call_before_worker_observes_query() -> None:
     assert fixture.calls == []
 
 
+@pytest.mark.parametrize("limit", [0, worker.MAX_LIMIT + 1])
+def test_adapter_rejects_out_of_range_integer_limit_before_worker_invocation(
+    monkeypatch: pytest.MonkeyPatch,
+    limit: int,
+) -> None:
+    fixture = _FixtureWorker(_projection())
+    authorized = _authorized()
+    forged = replace(
+        authorized,
+        call=replace(authorized.call, options={"limit": limit}),
+    )
+    monkeypatch.setattr(exa, "operation_call_is_valid", lambda _: True)
+
+    result = asyncio.run(ExaAdapter(_artifacts(), fixture).execute(forged))
+
+    assert exa.MAX_LIMIT == worker.MAX_LIMIT
+    assert result == AdapterResult(failure_class="invalid_input")
+    assert fixture.calls == []
+
+
 @pytest.mark.parametrize(
     "failure_class",
     [

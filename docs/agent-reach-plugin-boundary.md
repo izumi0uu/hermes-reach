@@ -2,8 +2,8 @@
 
 Status: canonical architecture, frozen on 2026-07-31 against official
 Agent-Reach `1.5.0` base
-`b4d52c46c9113cb0f653d6df4cf71ebadf4930ac` and reviewed owner-fork integration
-candidate `2755b0c140a03ab5793540fb3245288891526586`.
+`b4d52c46c9113cb0f653d6df4cf71ebadf4930ac` and final owner-fork integration
+`9b69146588b1d162515b81db26b51643c15de8eb`.
 
 Hermes Reach is a Hermes security wrapper around an exact, owner-maintained
 [Agent-Reach fork](https://github.com/izumi0uu/Agent-Reach). That fork is based
@@ -167,11 +167,12 @@ expose a generic execution surface.
 
 ## Fork updates, recovery, and rollback
 
-Hermes depends on the exact fork commit, never a branch or tag. The currently
-reviewed batch candidate is
-`2755b0c140a03ab5793540fb3245288891526586`, with tree
-`55648469505908aa655745f5ca7704d495f12183`; it is not yet a merged or tagged
-integration. The previous final integration
+Hermes depends on the exact fork commit, never a branch or tag. The current
+final integration is `9b69146588b1d162515b81db26b51643c15de8eb`, with tree
+`e19835071ae6560431b66d5a21e51b598d3d9c81`. It was rebase-merged from reviewed
+PR head `fd93d2ec86511a4a1514b7ebd13cd996be709692`, whose tree is identical. It has
+not yet received a protected recovery tag and is therefore not release-eligible.
+The previous final integration
 `2a5829cf3b50bc435c647bfae4c050b1837d0235` was rebase-merged from audited
 candidate `9e744d0c33f9e6498cf66c2ea376a653000e9be4`; both resolve to tree
 `070e4507fde7e55eceaba4d29e6a459c4a972f60`, and protected immutable reference

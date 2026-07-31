@@ -345,12 +345,14 @@ fork。Reddit `read.post` 仍只固定包装 Agent-Reach 精确选择的 OpenCLI
 [Agent-Reach 复用边界](docs/agent-reach-reuse-boundary.md)。
 
 项目固定使用 Agent-Reach `1.5.0`：官方审查基线是
-`b4d52c46c9113cb0f653d6df4cf71ebadf4930ac`，审查后的 owner-fork integration
-candidate 是 `2755b0c140a03ab5793540fb3245288891526586`，execution protocol 是 `v1`。
+`b4d52c46c9113cb0f653d6df4cf71ebadf4930ac`，最终 owner-fork integration
+是 `9b69146588b1d162515b81db26b51643c15de8eb`，execution protocol 是 `v1`。
 完整的 63 行状态以
 [operation ledger](docs/agent-reach-operation-ledger.json) 为准；14 个 descriptor
-不能代表其他 49 行可执行。当前候选 tree 是
-`55648469505908aa655745f5ca7704d495f12183`，尚未合并或打新 recovery tag。
+不能代表其他 49 行可执行。最终 integration tree 是
+`e19835071ae6560431b66d5a21e51b598d3d9c81`，与被审查的 PR head
+`fd93d2ec86511a4a1514b7ebd13cd996be709692` 的 tree 完全一致。它已经 rebase
+合并，但尚未创建新的 recovery tag，因此当前仍不可发布。
 立即回滚会恢复精确 pin `2a5829cf3b50bc435c647bfae4c050b1837d0235`，该 pin
 可通过 `hermes-reach-integration-0.1.0a3` 到达。该 tag 只用于恢复定位，不是依赖
 选择器，精确 commit 始终是权威 pin。
@@ -388,9 +390,9 @@ Roadmap 表示开发顺序，不承诺发布日期。未完成的能力会保持
 | 已完成 | 14 条封闭 owner-fork execution | RSS 2、Bilibili 4、YouTube 3、V2EX 4、Exa Web 1；仅 Reddit `read.post` 保留为 Connector-only 薄包装，YouTube comments 保持未绑定 |
 | 已完成 | 冻结严格插件边界 | 关闭 Web/GitHub/V2EX 共 13 条 Hermes 平台例外；V2EX 只通过新的 fork descriptor 重新启用，Web/GitHub 仍不可用 |
 | 已完成 | 验证真实插件生命周期 | 在全新 Hermes 0.19 环境验证默认关闭、启用、停用和包管理器卸载 |
-| 现在 | 完成公共平台批次交付 | 对 fork 与 Hermes 两个未合并 PR 完成复核；批准后 rebase 集成、更新最终 SHA 并重跑所有 pin-sensitive gate |
-| 随后 | 建立公开 Pre-release 通道 | 离线安装同一 exact sdist、对同一 exact wheel 跑完整生命周期，然后摘要并验证两者的 GitHub provenance，再以最小权限发布 |
-| 随后 | 审核结构化执行证据 | 对规划 operation 以同质批次选择窄化 owner-fork contract 或 Agent-Reach 精确 backend；不建立 Hermes 平台 runtime，也不开放通用 fork dispatch |
+| 已完成 | 完成公共平台批次交付 | rebase 集成 fork、证明最终 tree 等于被审查 tree、固定最终 SHA，并重跑所有 pin-sensitive gate |
+| 现在 | 审核下一组三平台结构化执行证据 | 对规划 operation 以同质批次选择窄化 owner-fork contract 或 Agent-Reach 精确 backend；不建立 Hermes 平台 runtime，也不开放通用 fork dispatch |
+| 随后 | 建立公开 Pre-release 通道 | 先为最终 fork commit 建立受保护的 immutable recovery tag，再离线安装同一 exact sdist、对同一 exact wheel 跑完整生命周期，然后摘要并验证两者的 GitHub provenance，以最小权限发布 |
 | 后续 | 支持认证平台和生产运维 | Twitter/X 等平台、一键授权、审计导出、告警、升级与回滚 |
 
 ## 开发

@@ -341,6 +341,8 @@ def test_parent_correlates_read_results_with_the_original_request_url() -> None:
 
     assert video.failure_class == "permanent"
     assert subtitles.failure_class == "permanent"
+    assert video.items == ()
+    assert subtitles.items == ()
 
 
 @pytest.mark.parametrize("field", ["title", "author"])

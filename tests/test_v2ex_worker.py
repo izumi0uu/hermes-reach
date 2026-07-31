@@ -520,6 +520,38 @@ def test_frames_keep_bounded_cjk_as_utf8_and_reject_duplicate_keys() -> None:
 
 
 @pytest.mark.parametrize(
+    "selected",
+    [
+        {"oversized": "x" * worker.MAX_OUTPUT_BYTES},
+        {"invalid_unicode": "\ud800"},
+    ],
+)
+def test_main_frames_unencodable_selected_result_as_closed_permanent_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    selected: Mapping[str, object],
+) -> None:
+    stdout = io.BytesIO()
+    monkeypatch.setattr(
+        worker.sys,
+        "stdin",
+        SimpleNamespace(
+            buffer=io.BytesIO(worker.encode_request("browse.hot", limit=1))
+        ),
+    )
+    monkeypatch.setattr(worker.sys, "stdout", SimpleNamespace(buffer=stdout))
+    monkeypatch.setattr(worker, "_execute_request", lambda _: selected)
+
+    assert worker.MAX_OUTPUT_BYTES == 1_048_576
+    assert worker._main() == 0
+    assert len(stdout.getvalue()) <= worker.MAX_OUTPUT_BYTES + 4
+    assert worker.decode_response(
+        stdout.getvalue(),
+        operation="browse.hot",
+        limit=1,
+    ) == worker.ForkExecutionFailure("browse.hot", "backend_contract_violation")
+
+
+@pytest.mark.parametrize(
     "mutation",
     [
         lambda value: {**value, "source": "rss"},
@@ -834,6 +866,9 @@ def test_parent_uses_fixed_argv_isolated_environment_and_cleans_state(
         "TMPDIR",
         "PYTHONUTF8",
         "PYTHONNOUSERSITE",
+        "LANG",
+        "LC_ALL",
+        "TZ",
         "HTTP_PROXY",
         "HTTPS_PROXY",
         "ALL_PROXY",
@@ -845,6 +880,9 @@ def test_parent_uses_fixed_argv_isolated_environment_and_cleans_state(
     }
     assert environment["HTTP_PROXY"] == ""
     assert environment["NO_PROXY"] == "*"
+    assert environment["LANG"] == "C.UTF-8"
+    assert environment["LC_ALL"] == "C.UTF-8"
+    assert environment["TZ"] == "UTC"
     assert "PATH" not in environment
     cwd = Path(cast(str, kwargs["cwd"]))
     assert cwd == Path(environment["HOME"]).parent
@@ -1049,7 +1087,8 @@ def test_invalid_terminal_output_kills_completed_process_group(
 def test_hermes_v2ex_sources_contain_no_platform_api_route_or_native_parser() -> None:
     source_root = Path(v2ex.__file__).parent
     combined = "\n".join(
-        (source_root / name).read_text() for name in ("v2ex.py", "v2ex_worker.py")
+        (source_root / name).read_text(encoding="utf-8")
+        for name in ("v2ex.py", "v2ex_worker.py")
     )
 
     assert "/api/" not in combined

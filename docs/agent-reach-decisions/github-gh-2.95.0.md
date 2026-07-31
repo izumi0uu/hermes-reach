@@ -18,8 +18,8 @@ as historical evidence.
 Official Agent-Reach `1.5.0` at base commit
 `b4d52c46c9113cb0f653d6df4cf71ebadf4930ac`, carried by owner-fork
 original integration commit `f195253d53befdb012d7aa575e732ec627ec29ac` and
-revalidated at current batch candidate
-`2755b0c140a03ab5793540fb3245288891526586`, selects GitHub CLI command
+revalidated at the current final integration
+`9b69146588b1d162515b81db26b51643c15de8eb`, selects GitHub CLI command
 families for repository and code search, repository/issue/pull-request reads,
 Actions, and releases. The reviewed local executable was `gh 2.95.0`. The fork
 execution v1 ledger still contains no GitHub capability.

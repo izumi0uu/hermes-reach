@@ -11,8 +11,8 @@
   `b4d52c46c9113cb0f653d6df4cf71ebadf4930ac`
 - Original owner-fork integration commit:
   `f195253d53befdb012d7aa575e732ec627ec29ac`
-- Current public-platform batch revalidation candidate:
-  `2755b0c140a03ab5793540fb3245288891526586`
+- Current public-platform final integration:
+  `9b69146588b1d162515b81db26b51643c15de8eb`
 
 ## Decision
 
@@ -39,8 +39,8 @@ Before plugin registration, Hermes validates all of the following without
 executing a backend:
 
 - installed Agent-Reach version is exactly `1.5.0`;
-- PEP 610 provenance names `izumi0uu/Agent-Reach` and exact reviewed candidate
-  `2755b0c140a03ab5793540fb3245288891526586`;
+- PEP 610 provenance names `izumi0uu/Agent-Reach` and exact final integration
+  `9b69146588b1d162515b81db26b51643c15de8eb`;
 - RECORD SHA-256, size, and installed content match for the two parent package
   initializers Python executes and all nine reviewed `execution.v1` files
   before any fork module is imported;
@@ -55,9 +55,9 @@ Any mismatch fails closed before Reach tools, CLI, or skill registration. The
 original RSS/Bilibili integration remains recoverable through
 `hermes-reach-integration-0.1.0a2`. Protected immutable tag
 `hermes-reach-integration-0.1.0a3` preserves reachability for the previous
-integration `2a5829cf3b50bc435c647bfae4c050b1837d0235`. The current batch
-candidate has no recovery tag before explicit integration approval; Hermes is
-always pinned by commit and never resolves by tag.
+integration `2a5829cf3b50bc435c647bfae4c050b1837d0235`. The current final
+integration has no recovery tag yet and remains release-ineligible until one is
+protected; Hermes is always pinned by commit and never resolves by tag.
 
 ## Ownership and security composition
 
