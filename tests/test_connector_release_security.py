@@ -692,7 +692,7 @@ def test_built_distributions_install_and_wheel_follows_real_hermes_lifecycle(
         environment=probe_environment,
         phase="enabled plugin host",
     ) == {
-        "frozen_operations": 9,
+        "frozen_operations": 10,
         "hermes_agent_version": "0.19.0",
         "hermes_reach_version": "0.1.0a1",
         "plugin_source": "entrypoint",

@@ -563,20 +563,68 @@ jobs:
               ),
           )
 
+          runtime_handshakes = (
+              (
+                  "rss",
+                  "agent_reach.execution.v1.rss",
+                  "execute_rss",
+                  ("request", "context", "document"),
+              ),
+              (
+                  "bilibili",
+                  "agent_reach.execution.v1.bilibili",
+                  "execute_bilibili",
+                  ("request", "context"),
+              ),
+              (
+                  "youtube",
+                  "agent_reach.execution.v1.youtube",
+                  "execute_youtube",
+                  ("request", "context"),
+              ),
+              (
+                  "v2ex",
+                  "agent_reach.execution.v1.v2ex",
+                  "execute_v2ex",
+                  ("request", "context"),
+              ),
+              (
+                  "exa",
+                  "agent_reach.execution.v1.exa",
+                  "execute_exa",
+                  ("request", "context"),
+              ),
+          )
+
           assert version("agent-reach") == AGENT_REACH_VERSION
-          api = validate_agent_reach_execution_contract(runtime_module="youtube")
-          assert api.protocol_version == "v1"
-          assert api.list_capabilities() == api.capabilities
-          assert tuple(
-              tuple(getattr(capability, field) for field in capability_fields)
-              for capability in api.capabilities
-          ) == expected_capabilities
-          youtube_runtime = sys.modules.get("agent_reach.execution.v1.youtube")
-          assert youtube_runtime is not None
-          execute_youtube = youtube_runtime.execute_youtube
-          assert execute_youtube.__module__ == "agent_reach.execution.v1.youtube"
-          assert execute_youtube.__qualname__ == "execute_youtube"
-          assert tuple(signature(execute_youtube).parameters) == ("request", "context")
+          apis = []
+          for (
+              runtime_module,
+              module_name,
+              function_name,
+              expected_parameters,
+          ) in runtime_handshakes:
+              api = validate_agent_reach_execution_contract(
+                  runtime_module=runtime_module
+              )
+              assert api.protocol_version == "v1"
+              assert api.list_capabilities() == api.capabilities
+              assert tuple(
+                  tuple(getattr(capability, field) for field in capability_fields)
+                  for capability in api.capabilities
+              ) == expected_capabilities
+              runtime = sys.modules.get(module_name)
+              assert runtime is not None
+              execute_runtime = getattr(runtime, function_name)
+              assert execute_runtime.__module__ == module_name
+              assert execute_runtime.__qualname__ == function_name
+              assert (
+                  tuple(signature(execute_runtime).parameters)
+                  == expected_parameters
+              )
+              apis.append(api)
+          assert all(api.capabilities == apis[0].capabilities for api in apis)
+          assert sys.modules.get("agent_reach.execution.v1._v2ex_transport") is not None
           assert all(
               module_name not in sys.modules
               for module_name in ("yt_dlp", "yt_dlp_ejs", "deno")
