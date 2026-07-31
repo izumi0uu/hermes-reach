@@ -7,7 +7,7 @@ description: Route bounded, read-only internet retrieval through Hermes Reach.
 
 This skill adapts the routing scope of Agent-Reach 1.5.0 from official baseline
 `b4d52c46c9113cb0f653d6df4cf71ebadf4930ac` through exact owner-fork
-commit `2755b0c140a03ab5793540fb3245288891526586` to the Hermes Reach safety
+commit `9b69146588b1d162515b81db26b51643c15de8eb` to the Hermes Reach safety
 contract. Fork execution protocol v1 owns exactly 14 direct owner-fork
 operations: two RSS operations
 (`rss:read.feed`, `rss:browse.entries`) and four Bilibili operations

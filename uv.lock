@@ -9,7 +9,7 @@ resolution-markers = [
 [[package]]
 name = "agent-reach"
 version = "1.5.0"
-source = { git = "https://github.com/izumi0uu/Agent-Reach.git?rev=2755b0c140a03ab5793540fb3245288891526586#2755b0c140a03ab5793540fb3245288891526586" }
+source = { git = "https://github.com/izumi0uu/Agent-Reach.git?rev=9b69146588b1d162515b81db26b51643c15de8eb#9b69146588b1d162515b81db26b51643c15de8eb" }
 dependencies = [
     { name = "feedparser" },
     { name = "loguru" },
@@ -725,7 +725,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "agent-reach", git = "https://github.com/izumi0uu/Agent-Reach.git?rev=2755b0c140a03ab5793540fb3245288891526586" },
+    { name = "agent-reach", git = "https://github.com/izumi0uu/Agent-Reach.git?rev=9b69146588b1d162515b81db26b51643c15de8eb" },
     { name = "bilibili-cli", specifier = "==0.6.2" },
     { name = "cryptography", specifier = ">=46.0.7,<47" },
     { name = "deno", specifier = "==2.8.3" },

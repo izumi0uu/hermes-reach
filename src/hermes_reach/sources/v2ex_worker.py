@@ -972,7 +972,19 @@ def _main() -> int:
         return 1
     try:
         value = _execute_request(request)
+    except Exception:
+        return 1
+    try:
         output = _encode_frame(value, MAX_OUTPUT_BYTES)
+    except V2exProtocolError:
+        try:
+            output = _encode_frame(
+                _failure_value(request.operation, "backend_contract_violation"),
+                MAX_OUTPUT_BYTES,
+            )
+        except Exception:
+            return 1
+    try:
         sys.stdout.buffer.write(output)
         sys.stdout.buffer.flush()
         return 0

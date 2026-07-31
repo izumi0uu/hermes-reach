@@ -723,6 +723,7 @@ __all__ = [
     "ExaProtocolError",
     "ExaResultProjection",
     "ForkExecutionFailure",
+    "MAX_LIMIT",
     "MAX_OUTPUT_BYTES",
     "WorkerErrorCode",
     "WorkerOperation",

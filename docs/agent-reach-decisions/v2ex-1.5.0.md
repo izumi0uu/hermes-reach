@@ -1,6 +1,6 @@
 # V2EX Agent-Reach 1.5.0 Owner-Fork Execution Decision
 
-- Status: reviewed batch candidate; not yet merged or tagged
+- Status: approved and rebase-integrated; recovery tag pending
 - Date: 2026-07-31
 - Operations: `v2ex:browse.hot`, `v2ex:browse.node_topics`,
   `v2ex:read.topic`, `v2ex:read.user`
@@ -9,9 +9,9 @@
   `legacy-json-2026-07-31`
 - Official Agent-Reach base: `Panniantong/Agent-Reach` `1.5.0` at
   `b4d52c46c9113cb0f653d6df4cf71ebadf4930ac`
-- Reviewed owner-fork batch candidate: `izumi0uu/Agent-Reach` at
-  `2755b0c140a03ab5793540fb3245288891526586`
-- Candidate tree: `55648469505908aa655745f5ca7704d495f12183`
+- Final owner-fork integration: `izumi0uu/Agent-Reach` at
+  `9b69146588b1d162515b81db26b51643c15de8eb`
+- Final integration tree: `e19835071ae6560431b66d5a21e51b598d3d9c81`
 - Rollback integration pin: `2a5829cf3b50bc435c647bfae4c050b1837d0235`
   (`hermes-reach-integration-0.1.0a3`)
 
@@ -117,10 +117,11 @@ movement reopens the complete 63-operation audit.
 
 ## Rollout And Rollback
 
-Candidate `2755b0c140a03ab5793540fb3245288891526586` is consumed by exact SHA for
-cross-repository review and has no recovery tag. After explicit owner approval,
-the rebase-integrated fork commit must be tree-equivalent, Hermes must pin its
-final SHA, and all pin-sensitive gates must pass again before tagging.
+Final integration `9b69146588b1d162515b81db26b51643c15de8eb` is consumed by exact SHA.
+Its tree `e19835071ae6560431b66d5a21e51b598d3d9c81` exactly matches reviewed PR
+head `fd93d2ec86511a4a1514b7ebd13cd996be709692`. All pin-sensitive gates must
+pass before Hermes merge; a protected immutable recovery tag is still required
+before release.
 
 Rollback restores exact pin `2a5829cf3b50bc435c647bfae4c050b1837d0235`,
 recoverable through immutable tag `hermes-reach-integration-0.1.0a3`, and

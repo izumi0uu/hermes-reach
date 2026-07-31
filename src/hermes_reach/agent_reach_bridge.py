@@ -21,7 +21,7 @@ AGENT_REACH_DISTRIBUTION: Final = "agent-reach"
 AGENT_REACH_VERSION: Final = "1.5.0"
 AGENT_REACH_OFFICIAL_BASE_COMMIT: Final = "b4d52c46c9113cb0f653d6df4cf71ebadf4930ac"
 AGENT_REACH_FORK_URL: Final = "https://github.com/izumi0uu/Agent-Reach.git"
-AGENT_REACH_FORK_COMMIT: Final = "2755b0c140a03ab5793540fb3245288891526586"
+AGENT_REACH_FORK_COMMIT: Final = "9b69146588b1d162515b81db26b51643c15de8eb"
 AGENT_REACH_PROTOCOL_VERSION: Final = "v1"
 AGENT_REACH_FETCHED_DOCUMENT_CAPABILITY: Final = "fetched_document.v1"
 AGENT_REACH_NETWORK_ACCESS_CAPABILITY: Final = "network_access.v1"
@@ -104,13 +104,13 @@ _EXECUTION_MODULE_FILES: Final[Mapping[str, tuple[str, str, int]]] = MappingProx
         ),
         _EXECUTION_CONTRACTS_MODULE: (
             "agent_reach/execution/v1/contracts.py",
-            "Zac8KjmJ34_bJx5wag-QREHqrhPg874PZeSDtEOrOts",
-            38_614,
+            "j4FR7ydBfg8VIIkypoiSdEDh5oLxsCZAQZPVsflSBHU",
+            38_673,
         ),
         _EXECUTION_REGISTRY_MODULE: (
             "agent_reach/execution/v1/registry.py",
-            "xiSeoX_atsiMPFjzUzqEQBjkf7sshHmF-t58HrnbDQo",
-            16_373,
+            "TAcG6NhbwmwEIUXXpuhSgoHP2_vtzru0AEqzDvb260k",
+            16_628,
         ),
         _EXECUTION_RSS_MODULE: (
             "agent_reach/execution/v1/rss.py",
@@ -124,8 +124,8 @@ _EXECUTION_MODULE_FILES: Final[Mapping[str, tuple[str, str, int]]] = MappingProx
         ),
         _EXECUTION_YOUTUBE_MODULE: (
             "agent_reach/execution/v1/youtube.py",
-            "lKhmR3N178FEabruKl-Uxs-Rtf19AaG96YIK0Q4fCYo",
-            29_793,
+            "YVcP6M9wKQcae8NIi4MpEn3TkRHSIB2ww7hK7PVPTQg",
+            29_927,
         ),
         _EXECUTION_V2EX_TRANSPORT_MODULE: (
             "agent_reach/execution/v1/_v2ex_transport.py",
@@ -139,8 +139,8 @@ _EXECUTION_MODULE_FILES: Final[Mapping[str, tuple[str, str, int]]] = MappingProx
         ),
         _EXECUTION_EXA_MODULE: (
             "agent_reach/execution/v1/exa.py",
-            "Ep7GiZVVFPs4x4uChJ3uGQMFR6m7e2umVkYDL8ogojU",
-            32_569,
+            "106HW8O8nRfdpsUrGjacUUmkHyucAZ13YKjUlBypby4",
+            32_724,
         ),
     }
 )

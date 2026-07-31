@@ -16,21 +16,21 @@ deletion so old installs and rollback remain reachable. The tag is only a
 recovery reference and never the dependency selector; the commit in wheel
 metadata remains authoritative.
 
-The current reviewed candidate and rollback integration references are:
+The current final integration and rollback references are:
 
 | Purpose | Recovery reference | Exact dependency commit |
 | --- | --- | --- |
-| Current 14-operation public-platform batch candidate | none; not release-eligible until approved integration and final-pin validation | `2755b0c140a03ab5793540fb3245288891526586` |
+| Current 14-operation public-platform integration | pending; not release-eligible until a protected immutable recovery tag exists | `9b69146588b1d162515b81db26b51643c15de8eb` |
 | Rollback: integrated YouTube read-video runtime | `hermes-reach-integration-0.1.0a3` | `2a5829cf3b50bc435c647bfae4c050b1837d0235` |
 | Rollback: RSS + Bilibili execution v1, YouTube exact wrappers | `hermes-reach-integration-0.1.0a2` | `f195253d53befdb012d7aa575e732ec627ec29ac` |
 | Earlier rollback: RSS execution v1 / Hermes Bilibili wrapper | `hermes-reach-integration-0.1.0a1` | `806205fd106f4f4453624becfd773acce8418cf1` |
 
-The current reviewed batch candidate
-`2755b0c140a03ab5793540fb3245288891526586` resolves to tree
-`55648469505908aa655745f5ca7704d495f12183`. It is pushed for review but is not
-yet merged or tagged. A package release is forbidden until explicit owner
-approval, rebase integration, proof that the final tree is byte-equivalent,
-Hermes movement to the final SHA, and repetition of every pin-sensitive gate.
+The final integration `9b69146588b1d162515b81db26b51643c15de8eb`
+resolves to tree `e19835071ae6560431b66d5a21e51b598d3d9c81`. It was rebase-merged
+from reviewed PR head `fd93d2ec86511a4a1514b7ebd13cd996be709692`, whose tree is
+byte-equivalent. Hermes pins the final SHA and repeats every pin-sensitive gate.
+A package release remains forbidden until the final integration receives one
+protected immutable recovery tag and all release gates pass.
 The previous integration `2a5829cf3b50bc435c647bfae4c050b1837d0235`
 remains protected by `hermes-reach-integration-0.1.0a3`. Do not confuse fork
 recovery tags with the Hermes package release tag `v0.1.0a1`. Installation
@@ -63,8 +63,8 @@ controls:
 
 The workflow cannot configure or prove these repository settings. A tag push
 without them is an operator error, even if the YAML gate passes.
-Candidate `2755b0c140a03ab5793540fb3245288891526586` currently fails the immutable
-integration-tag prerequisite by design and must not be published as-is.
+Final integration `9b69146588b1d162515b81db26b51643c15de8eb` currently lacks the immutable
+integration-tag prerequisite and must not be published as-is.
 
 ## Local dry run
 

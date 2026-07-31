@@ -18,6 +18,7 @@ from .exa_artifacts import ExaArtifactAttestation
 from .exa_worker import (
     EXPECTED_BACKEND_ID,
     EXPECTED_BACKEND_VERSION,
+    MAX_LIMIT,
     MAX_OUTPUT_BYTES,
     ExaProjection,
     ExaProtocolError,
@@ -155,7 +156,7 @@ class ExaAdapter:
                 "limit",
                 authorized.operation.runtime.maximum_items,
             )
-            if type(limit_value) is not int:
+            if type(limit_value) is not int or not 1 <= limit_value <= MAX_LIMIT:
                 return AdapterResult(failure_class="invalid_input")
             projection = await self._worker.execute(query, limit_value)
             return _project_result(projection)

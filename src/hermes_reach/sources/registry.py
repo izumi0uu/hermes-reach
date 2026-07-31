@@ -139,7 +139,7 @@ def _configure_exa(
         "unavailable",
         EXA_CODE_UNAVAILABLE_REASON,
     )
-    if artifacts_invalid or artifacts is None:
+    if artifacts_invalid or type(artifacts) is not ExaArtifactAttestation:
         registry.mark(
             "exa",
             "search.web",

@@ -1,6 +1,6 @@
 # YouTube yt-dlp 2026.7.4 Owner-Fork Execution Decision
 
-- Status: reviewed batch candidate; not yet merged or tagged
+- Status: approved and rebase-integrated; recovery tag pending
 - Date: 2026-07-31
 - Direct owner-fork operations: `youtube:search.videos`, `youtube:read.video`,
   `youtube:read.subtitles`
@@ -8,9 +8,9 @@
 - Execution closure: `yt-dlp-ejs==0.8.0`, `deno==2.8.3`
 - Official Agent-Reach base: `Panniantong/Agent-Reach` `1.5.0` at
   `b4d52c46c9113cb0f653d6df4cf71ebadf4930ac`
-- Reviewed owner-fork batch candidate: `izumi0uu/Agent-Reach` at
-  `2755b0c140a03ab5793540fb3245288891526586`
-- Candidate tree: `55648469505908aa655745f5ca7704d495f12183`
+- Final owner-fork integration: `izumi0uu/Agent-Reach` at
+  `9b69146588b1d162515b81db26b51643c15de8eb`
+- Final integration tree: `e19835071ae6560431b66d5a21e51b598d3d9c81`
 - Rollback integration pin: `2a5829cf3b50bc435c647bfae4c050b1837d0235`
   (`hermes-reach-integration-0.1.0a3`)
 - Previous read-video candidate: `9e744d0c33f9e6498cf66c2ea376a653000e9be4`;
@@ -206,12 +206,11 @@ Agent-Reach pin movement reopens all 63 catalog operations.
 
 ## Rollout And Rollback
 
-`2755b0c140a03ab5793540fb3245288891526586` is the reviewed batch candidate,
-with tree `55648469505908aa655745f5ca7704d495f12183`. Hermes pins this exact
-candidate for cross-repository review. It has not been rebase-integrated or
-tagged. After explicit owner approval, the final integration must be proven
-tree-equivalent, Hermes must move to its final SHA, and every pin-sensitive
-gate must pass again before a new immutable recovery tag is created.
+`9b69146588b1d162515b81db26b51643c15de8eb` is the final rebase-integrated
+commit, with tree `e19835071ae6560431b66d5a21e51b598d3d9c81`. That tree exactly
+matches reviewed PR head `fd93d2ec86511a4a1514b7ebd13cd996be709692`.
+Hermes pins the final SHA and every pin-sensitive gate must pass before merge.
+A new protected immutable recovery tag remains a separate release prerequisite.
 
 Rollback restores exact pin `2a5829cf3b50bc435c647bfae4c050b1837d0235`,
 recoverable through immutable tag `hermes-reach-integration-0.1.0a3`, and

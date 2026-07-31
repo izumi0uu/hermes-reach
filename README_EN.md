@@ -375,13 +375,15 @@ canonical architecture and the
 operation matrix and reactivation gates.
 
 The project pins Agent-Reach `1.5.0`: the reviewed official base is
-`b4d52c46c9113cb0f653d6df4cf71ebadf4930ac`, the reviewed owner-fork integration
-candidate is `2755b0c140a03ab5793540fb3245288891526586`, and the execution
+`b4d52c46c9113cb0f653d6df4cf71ebadf4930ac`, the final owner-fork integration
+is `9b69146588b1d162515b81db26b51643c15de8eb`, and the execution
 protocol is `v1`. The complete 63-row state lives in the
 [operation ledger](docs/agent-reach-operation-ledger.json); the 14 descriptors
-do not claim execution support for the other 49 rows. The current candidate
-tree is `55648469505908aa655745f5ca7704d495f12183`; it has not been merged or
-given a new recovery tag. Immediate rollback restores exact pin
+do not claim execution support for the other 49 rows. The final integration
+tree is `e19835071ae6560431b66d5a21e51b598d3d9c81`, exactly matching the reviewed
+PR head `fd93d2ec86511a4a1514b7ebd13cd996be709692` tree. It has been rebase-merged
+but has not received a new recovery tag, so it is not yet release-eligible.
+Immediate rollback restores exact pin
 `2a5829cf3b50bc435c647bfae4c050b1837d0235`, reachable through
 `hermes-reach-integration-0.1.0a3`. The tag is only a recovery reference, not a dependency selector; the exact commit remains authoritative.
 
@@ -418,9 +420,9 @@ The roadmap describes development order, not release dates. Incomplete capabilit
 | Complete | Fourteen closed owner-fork operations | RSS 2, Bilibili 4, YouTube 3, V2EX 4, and Exa Web 1; only Reddit `read.post` remains a Connector-only thin wrapper, and YouTube comments remains unbound |
 | Complete | Freeze strict plugin boundary | Close all 13 Hermes Web/GitHub/V2EX platform exceptions; reactivate V2EX only through new fork descriptors while Web/GitHub remain unavailable |
 | Complete | Verify the real plugin lifecycle | Prove default-disabled install, enable, disable, and package-manager uninstall in a clean Hermes 0.19 environment |
-| Now | Complete public-platform batch delivery | Review the two unmerged fork and Hermes PRs; after approval, rebase-integrate, update the final SHA, and rerun every pin-sensitive gate |
-| Then | Establish a public pre-release channel | Install one exact sdist offline, lifecycle-test the exact wheel, then checksum and attest both before least-privilege publication |
-| Then | Review structured execution evidence | Select narrow owner-fork contracts or exact Agent-Reach backends for planned operations in homogeneous batches; build no Hermes platform runtime and expose no generic fork dispatch |
+| Complete | Complete public-platform batch delivery | Rebase-integrate the fork, prove the final tree equals the reviewed tree, pin the final SHA, and rerun every pin-sensitive gate |
+| Now | Review the next homogeneous three-platform batch | Select narrow owner-fork contracts or exact Agent-Reach backends for planned operations; build no Hermes platform runtime and expose no generic fork dispatch |
+| Then | Establish a public pre-release channel | First protect an immutable recovery tag for the final fork commit, then install one exact sdist offline, lifecycle-test the exact wheel, and checksum and attest both before least-privilege publication |
 | Later | Support authenticated platforms and production operations | Twitter/X and similar sources, one-step grants, audit export, alerts, upgrades, and rollback |
 
 ## Development

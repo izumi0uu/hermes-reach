@@ -12,8 +12,8 @@
 - Original owner-fork integration pin: `izumi0uu/Agent-Reach` at
   `f195253d53befdb012d7aa575e732ec627ec29ac`
 - Original recovery reference: `hermes-reach-integration-0.1.0a2`
-- Current public-platform batch revalidation candidate:
-  `2755b0c140a03ab5793540fb3245288891526586`
+- Current public-platform final integration:
+  `9b69146588b1d162515b81db26b51643c15de8eb`
 
 ## Decision
 
@@ -127,8 +127,8 @@ for the original Bilibili integration at
 `f195253d53befdb012d7aa575e732ec627ec29ac`. Protected immutable tag
 `hermes-reach-integration-0.1.0a3` preserves reachability for the previous
 reviewed integration `2a5829cf3b50bc435c647bfae4c050b1837d0235`. The current
-batch candidate has no recovery tag before explicit integration approval.
-Hermes never resolves the dependency by tag or branch.
+final integration has no recovery tag yet and remains release-ineligible until
+one is protected. Hermes never resolves the dependency by tag or branch.
 
 ## Review Milestone
 
@@ -140,10 +140,13 @@ backend identity change, projection change, or classification change.
 
 ## Rollback
 
-Rollback restores the previous Hermes release and exact owner-fork pin
-`806205fd106f4f4453624becfd773acce8418cf1`, whose immutable recovery reference
-is `hermes-reach-integration-0.1.0a1`. That reactivates the previous
-Hermes-owned Bilibili exact-backend wrapper as one atomic unit; do not split
-execution ownership between the two versions. No public protocol, grant,
-Connector, database, receipt, audit, or stored-content migration is required.
-Neither consumed commit nor recovery tag may be moved or deleted.
+The current public-platform batch rollback restores the previous Hermes release
+and exact owner-fork pin `2a5829cf3b50bc435c647bfae4c050b1837d0235`, whose
+immutable recovery reference is `hermes-reach-integration-0.1.0a3`. The original
+Bilibili integration at `f195253d53befdb012d7aa575e732ec627ec29ac` and tag
+`hermes-reach-integration-0.1.0a2`, plus the earlier Hermes-owned wrapper at
+`806205fd106f4f4453624becfd773acce8418cf1` and tag
+`hermes-reach-integration-0.1.0a1`, remain rollback history only. Do not split
+execution ownership between versions. No public protocol, grant, Connector,
+database, receipt, audit, or stored-content migration is required. Neither
+consumed commit nor recovery tag may be moved or deleted.
