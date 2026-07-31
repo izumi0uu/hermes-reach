@@ -1,38 +1,69 @@
-# YouTube yt-dlp 2026.7.4 Exact Backend Decision
+# YouTube yt-dlp 2026.7.4 Mixed Execution Decision
 
-- Status: approved
-- Date: 2026-07-28
-- Operations: `youtube:search.videos`, `youtube:read.video`,
+- Status: integrated with protected immutable recovery tag
+- Date: 2026-07-31
+- Direct owner-fork operation: `youtube:read.video`
+- Exact-backend wrapper operations: `youtube:search.videos`,
   `youtube:read.subtitles`
-- Classification: `exact_backend_thin_wrapper`
 - Backend: `yt-dlp` version `2026.7.4`
 - Execution closure: `yt-dlp-ejs==0.8.0`, `deno==2.8.3`
 - Official Agent-Reach base: `Panniantong/Agent-Reach` `1.5.0` at
   `b4d52c46c9113cb0f653d6df4cf71ebadf4930ac`
-- Owner-fork integration pin: `izumi0uu/Agent-Reach` at
-  `f195253d53befdb012d7aa575e732ec627ec29ac`
+- Final owner-fork integration: `izumi0uu/Agent-Reach` at
+  `2a5829cf3b50bc435c647bfae4c050b1837d0235`
+- Audited feature candidate: `9e744d0c33f9e6498cf66c2ea376a653000e9be4`
+- Candidate/final tree: `070e4507fde7e55eceaba4d29e6a459c4a972f60`
+- Recovery reference: `hermes-reach-integration-0.1.0a3`
+- Rollback integration pin: `f195253d53befdb012d7aa575e732ec627ec29ac`
+  (`hermes-reach-integration-0.1.0a2`)
 
 ## Decision
 
-Activate three existing credential-free YouTube contracts through the exact
-`yt-dlp` backend selected by Agent-Reach. Hermes invokes the structured
-`yt_dlp.YoutubeDL` API inside a fixed, short-lived worker, then projects only a
-closed metadata or VTT result. Hermes does not add a YouTube API, direct
-subtitle HTTP path, browser/OpenCLI route, alternate search provider, or
-transcription fallback.
+Move only `youtube:read.video` into the closed Agent-Reach owner-fork
+`execution.v1` runtime. Keep search and subtitles on the existing exact
+`yt-dlp` backend wrappers. This mixed state increases real Agent-Reach execution
+reuse without expanding the public operation set or moving Hermes policy and
+containment into the fork.
 
-The default registry binds the three operations with provenance backend
-`yt-dlp`, version `2026.7.4`. `read.comments` remains catalog-implemented but
-`setup_required`: yt-dlp has a maximum comment prefix but no stable page
-selector compatible with Hermes v1 `(limit,page)`. `transcribe.video` remains
-planned and unbound.
+The default registry still binds the same three credential-free operations
+with provenance `yt-dlp` version `2026.7.4`. `read.comments` remains
+catalog-implemented but `setup_required`: yt-dlp has a maximum comment prefix
+but no stable page selector compatible with Hermes v1 `(limit,page)`.
+`transcribe.video` remains planned and unbound.
+
+Hermes does not add a YouTube API, direct subtitle HTTP path, browser/OpenCLI
+route, alternate search provider, download operation, or transcription
+fallback. The migration is one source-operation contract, not a generic
+backend selector or a claim that all Agent-Reach YouTube behavior is exposed.
 
 ## Pinned Evidence
 
 Agent-Reach 1.5.0 selects yt-dlp for YouTube metadata, search, and subtitles.
-The owner fork adds no YouTube execution v1 descriptor, so these three
-operations remain exact-backend thin wrappers rather than direct fork-runtime
-calls. The activated closure is directly pinned and locked:
+The reviewed owner-fork integration adds exactly one YouTube descriptor:
+
+```text
+source: youtube
+operation: read.video
+argument schema: youtube.read.video.arguments.v1
+result schema: youtube.video.v1
+backend: yt-dlp@2026.7.4
+host capability: network_access.v1
+items: exactly 1
+```
+
+Together with two RSS and four Bilibili descriptors, static discovery contains
+exactly seven ordered operations. Discovery and rejected requests do not import
+or probe yt-dlp, yt-dlp-ejs, Deno, the network, or the filesystem.
+
+Hermes pins the exact integration commit in package metadata and `uv.lock`. The
+bridge validates exact PEP 610 provenance and RECORD hash, size, resolved path,
+and current bytes for both parent initializers plus all six reviewed
+`execution/v1` files, including `youtube.py`, before importing fork execution
+code. It then validates loaded origins, exports, signatures, type shapes, error
+codes, and all seven descriptors. The YouTube worker repeats the durable
+handshake with `runtime_module="youtube"` before every fork-backed read.
+
+The backend closure remains directly pinned and locked:
 
 ```text
 yt-dlp      2026.7.4
@@ -50,23 +81,39 @@ ARM64, or full Windows process-group parity.
 
 ## Fixed Invocation
 
-The parent process argv is always:
+The parent process argv remains:
 
 ```text
 <absolute sys.executable> -I -m hermes_reach.sources.youtube_worker
 ```
 
-Query, canonical watch URL, limit, and language cross the process boundary
-only in one length-prefixed UTF-8 JSON v1 frame. The child maps the closed
-operation enum to exactly:
+Query, canonical watch URL, limit, and language cross the process boundary only
+in one length-prefixed UTF-8 JSON v1 frame. Operation ownership inside the
+worker is exact:
+
+```text
+search.videos  -> existing Hermes exact-backend wrapper
+read.video     -> Agent-Reach execution.v1
+read.subtitles -> existing Hermes exact-backend wrapper
+```
+
+For `read.video`, Hermes validates the public target, reconstructs the literal
+canonical watch URL, and creates only `ExecutionRequestV1`, fieldless
+`NetworkAccessV1`, and narrowed execution limits. The owner fork alone checks
+the exact yt-dlp/EJS/Deno closure, constructs fixed `YoutubeDL` options, and
+invokes:
+
+```text
+extract_info(<canonical-watch-url>, download=False, ie_key="Youtube")
+```
+
+For the two operations not migrated in this decision, Hermes retains the
+reviewed calls:
 
 ```text
 search.videos:
   extract_info("ytsearch<limit>:<query>", download=False,
                ie_key="YoutubeSearch")
-
-read.video:
-  extract_info(<canonical-watch-url>, download=False, ie_key="Youtube")
 
 read.subtitles:
   writesubtitles=True, writeautomaticsub=True, subtitlesformat="vtt",
@@ -74,84 +121,103 @@ read.subtitles:
   extract_info(<canonical-watch-url>, download=True, ie_key="Youtube")
 ```
 
-Hermes owns the closed mapping from the public `limit` to `ytsearch<limit>` and
-from the optional public language to `subtitleslangs`. When no language is
-requested, Hermes supplies the fixed preference order `zh-Hans`, then `zh`,
-then `en`; this order is not an yt-dlp default or an Agent-Reach operation
-contract.
-
-The worker constructs `YoutubeDL(params)` directly. It never invokes yt-dlp's
-CLI parser or `main`, so host config files and caller-selected flags cannot
-enter the execution path.
+The public request cannot select argv, executable, backend, extractor,
+endpoint, proxy, Cookie, credential, browser, output path, plugin, remote
+component, download behavior, or fallback.
 
 ## Security Composition
 
 Every request receives private HOME, XDG config/cache/data, DENO_DIR, and TMP
-directories. The child environment has no PATH, disables proxy variables,
-sets `YTDLP_NO_PLUGINS=1`, and contains no provider credentials, Cookie,
-browser, npm, or host configuration. The worker also resets yt-dlp's global
-plugin directory list before constructing the downloader.
+directories. The child environment has no PATH, disables proxy variables, sets
+`YTDLP_NO_PLUGINS=1`, and contains no provider credentials, Cookie, browser,
+npm, or host configuration. The fixed worker, hard timeout/cancellation,
+process-group kill/reap, bounded stdin/stdout, discarded stderr, and cleanup
+remain Hermes responsibilities for all three operations.
 
-The backend uses `cachedir=False`, `proxy=""`, no cookie file or browser
-cookie source, no netrc command or credentials, no postprocessors, and no
-remote components. The only JavaScript runtime is the executable installed
-beside the running Python interpreter; all three distribution versions and
-that executable's regular, executable, single-link shape are checked before
-network extraction. No Node, PATH, npm, GitHub EJS, or runtime-install fallback
-exists.
+For `read.video`, the fork enforces no config/cache/proxy/Cookie/netrc/browser,
+no plugins or remote components, no shell or CLI, and no alternate JavaScript
+runtime. Packaged EJS plus the regular, executable, single-link Deno installed
+beside the running Python interpreter are the only JavaScript route. Search and
+subtitle wrappers retain the same closure locally until separate migrations.
 
-Subtitle work stays under the private root. The selected file must be a
-regular, single-link VTT beneath that root and is opened without following
-links, byte-bounded before UTF-8 decoding, projected to a bounded result, and
-removed. Hermes chooses one language using the fixed request/default mapping,
-prefers manual over automatic captions for that selected language, verifies
-the video and file identity, and chooses the single file that may cross the
-closed result boundary. The parent removes all remaining private state after
-the worker is reaped.
+The fork returns exactly one `youtube.video.v1` item with `text`, `native_id`,
+`title`, `url`, `author`, `published_at`, `duration_seconds`, `view_count`, and
+`comment_count`. It owns raw yt-dlp validation, backend error interpretation,
+identity correlation, date/integer normalization, source-field byte bounds,
+and YouTube-native projection. Hermes independently validates the complete
+typed result before stdout and again in the parent before constructing
+`RawItem` and `MediaMetadata`.
 
-Stdin, stdout, JSON depth/items/nodes/scalars, projected fields, subtitle
-files, and final results are bounded. Stderr and backend logging are discarded.
-Timeout, cancellation, nonzero exit, malformed output, and overflow kill and
-reap the worker process group before temporary state is removed. Raw yt-dlp
-dictionaries, formats, signed media/subtitle URLs, HTTP headers, warnings,
-exception strings, query, target URL, and temporary paths never cross stdout or
-enter provenance, receipts, audit, or stable errors.
+Source-field UTF-8 truncation remains the existing projection behavior.
+Execution-context text truncation is bounded to 16,000 Unicode code points and
+sets `truncated=true`. Malformed data, unsafe scalars, unknown fields, identity
+drift, non-projectable overflow, or envelope overflow fail closed rather than
+being rescued by arbitrary truncation.
+
+Raw yt-dlp dictionaries, formats, signed media/subtitle URLs, HTTP headers,
+warnings, exception strings, query, target URL, and temporary paths never
+cross stdout or enter provenance, receipts, audit, or stable errors.
+
+## Error Compatibility
+
+The worker freezes an operation-specific translation:
+
+```text
+not_found/authentication/authorization/rate_limit/transient/permanent
+  -> matching existing public failure class
+backend_unavailable/backend_incompatible
+  -> setup_required -> public permanent
+invalid/unsupported/capability/contract failures
+  -> public permanent
+deadline_exceeded/cancelled returned by the fork
+  -> unreachable contract failure -> public permanent
+```
+
+Real caller cancellation still propagates `CancelledError` in the parent and
+kills/reaps the process group. The migration does not inherit Bilibili's
+transient setup/contract mapping and does not create an additional retry.
 
 ## Semantic Delta
 
-There is no platform backend substitution, but the wrapper has explicit
-product semantics. Hermes owns:
+Hermes owns public validation and canonicalization, grants, fixed worker
+containment, deadlines and cancellation, retry policy, independent frame/result
+validation, product normalization, provenance, receipts, and audit.
 
-- the closed public search-limit mapping to `ytsearch<limit>`;
-- the requested-language mapping and default `zh-Hans -> zh -> en` preference;
-- manual-before-automatic caption choice for the selected language;
-- video identity checks, canonical watch URL derivation, and subtitle file
-  identity/containment/selection;
-- projection into the v1 schema and every process, frame, file, item, and
-  character bound.
+The owner fork owns only `read.video` platform execution: exact dependency and
+Deno validation, fixed yt-dlp options and call, raw result validation, error
+mapping, identity/date/integer normalization, and native projection. Search
+limit mapping, subtitle language preference, manual-before-automatic caption
+selection, VTT file containment, and those two backend projections remain in
+Hermes because search and subtitles are outside this migration.
 
-yt-dlp owns native extraction ordering, YouTube metadata and caption
-discovery, extractor behavior, subtitle download, and YouTube network
-semantics. Hermes does not add a YouTube endpoint or parse a YouTube response
-schema; it selects and bounds one result from yt-dlp's discovered data.
-
-The wrapper deliberately does not approximate comment pages by refetching and
-slicing larger prefixes. That would create new pagination semantics and growing
-work per page. It also does not treat subtitle absence as permission to invoke
-Whisper or another model.
+This split is intentional temporary migration state. It does not authorize new
+YouTube platform logic in Hermes or a broader Agent-Reach execution surface.
 
 ## Review Milestone
 
-Review this decision on any Agent-Reach, yt-dlp, yt-dlp-ejs, or Deno pin
-change; dependency closure or wheel hash change; packaged EJS source/hash
-change; JS runtime invocation change; extractor or subtitle-file behavior
-change; worker protocol change; backend identity change; or classification
-change. An Agent-Reach pin change reopens all 63 catalog operations.
+Review this decision on any official Agent-Reach base or owner-fork commit
+change; execution protocol, descriptor, schema, capability, signature, or
+RECORD change; yt-dlp, yt-dlp-ejs, or Deno pin/closure change; fixed options or
+API call change; EJS/runtime behavior change; worker/frame protocol change;
+backend identity, projection, error translation, or classification change. Any
+Agent-Reach pin movement reopens all 63 catalog operations.
 
-## Rollback
+## Rollout And Rollback
 
-Remove the three direct pins and the production worker/client, restore the
-three default `setup_required` markers, and remove the three activated review
-rows. Keep `read.comments` implemented but unbound and keep
-`transcribe.video` planned. No database, grant, wire, catalog, or stored-content
-migration is required.
+`9e744d0c33f9e6498cf66c2ea376a653000e9be4` is the audited feature candidate.
+GitHub rebase merge produced final integration
+`2a5829cf3b50bc435c647bfae4c050b1837d0235`; both commits resolve to tree
+`070e4507fde7e55eceaba4d29e6a459c4a972f60`. Hermes pins the final commit;
+protected immutable tag `hermes-reach-integration-0.1.0a3` preserves its
+reachability but is not a dependency selector.
+
+Before final fork integration, rollback restores exact pin
+`f195253d53befdb012d7aa575e732ec627ec29ac`, recoverable through immutable tag
+`hermes-reach-integration-0.1.0a2`, and restores `read.video` to its former
+exact-backend wrapper. Search, subtitles, comments, and transcription are
+unchanged. No database, grant, wire, Connector, receipt, audit, or stored-
+content migration is required.
+
+The active integration-tag ruleset prevents update and deletion of
+`hermes-reach-integration-0.1.0a3` with no bypass actor. Runtime authority
+remains the exact integration commit.

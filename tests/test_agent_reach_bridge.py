@@ -325,23 +325,59 @@ def test_execution_version_fails_before_any_agent_reach_import() -> None:
 def test_static_handshake_only_discovers_capabilities(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delitem(sys.modules, "agent_reach.execution.v1.rss", raising=False)
-    monkeypatch.delitem(
-        sys.modules,
+    runtime_and_backend_modules = (
+        "agent_reach.execution.v1.rss",
         "agent_reach.execution.v1.bilibili",
-        raising=False,
+        "agent_reach.execution.v1.youtube",
+        "yt_dlp",
+        "yt_dlp_ejs",
+        "deno",
     )
+    for module_name in runtime_and_backend_modules:
+        monkeypatch.delitem(sys.modules, module_name, raising=False)
 
     api = validate_agent_reach_execution_contract(direct_url_reader=_direct_url)
 
     assert api.execute is _execution_module().execute
     assert api.network_access_capability == "network_access.v1"
     assert api.network_access_type.__name__ == "NetworkAccessV1"
-    assert len(api.capabilities) == 6
-    assert "agent_reach.execution.v1.rss" not in sys.modules
-    assert "agent_reach.execution.v1.bilibili" not in sys.modules
+    assert len(api.capabilities) == 7
+    assert all(
+        module_name not in sys.modules for module_name in runtime_and_backend_modules
+    )
 
 
+def test_static_handshake_freezes_order_and_youtube_descriptor_schema() -> None:
+    api = validate_agent_reach_execution_contract(direct_url_reader=_direct_url)
+
+    assert tuple(
+        (capability.source, capability.operation) for capability in api.capabilities
+    ) == (
+        ("rss", "read.feed"),
+        ("rss", "browse.entries"),
+        ("bilibili", "search.videos"),
+        ("bilibili", "read.video"),
+        ("bilibili", "browse.hot"),
+        ("bilibili", "browse.rank"),
+        ("youtube", "read.video"),
+    )
+    youtube = api.capabilities[-1]
+    assert youtube.argument_schema_id == "youtube.read.video.arguments.v1"
+    assert youtube.result_schema_ids == ("youtube.video.v1",)
+    assert youtube.backend_id == "yt-dlp"
+    assert youtube.backend_version == "2026.7.4"
+    assert youtube.required_host_capabilities == ("network_access.v1",)
+    assert youtube.maximum_items == 1
+
+
+@pytest.mark.parametrize(
+    "relative",
+    [
+        "agent_reach/execution/v1/contracts.py",
+        "agent_reach/execution/v1/registry.py",
+        "agent_reach/execution/v1/youtube.py",
+    ],
+)
 @pytest.mark.parametrize(
     ("field", "value"),
     [
@@ -351,10 +387,10 @@ def test_static_handshake_only_discovers_capabilities(
     ],
 )
 def test_static_handshake_rejects_record_metadata_drift(
+    relative: str,
     field: str,
     value: object,
 ) -> None:
-    relative = "agent_reach/execution/v1/registry.py"
     imports: list[str] = []
     installation = bridge._default_installation_reader(AGENT_REACH_DISTRIBUTION)
     installed_file = installation.files[relative]
@@ -375,12 +411,23 @@ def test_static_handshake_rejects_record_metadata_drift(
     assert imports == []
 
 
-def test_static_handshake_rejects_record_content_drift(tmp_path: Path) -> None:
-    relative = "agent_reach/execution/v1/registry.py"
+@pytest.mark.parametrize(
+    "relative",
+    [
+        "agent_reach/execution/v1/contracts.py",
+        "agent_reach/execution/v1/registry.py",
+        "agent_reach/execution/v1/youtube.py",
+    ],
+)
+def test_static_handshake_rejects_record_content_drift(
+    tmp_path: Path,
+    relative: str,
+) -> None:
     imports: list[str] = []
     installation = bridge._default_installation_reader(AGENT_REACH_DISTRIBUTION)
     installed_file = installation.files[relative]
-    shadow = tmp_path / "registry.py"
+    shadow = tmp_path / relative
+    shadow.parent.mkdir(parents=True)
     shadow.write_bytes(b"x" * cast(int, installed_file.size))
     drifted_file = replace(installed_file, path=shadow)
     drifted_files = dict(installation.files)
@@ -480,6 +527,7 @@ def test_static_handshake_rejects_parent_initializer_content_drift_before_import
     [
         "agent_reach/execution/v1/rss.py",
         "agent_reach/execution/v1/bilibili.py",
+        "agent_reach/execution/v1/youtube.py",
     ],
 )
 def test_static_handshake_requires_every_fork_runtime_record(relative: str) -> None:
@@ -536,6 +584,32 @@ def test_static_handshake_rejects_every_descriptor_drift(
     capabilities = list(execution.list_capabilities())
     capabilities[1] = _drifted_capability(
         capabilities[1],
+        field,
+        drifted_value,
+    )
+    monkeypatch.setattr(registry, "_CAPABILITIES", tuple(capabilities))
+
+    with pytest.raises(AgentReachBridgeError, match="capability contract"):
+        validate_agent_reach_execution_contract(direct_url_reader=_direct_url)
+
+
+@pytest.mark.parametrize(
+    ("field", "drifted_value"),
+    [
+        ("argument_schema_id", "youtube.read.video.arguments.v2"),
+        ("result_schema_ids", ("youtube.video.v2",)),
+    ],
+)
+def test_static_handshake_rejects_youtube_descriptor_schema_drift(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    drifted_value: object,
+) -> None:
+    execution = _execution_module()
+    registry = _registry_module()
+    capabilities = list(execution.list_capabilities())
+    capabilities[-1] = _drifted_capability(
+        capabilities[-1],
         field,
         drifted_value,
     )
@@ -665,7 +739,7 @@ def test_static_handshake_rejects_module_origin_drift(
         validate_agent_reach_execution_contract(direct_url_reader=_direct_url)
 
 
-@pytest.mark.parametrize("runtime_module", ["rss", "bilibili"])
+@pytest.mark.parametrize("runtime_module", ["rss", "bilibili", "youtube"])
 def test_worker_handshake_rejects_runtime_module_origin_drift(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -700,6 +774,62 @@ def test_worker_handshake_rejects_bilibili_runtime_signature_drift(
         validate_agent_reach_execution_contract(
             direct_url_reader=_direct_url,
             runtime_module="bilibili",
+        )
+
+
+def test_worker_handshake_accepts_youtube_without_importing_backend(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for module_name in ("yt_dlp", "yt_dlp_ejs", "deno"):
+        monkeypatch.delitem(sys.modules, module_name, raising=False)
+
+    api = validate_agent_reach_execution_contract(
+        direct_url_reader=_direct_url,
+        runtime_module="youtube",
+    )
+
+    assert len(api.capabilities) == 7
+    assert all(
+        module_name not in sys.modules
+        for module_name in ("yt_dlp", "yt_dlp_ejs", "deno")
+    )
+
+
+def test_worker_handshake_rejects_youtube_runtime_signature_drift(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = import_module("agent_reach.execution.v1.youtube")
+
+    def execute_youtube(request: object) -> object:
+        return request
+
+    execute_youtube.__module__ = runtime.__name__
+    execute_youtube.__qualname__ = "execute_youtube"
+    monkeypatch.setattr(runtime, "execute_youtube", execute_youtube)
+
+    with pytest.raises(AgentReachBridgeError, match="capability contract"):
+        validate_agent_reach_execution_contract(
+            direct_url_reader=_direct_url,
+            runtime_module="youtube",
+        )
+
+
+def test_worker_handshake_rejects_youtube_runtime_function_origin_drift(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = import_module("agent_reach.execution.v1.youtube")
+
+    def execute_youtube(request: object, context: object) -> object:
+        return request, context
+
+    execute_youtube.__module__ = runtime.__name__
+    execute_youtube.__qualname__ = "execute_youtube"
+    monkeypatch.setattr(runtime, "execute_youtube", execute_youtube)
+
+    with pytest.raises(AgentReachBridgeError, match="capability contract"):
+        validate_agent_reach_execution_contract(
+            direct_url_reader=_direct_url,
+            runtime_module="youtube",
         )
 
 

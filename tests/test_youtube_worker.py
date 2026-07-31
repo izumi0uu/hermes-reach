@@ -13,6 +13,7 @@ from types import SimpleNamespace
 from typing import cast
 
 import pytest
+from agent_reach.execution import v1 as execution
 
 import hermes_reach.sources.youtube as youtube
 import hermes_reach.sources.youtube_worker as worker
@@ -48,6 +49,87 @@ def _projected_video() -> dict[str, object]:
         "upload_date": "2009-10-25",
         "url": VIDEO_URL,
     }
+
+
+def _fork_item_value(
+    *,
+    text: str = "Description",
+    video_id: str = VIDEO_ID,
+) -> dict[str, object]:
+    return {
+        "text": text,
+        "native_id": video_id,
+        "title": "Video title",
+        "url": f"https://www.youtube.com/watch?v={video_id}",
+        "author": "Channel",
+        "published_at": "2009-10-25",
+        "duration_seconds": 213,
+        "view_count": 42,
+        "comment_count": 7,
+    }
+
+
+def _fork_item(
+    *,
+    text: str = "Description",
+    video_id: str = VIDEO_ID,
+) -> execution.ExecutionItemV1:
+    return execution.ExecutionItemV1(
+        "youtube.video.v1",
+        _fork_item_value(text=text, video_id=video_id),
+    )
+
+
+def _fork_data(
+    *,
+    item: object | None = None,
+    truncated: object = False,
+) -> dict[str, object]:
+    return {
+        "item": _fork_item_value() if item is None else item,
+        "truncated": truncated,
+    }
+
+
+def _fork_success(
+    *,
+    item: execution.ExecutionItemV1 | None = None,
+    truncated: bool = False,
+) -> execution.ExecutionSuccessV1:
+    return execution.ExecutionSuccessV1(
+        "v1",
+        "youtube",
+        "read.video",
+        "yt-dlp",
+        "2026.7.4",
+        ((_fork_item() if item is None else item),),
+        truncated,
+        None,
+    )
+
+
+def _fork_failure(code: str) -> execution.ExecutionFailureV1:
+    return execution.ExecutionFailureV1(
+        "v1",
+        "youtube",
+        "read.video",
+        "yt-dlp",
+        "2026.7.4",
+        cast(execution.ExecutionErrorCodeV1, code),
+    )
+
+
+def _api(execute: Callable[[object, object], object]) -> SimpleNamespace:
+    return SimpleNamespace(
+        execution_request_type=execution.ExecutionRequestV1,
+        network_access_type=execution.NetworkAccessV1,
+        execution_limits_type=execution.ExecutionLimitsV1,
+        execution_context_type=execution.ExecutionContextV1,
+        execution_item_type=execution.ExecutionItemV1,
+        execution_success_type=execution.ExecutionSuccessV1,
+        execution_failure_type=execution.ExecutionFailureV1,
+        execute=execute,
+    )
 
 
 def _executable(tmp_path: Path) -> str:
@@ -105,28 +187,13 @@ def _version(name: str) -> str:
     return VERSIONS[name]
 
 
-@pytest.mark.parametrize(
-    ("worker_request", "response", "expected_call"),
-    [
-        (
-            worker.WorkerRequest("search.videos", query="private query", limit=2),
-            {"entries": [_backend_video()]},
-            ("ytsearch2:private query", False, "YoutubeSearch"),
-        ),
-        (
-            worker.WorkerRequest("read.video", url=VIDEO_URL),
-            _backend_video(),
-            (VIDEO_URL, False, "Youtube"),
-        ),
-    ],
-)
-def test_worker_uses_exact_structured_routes_and_closed_options(
+def test_search_worker_uses_exact_local_route_and_closed_options(
     tmp_path: Path,
-    worker_request: worker.WorkerRequest,
-    response: object,
-    expected_call: tuple[str, bool, str],
 ) -> None:
-    FakeDownloader.response = response
+    worker_request = worker.WorkerRequest(
+        "search.videos", query="private query", limit=2
+    )
+    FakeDownloader.response = {"entries": [_backend_video()]}
     plugin_dirs = SimpleNamespace(value=["ambient"])
 
     result = worker._invoke_backend(
@@ -138,13 +205,9 @@ def test_worker_uses_exact_structured_routes_and_closed_options(
     )
 
     instance = FakeDownloader.instances[0]
-    assert instance.calls == [expected_call]
+    assert instance.calls == [("ytsearch2:private query", False, "YoutubeSearch")]
     assert instance.closed is True
-    assert result == (
-        [_projected_video()]
-        if worker_request.operation == "search.videos"
-        else _projected_video()
-    )
+    assert result == [_projected_video()]
     assert plugin_dirs.value == []
     assert instance.params["cachedir"] is False
     assert instance.params["proxy"] == ""
@@ -157,6 +220,193 @@ def test_worker_uses_exact_structured_routes_and_closed_options(
     assert instance.params["js_runtimes"] == {
         "deno": {"path": str(tmp_path / "bin" / "deno")}
     }
+
+
+def test_read_video_uses_closed_fork_api_and_canonicalizes_encoded_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    encoded_url = "https://www.youtube.com/watch?v=dQw4w9WgXc%51"
+    request = worker._read_request(
+        io.BytesIO(worker.encode_request("read.video", url=encoded_url))
+    )
+    calls: list[tuple[object, object]] = []
+
+    def execute(execution_request: object, context: object) -> object:
+        calls.append((execution_request, context))
+        return _fork_success(truncated=True)
+
+    monkeypatch.setattr(
+        worker,
+        "_invoke_backend",
+        lambda *_args, **_kwargs: pytest.fail("read.video used local yt-dlp"),
+    )
+
+    value = worker._execute_request(
+        request,
+        execution_api_provider=lambda: _api(execute),
+    )
+
+    assert value == {
+        "protocol_version": "v1",
+        "operation": "read.video",
+        "ok": True,
+        "data": {"item": _fork_item_value(), "truncated": True},
+    }
+    assert len(calls) == 1
+    execution_request = cast(execution.ExecutionRequestV1, calls[0][0])
+    context = cast(execution.ExecutionContextV1, calls[0][1])
+    assert execution_request == execution.ExecutionRequestV1(
+        "v1",
+        "youtube",
+        "read.video",
+        {"url": VIDEO_URL},
+    )
+    assert len(context.host_capabilities) == 1
+    assert type(context.host_capabilities[0]) is execution.NetworkAccessV1
+    assert context.limits == execution.ExecutionLimitsV1(
+        maximum_items=1,
+        maximum_text_characters=worker.MAX_TEXT_CHARACTERS,
+    )
+
+
+def test_worker_uses_youtube_runtime_integrity_handshake(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    requested: list[object] = []
+    sentinel = cast(worker.AgentReachExecutionApi, object())
+
+    def validate(**kwargs: object) -> worker.AgentReachExecutionApi:
+        requested.append(kwargs)
+        return sentinel
+
+    monkeypatch.setattr(worker, "validate_agent_reach_execution_contract", validate)
+
+    assert worker._load_execution_api() is sentinel
+    assert requested == [{"runtime_module": "youtube"}]
+
+
+def test_search_and_subtitles_dispatch_only_to_local_backend(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[worker.WorkerRequest] = []
+
+    def invoke(request: worker.WorkerRequest, **_: object) -> object:
+        calls.append(request)
+        raise worker.YouTubeNotFoundError("closed local failure")
+
+    monkeypatch.setattr(worker, "_invoke_backend", invoke)
+
+    def provider() -> worker.AgentReachExecutionApi:
+        pytest.fail("local operation loaded fork runtime")
+
+    search = worker._execute_request(
+        worker.WorkerRequest("search.videos", query="query", limit=1),
+        execution_api_provider=provider,
+    )
+    subtitles = worker._execute_request(
+        worker.WorkerRequest("read.subtitles", url=VIDEO_URL, language="en"),
+        execution_api_provider=provider,
+    )
+
+    assert search["error"] == {"code": "not_found"}
+    assert subtitles["error"] == {"code": "not_found"}
+    assert [request.operation for request in calls] == [
+        "search.videos",
+        "read.subtitles",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("code", "expected"),
+    [
+        ("unsupported_protocol_version", "permanent"),
+        ("invalid_request", "permanent"),
+        ("unsupported_source", "permanent"),
+        ("unsupported_operation", "permanent"),
+        ("host_capability_missing", "permanent"),
+        ("invalid_input", "permanent"),
+        ("backend_unavailable", "setup_required"),
+        ("backend_incompatible", "setup_required"),
+        ("deadline_exceeded", "permanent"),
+        ("cancelled", "permanent"),
+        ("not_found", "not_found"),
+        ("authentication", "authentication"),
+        ("authorization", "authorization"),
+        ("rate_limit", "rate_limit"),
+        ("transient", "transient"),
+        ("permanent", "permanent"),
+        ("backend_contract_violation", "permanent"),
+    ],
+)
+def test_read_video_freezes_fork_error_mapping(code: str, expected: str) -> None:
+    value = worker._execute_request(
+        worker.WorkerRequest("read.video", url=VIDEO_URL),
+        execution_api_provider=lambda: _api(lambda *_: _fork_failure(code)),
+    )
+
+    assert value == {
+        "protocol_version": "v1",
+        "operation": "read.video",
+        "ok": False,
+        "error": {"code": expected},
+    }
+
+
+def test_read_video_redacts_integrity_and_execution_failures() -> None:
+    secret = "query=private /secret/path"
+
+    integrity_failure = worker._execute_request(
+        worker.WorkerRequest("read.video", url=VIDEO_URL),
+        execution_api_provider=lambda: (_ for _ in ()).throw(RuntimeError(secret)),
+    )
+    execution_failure = worker._execute_request(
+        worker.WorkerRequest("read.video", url=VIDEO_URL),
+        execution_api_provider=lambda: _api(
+            lambda *_: (_ for _ in ()).throw(RuntimeError(secret))
+        ),
+    )
+
+    assert integrity_failure["error"] == {"code": "setup_required"}
+    assert execution_failure["error"] == {"code": "permanent"}
+    assert secret not in json.dumps((integrity_failure, execution_failure))
+
+
+def test_read_video_rejects_fork_type_identity_and_item_drift() -> None:
+    other_video = _fork_success(item=_fork_item(video_id="aaaaaaaaaaa"))
+    tampered_item = _fork_success()
+    object.__setattr__(
+        tampered_item.items[0],
+        "fields",
+        {**_fork_item_value(), "private": "secret"},
+    )
+    partial = _fork_success()
+    object.__setattr__(partial, "partial_error_code", "transient")
+
+    for result in (object(), other_video, tampered_item, partial):
+        value = worker._execute_request(
+            worker.WorkerRequest("read.video", url=VIDEO_URL),
+            execution_api_provider=lambda result=result: _api(lambda *_: result),
+        )
+        assert value["error"] == {"code": "permanent"}
+
+
+def test_read_video_preserves_unicode_text_limit_and_truncation() -> None:
+    text = chr(0x1F600) * worker.MAX_TEXT_CHARACTERS
+    value = worker._execute_request(
+        worker.WorkerRequest("read.video", url=VIDEO_URL),
+        execution_api_provider=lambda: _api(
+            lambda *_: _fork_success(item=_fork_item(text=text), truncated=True)
+        ),
+    )
+    framed = worker._encode_frame(value, worker.MAX_OUTPUT_BYTES)
+
+    decoded = worker.decode_response(framed)
+
+    data = cast(dict[str, object], decoded["data"])
+    item = cast(dict[str, object], data["item"])
+    assert item["text"] == text
+    assert len(cast(str, item["text"])) == worker.MAX_TEXT_CHARACTERS
+    assert data["truncated"] is True
 
 
 def test_subtitle_route_prefers_manual_vtt_and_removes_the_file(
@@ -297,7 +547,9 @@ def test_subtitle_projection_rejects_final_symlink(tmp_path: Path) -> None:
     assert target.exists()
 
 
-def test_no_subtitles_and_dependency_drift_return_closed_errors(tmp_path: Path) -> None:
+def test_local_subtitle_and_search_dependency_failures_remain_closed(
+    tmp_path: Path,
+) -> None:
     FakeDownloader.response = {**_backend_video(), "requested_subtitles": None}
     plugin_dirs = SimpleNamespace(value=[])
     missing = worker._execute_request(
@@ -308,7 +560,7 @@ def test_no_subtitles_and_dependency_drift_return_closed_errors(tmp_path: Path) 
         tmp_path,
     )
     drifted = worker._execute_request(
-        worker.WorkerRequest("read.video", url=VIDEO_URL),
+        worker.WorkerRequest("search.videos", query="query", limit=1),
         cast(Callable[[str], object], _modules(plugin_dirs)),
         lambda name: "0" if name == "yt-dlp-ejs" else VERSIONS[name],
         str(tmp_path / "bin" / "python"),
@@ -319,16 +571,18 @@ def test_no_subtitles_and_dependency_drift_return_closed_errors(tmp_path: Path) 
     assert drifted["error"] == {"code": "setup_required"}
 
 
-def test_backend_projection_rejects_identity_date_and_progress_drift() -> None:
+def test_local_search_projection_rejects_identity_date_and_progress_drift() -> None:
     with pytest.raises(worker.YouTubeProtocolError):
         worker._project_video(
-            {**_backend_video(), "id": "aaaaaaaaaaa"},
-            expected_id=VIDEO_ID,
+            {**_backend_video(), "id": "invalid"},
+            expected_id=None,
+            search_result=True,
         )
     with pytest.raises(worker.YouTubeProtocolError):
         worker._project_video(
             {**_backend_video(), "upload_date": "20260231"},
-            expected_id=VIDEO_ID,
+            expected_id=None,
+            search_result=True,
         )
     with pytest.raises(worker.YouTubeProtocolError):
         worker._bounded_progress(
@@ -336,11 +590,12 @@ def test_backend_projection_rejects_identity_date_and_progress_drift() -> None:
         )
 
 
-def test_backend_projection_normalizes_integral_float_duration() -> None:
+def test_local_search_projection_normalizes_integral_float_duration() -> None:
     assert (
         worker._project_video(
             {**_backend_video(), "duration": 300.0},
-            expected_id=VIDEO_ID,
+            expected_id=None,
+            search_result=True,
         )["duration_seconds"]
         == 300
     )
@@ -348,29 +603,9 @@ def test_backend_projection_normalizes_integral_float_duration() -> None:
     with pytest.raises(worker.YouTubeProtocolError):
         worker._project_video(
             {**_backend_video(), "duration": 300.5},
-            expected_id=VIDEO_ID,
+            expected_id=None,
+            search_result=True,
         )
-
-
-def test_success_projection_failure_returns_closed_permanent_error(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        worker,
-        "_invoke_backend",
-        lambda *_args, **_kwargs: {"unexpected": True},
-    )
-
-    response = worker._execute_request(
-        worker.WorkerRequest("read.video", url=VIDEO_URL)
-    )
-
-    assert response == {
-        "protocol_version": "v1",
-        "operation": "read.video",
-        "ok": False,
-        "error": {"code": "permanent"},
-    }
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX executable shape checks")
@@ -430,6 +665,78 @@ def test_request_frames_reject_authority_fields_duplicate_keys_and_constants() -
     )
     with pytest.raises(worker.YouTubeProtocolError):
         worker.decode_response(len(invalid_number).to_bytes(4, "big") + invalid_number)
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        {**_fork_data(), "unknown": True},
+        {"truncated": False},
+        _fork_data(truncated=1),
+        _fork_data(item={**_fork_item_value(), "unknown": True}),
+        _fork_data(
+            item={
+                name: value
+                for name, value in _fork_item_value().items()
+                if name != "comment_count"
+            }
+        ),
+        _fork_data(item={**_fork_item_value(), "text": "value\x00hidden"}),
+        _fork_data(
+            item={
+                **_fork_item_value(),
+                "text": "x" * (worker.MAX_TEXT_CHARACTERS + 1),
+            }
+        ),
+        _fork_data(item={**_fork_item_value(), "title": (chr(0x1F600) * 256) + "x"}),
+        _fork_data(item={**_fork_item_value(), "author": ("中" * 341) + "文"}),
+        _fork_data(item={**_fork_item_value(), "native_id": "invalid"}),
+        _fork_data(
+            item={
+                **_fork_item_value(),
+                "url": "https://www.youtube.com/watch?v=aaaaaaaaaaa",
+            }
+        ),
+        _fork_data(item={**_fork_item_value(), "published_at": "1969-12-31"}),
+        _fork_data(item={**_fork_item_value(), "published_at": "2026-02-31"}),
+        _fork_data(item={**_fork_item_value(), "duration_seconds": True}),
+        _fork_data(item={**_fork_item_value(), "view_count": -1}),
+        _fork_data(
+            item={
+                **_fork_item_value(),
+                "comment_count": worker.MAX_NORMALIZED_INTEGER + 1,
+            }
+        ),
+    ],
+)
+def test_parent_decoder_revalidates_closed_read_video_frame(data: object) -> None:
+    frame = worker._encode_frame(
+        {
+            "protocol_version": "v1",
+            "operation": "read.video",
+            "ok": True,
+            "data": data,
+        },
+        worker.MAX_OUTPUT_BYTES,
+    )
+
+    with pytest.raises(worker.YouTubeProtocolError):
+        worker.decode_response(frame)
+
+
+def test_parent_decoder_rejects_fork_error_details() -> None:
+    frame = worker._encode_frame(
+        {
+            "protocol_version": "v1",
+            "operation": "read.video",
+            "ok": False,
+            "error": {"code": "not_found", "message": "private"},
+        },
+        worker.MAX_OUTPUT_BYTES,
+    )
+
+    with pytest.raises(worker.YouTubeProtocolError):
+        worker.decode_response(frame)
 
 
 def test_worker_json_bounds_cover_depth_items_nodes_and_strings() -> None:

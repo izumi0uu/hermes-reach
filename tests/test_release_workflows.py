@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import re
 import shlex
 import tomllib
@@ -26,6 +27,184 @@ EXPECTED_ACTIONS = {
     "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
     "astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9",
 }
+EXPECTED_EXECUTION_CAPABILITY_FIELDS = (
+    "protocol_version",
+    "source",
+    "operation",
+    "argument_schema_id",
+    "result_schema_ids",
+    "backend_id",
+    "backend_version",
+    "required_host_capabilities",
+    "maximum_items",
+    "maximum_document_bytes",
+    "maximum_metadata_bytes",
+    "maximum_output_bytes",
+    "maximum_content_type_characters",
+    "maximum_content_location_characters",
+    "maximum_text_characters",
+    "maximum_title_characters",
+    "maximum_url_characters",
+    "maximum_native_id_characters",
+    "maximum_author_characters",
+    "maximum_published_characters",
+)
+EXPECTED_EXECUTION_CAPABILITIES = (
+    (
+        "v1",
+        "rss",
+        "read.feed",
+        "rss.read.feed.arguments.v1",
+        ("rss.feed.v1",),
+        "feedparser",
+        "6.0.12",
+        ("fetched_document.v1",),
+        1,
+        1_048_576,
+        16_384,
+        1_048_576,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        2_048,
+        512,
+    ),
+    (
+        "v1",
+        "rss",
+        "browse.entries",
+        "rss.browse.entries.arguments.v1",
+        ("rss.entry.v1",),
+        "feedparser",
+        "6.0.12",
+        ("fetched_document.v1",),
+        21,
+        1_048_576,
+        16_384,
+        1_048_576,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        2_048,
+        512,
+    ),
+    (
+        "v1",
+        "bilibili",
+        "search.videos",
+        "bilibili.search.videos.arguments.v1",
+        ("bilibili.video.v1",),
+        "bili-cli",
+        "0.6.2",
+        ("network_access.v1",),
+        50,
+        1_048_576,
+        16_384,
+        524_288,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        1_024,
+        512,
+    ),
+    (
+        "v1",
+        "bilibili",
+        "read.video",
+        "bilibili.read.video.arguments.v1",
+        ("bilibili.video.v1",),
+        "bili-cli",
+        "0.6.2",
+        ("network_access.v1",),
+        1,
+        1_048_576,
+        16_384,
+        524_288,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        1_024,
+        512,
+    ),
+    (
+        "v1",
+        "bilibili",
+        "browse.hot",
+        "bilibili.browse.hot.arguments.v1",
+        ("bilibili.video.v1",),
+        "bili-cli",
+        "0.6.2",
+        ("network_access.v1",),
+        50,
+        1_048_576,
+        16_384,
+        524_288,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        1_024,
+        512,
+    ),
+    (
+        "v1",
+        "bilibili",
+        "browse.rank",
+        "bilibili.browse.rank.arguments.v1",
+        ("bilibili.video.v1",),
+        "bili-cli",
+        "0.6.2",
+        ("network_access.v1",),
+        50,
+        1_048_576,
+        16_384,
+        524_288,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        1_024,
+        512,
+    ),
+    (
+        "v1",
+        "youtube",
+        "read.video",
+        "youtube.read.video.arguments.v1",
+        ("youtube.video.v1",),
+        "yt-dlp",
+        "2026.7.4",
+        ("network_access.v1",),
+        1,
+        1_048_576,
+        16_384,
+        524_288,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        1_024,
+        512,
+    ),
+)
 
 
 def _workflow(name: str) -> dict[str, Any]:
@@ -85,6 +264,34 @@ def _step_names(workflow: dict[str, Any], job: str) -> list[str]:
     names = [step.get("name") for step in workflow["jobs"][job]["steps"]]
     assert all(isinstance(name, str) for name in names)
     return names
+
+
+def _python_heredoc(command: str) -> str:
+    prefix, marker, remainder = command.partition("<<'PY'\n")
+    assert marker and prefix.strip().endswith("-I -")
+    source, marker, trailer = remainder.rpartition("\nPY")
+    assert marker and not trailer.strip()
+    return source
+
+
+def _literal_assignment(source: str, name: str) -> object:
+    matches: list[ast.expr] = []
+    for statement in ast.parse(source).body:
+        if isinstance(statement, ast.Assign):
+            if any(
+                isinstance(target, ast.Name) and target.id == name
+                for target in statement.targets
+            ):
+                matches.append(statement.value)
+        elif (
+            isinstance(statement, ast.AnnAssign)
+            and isinstance(statement.target, ast.Name)
+            and statement.target.id == name
+            and statement.value is not None
+        ):
+            matches.append(statement.value)
+    assert len(matches) == 1
+    return ast.literal_eval(matches[0])
 
 
 def test_ci_and_release_call_one_local_quality_workflow() -> None:
@@ -275,8 +482,40 @@ def test_public_wheel_resolution_is_clean_three_version_and_pin_checked() -> Non
         "wheel-resolution",
         "Verify fork provenance and execution handshake",
     )["run"]
-    assert "validate_agent_reach_execution_contract()" in handshake
-    assert "load_agent_reach_catalog()" in handshake
+    handshake_source = _python_heredoc(handshake)
+    fixture_source = (ROOT / "tests" / "fixtures" / "hermes_plugin_probe.py").read_text(
+        encoding="utf-8"
+    )
+    assert (
+        'validate_agent_reach_execution_contract(runtime_module="youtube")'
+        in handshake_source
+    )
+    assert "load_agent_reach_catalog()" in handshake_source
+    assert "assert len(catalog.channels) == 15" in handshake_source
+    assert 'sys.modules.get("agent_reach.execution.v1.youtube")' in handshake_source
+    assert "tuple(signature(execute_youtube).parameters)" in handshake_source
+    assert "api.execute(" not in handshake_source
+    assert "execute_youtube(" not in handshake_source
+
+    assert (
+        _literal_assignment(handshake_source, "capability_fields")
+        == EXPECTED_EXECUTION_CAPABILITY_FIELDS
+    )
+    assert (
+        _literal_assignment(handshake_source, "expected_capabilities")
+        == EXPECTED_EXECUTION_CAPABILITIES
+    )
+    assert (
+        _literal_assignment(fixture_source, "EXPECTED_EXECUTION_CAPABILITY_FIELDS")
+        == EXPECTED_EXECUTION_CAPABILITY_FIELDS
+    )
+    assert (
+        _literal_assignment(fixture_source, "EXPECTED_EXECUTION_CAPABILITIES")
+        == EXPECTED_EXECUTION_CAPABILITIES
+    )
+    assert fixture_source.count("validate_agent_reach_execution_contract(") == 1
+    assert 'runtime_module="youtube"' in fixture_source
+    assert 'for module_name in ("yt_dlp", "yt_dlp_ejs", "deno")' in fixture_source
 
 
 def test_build_backend_matches_audited_release_generator() -> None:

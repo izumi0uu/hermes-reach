@@ -21,6 +21,8 @@ from hermes_reach.sources.registry import build_alpha1_registry
 ROOT = Path(__file__).resolve().parents[1]
 DECISIONS = ROOT / "docs" / "agent-reach-reuse-decisions.json"
 OPERATION_LEDGER = ROOT / "docs" / "agent-reach-operation-ledger.json"
+AGENT_REACH_AUDITED_CANDIDATE_COMMIT = "9e744d0c33f9e6498cf66c2ea376a653000e9be4"
+AGENT_REACH_INTEGRATION_TREE = "070e4507fde7e55eceaba4d29e6a459c4a972f60"
 REVIEW_FIELDS = frozenset(
     {
         "source",
@@ -64,12 +66,15 @@ P1_RSS_FORK_RUNTIME = frozenset(
     }
 )
 
-DIRECT_OWNER_FORK_RUNTIME = P1_RSS_FORK_RUNTIME | P2_BILIBILI_FORK_RUNTIME
+P2_YOUTUBE_FORK_RUNTIME = frozenset({("youtube", "read.video")})
+
+DIRECT_OWNER_FORK_RUNTIME = (
+    P1_RSS_FORK_RUNTIME | P2_BILIBILI_FORK_RUNTIME | P2_YOUTUBE_FORK_RUNTIME
+)
 
 EXACT_BACKEND_THIN_WRAPPER = frozenset(
     {
         ("youtube", "search.videos"),
-        ("youtube", "read.video"),
         ("youtube", "read.subtitles"),
         ("reddit", "read.post"),
     }
@@ -107,7 +112,6 @@ CLOSED_PLATFORM_EXCEPTIONS = frozenset(
 P2_YOUTUBE_EXACT_WRAPPERS = frozenset(
     {
         ("youtube", "search.videos"),
-        ("youtube", "read.video"),
         ("youtube", "read.subtitles"),
     }
 )
@@ -150,13 +154,13 @@ def test_frozen_reuse_audit_counts_are_review_visible() -> None:
 
     assert len(operations) == 63
     assert len(DIRECT_AGENT_REACH_RUNTIME) == 0
-    assert len(DIRECT_OWNER_FORK_RUNTIME) == 6
+    assert len(DIRECT_OWNER_FORK_RUNTIME) == 7
     assert EXACT_BACKEND_THIN_WRAPPER == (
         P2_YOUTUBE_EXACT_WRAPPERS | REDDIT_CONNECTOR_EXACT_WRAPPER
     )
-    assert len(EXACT_BACKEND_THIN_WRAPPER) == 4
+    assert len(EXACT_BACKEND_THIN_WRAPPER) == 3
     assert len(DIRECT_OWNER_FORK_RUNTIME | EXACT_BACKEND_THIN_WRAPPER) == 10
-    assert len(operations) - len(DIRECT_OWNER_FORK_RUNTIME) == 57
+    assert len(operations) - len(DIRECT_OWNER_FORK_RUNTIME) == 56
     assert IMPLEMENTED_BUT_UNBOUND == {("youtube", "read.comments")}
     assert HERMES_NATIVE_EQUIVALENT == frozenset()
     assert REACH_REIMPLEMENTATION == frozenset()
@@ -283,6 +287,16 @@ def test_operation_ledger_closes_every_catalog_operation_and_fork_contract() -> 
             "limits": {"maximum_items": maximum_items, **bilibili_limits},
         }
 
+    assert keyed[("youtube", "read.video")]["execution_contract"] == {
+        "protocol_version": AGENT_REACH_PROTOCOL_VERSION,
+        "argument_schema_id": "youtube.read.video.arguments.v1",
+        "result_schema_ids": ["youtube.video.v1"],
+        "backend_id": "yt-dlp",
+        "backend_version": YTDLP_VERSION,
+        "required_host_capabilities": ["network_access.v1"],
+        "limits": {"maximum_items": 1, **bilibili_limits},
+    }
+
 
 def test_governance_docs_preserve_worker_and_recovery_tag_boundaries() -> None:
     plugin_boundary = (ROOT / "docs" / "agent-reach-plugin-boundary.md").read_text(
@@ -297,10 +311,14 @@ def test_governance_docs_preserve_worker_and_recovery_tag_boundaries() -> None:
     bilibili_decision = (
         ROOT / "docs" / "agent-reach-decisions" / "bilibili-cli-0.6.2.md"
     ).read_text(encoding="utf-8")
+    youtube_decision = (
+        ROOT / "docs" / "agent-reach-decisions" / "youtube-yt-dlp-2026.7.4.md"
+    ).read_text(encoding="utf-8")
     normalized_plugin_boundary = " ".join(plugin_boundary.split())
     normalized_reuse_boundary = " ".join(reuse_boundary.split())
     normalized_rss_decision = " ".join(rss_decision.split())
     normalized_bilibili_decision = " ".join(bilibili_decision.split())
+    normalized_youtube_decision = " ".join(youtube_decision.split())
 
     assert "not a kernel-level syscall sandbox" in normalized_plugin_boundary
     assert "both parent package initializers" in normalized_plugin_boundary
@@ -309,10 +327,18 @@ def test_governance_docs_preserve_worker_and_recovery_tag_boundaries() -> None:
     assert "could attempt filesystem or network syscalls" in normalized_rss_decision
     assert "never a branch or tag" in normalized_plugin_boundary
     assert "not a dependency selector" in normalized_plugin_boundary
-    assert "Hermes never depends on that tag" in normalized_reuse_boundary
+    assert "Hermes never depends on either tag" in normalized_reuse_boundary
     assert "the exact commit pin is authoritative" in normalized_reuse_boundary
     assert "hermes-reach-integration-0.1.0a2" in normalized_plugin_boundary
     assert AGENT_REACH_FORK_COMMIT in normalized_plugin_boundary
+    assert AGENT_REACH_AUDITED_CANDIDATE_COMMIT in normalized_plugin_boundary
+    assert AGENT_REACH_INTEGRATION_TREE in normalized_plugin_boundary
+    assert "hermes-reach-integration-0.1.0a3" in normalized_plugin_boundary
+    assert "preserves final-integration reachability" in normalized_plugin_boundary
+    assert AGENT_REACH_AUDITED_CANDIDATE_COMMIT in normalized_youtube_decision
+    assert AGENT_REACH_INTEGRATION_TREE in normalized_youtube_decision
+    assert "hermes-reach-integration-0.1.0a3" in normalized_youtube_decision
+    assert "not a dependency selector" in normalized_youtube_decision
     assert "hermes-reach-integration-0.1.0a1" in normalized_bilibili_decision
     assert "806205fd106f4f4453624becfd773acce8418cf1" in (normalized_bilibili_decision)
 
@@ -363,6 +389,7 @@ def test_review_decisions_are_pinned_to_catalog_and_runtime_state() -> None:
         | P0_BLOCKED_NOT_IMPLEMENTED
         | P1_RSS_FORK_RUNTIME
         | P2_BILIBILI_FORK_RUNTIME
+        | P2_YOUTUBE_FORK_RUNTIME
         | P2_YOUTUBE_EXACT_WRAPPERS
     )
     assert {
@@ -384,7 +411,7 @@ def test_review_decisions_are_pinned_to_catalog_and_runtime_state() -> None:
         key
         for key, review in keyed.items()
         if review["classification"] == "direct_owner_fork_runtime"
-    } == (P1_RSS_FORK_RUNTIME | P2_BILIBILI_FORK_RUNTIME)
+    } == (P1_RSS_FORK_RUNTIME | P2_BILIBILI_FORK_RUNTIME | P2_YOUTUBE_FORK_RUNTIME)
     assert {
         key
         for key, review in keyed.items()
@@ -424,7 +451,7 @@ def test_review_decisions_are_pinned_to_catalog_and_runtime_state() -> None:
                 assert availability.backend_version == FEEDPARSER_VERSION
             if key in P2_BILIBILI_FORK_RUNTIME:
                 assert availability.backend_version == BILIBILI_CLI_VERSION
-            if key in P2_YOUTUBE_EXACT_WRAPPERS:
+            if key in (P2_YOUTUBE_FORK_RUNTIME | P2_YOUTUBE_EXACT_WRAPPERS):
                 assert availability.backend_version == YTDLP_VERSION
 
     default_local_bindings = DIRECT_OWNER_FORK_RUNTIME | (

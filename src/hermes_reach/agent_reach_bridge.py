@@ -21,7 +21,7 @@ AGENT_REACH_DISTRIBUTION: Final = "agent-reach"
 AGENT_REACH_VERSION: Final = "1.5.0"
 AGENT_REACH_OFFICIAL_BASE_COMMIT: Final = "b4d52c46c9113cb0f653d6df4cf71ebadf4930ac"
 AGENT_REACH_FORK_URL: Final = "https://github.com/izumi0uu/Agent-Reach.git"
-AGENT_REACH_FORK_COMMIT: Final = "f195253d53befdb012d7aa575e732ec627ec29ac"
+AGENT_REACH_FORK_COMMIT: Final = "2a5829cf3b50bc435c647bfae4c050b1837d0235"
 AGENT_REACH_PROTOCOL_VERSION: Final = "v1"
 AGENT_REACH_FETCHED_DOCUMENT_CAPABILITY: Final = "fetched_document.v1"
 AGENT_REACH_NETWORK_ACCESS_CAPABILITY: Final = "network_access.v1"
@@ -79,6 +79,7 @@ _EXECUTION_CONTRACTS_MODULE: Final = f"{_EXECUTION_MODULE}.contracts"
 _EXECUTION_REGISTRY_MODULE: Final = f"{_EXECUTION_MODULE}.registry"
 _EXECUTION_RSS_MODULE: Final = f"{_EXECUTION_MODULE}.rss"
 _EXECUTION_BILIBILI_MODULE: Final = f"{_EXECUTION_MODULE}.bilibili"
+_EXECUTION_YOUTUBE_MODULE: Final = f"{_EXECUTION_MODULE}.youtube"
 _EXECUTION_MODULE_FILES: Final[Mapping[str, tuple[str, str, int]]] = MappingProxyType(
     {
         _AGENT_REACH_MODULE: (
@@ -98,13 +99,13 @@ _EXECUTION_MODULE_FILES: Final[Mapping[str, tuple[str, str, int]]] = MappingProx
         ),
         _EXECUTION_CONTRACTS_MODULE: (
             "agent_reach/execution/v1/contracts.py",
-            "9ScUqK9G5xK54cdg4HE6Dod3vOCz6dFv9Ic7TrDkd2Q",
-            22_145,
+            "4CmSy_Glr3-wL-Q1rGkVg-Ky-MYdTcSLP-IieAKvCMQ",
+            25_031,
         ),
         _EXECUTION_REGISTRY_MODULE: (
             "agent_reach/execution/v1/registry.py",
-            "08PnS6C53urAGBaAhTbtZUZFz6JwLOJEhpUn8BsQdvI",
-            9_183,
+            "VsJESvtz2othXWGdnHwdyzbWBrjdOetbYAng6aKmYuA",
+            10_005,
         ),
         _EXECUTION_RSS_MODULE: (
             "agent_reach/execution/v1/rss.py",
@@ -115,6 +116,11 @@ _EXECUTION_MODULE_FILES: Final[Mapping[str, tuple[str, str, int]]] = MappingProx
             "agent_reach/execution/v1/bilibili.py",
             "YGvZLZvSl2SMC2CTejiNF9XtcyqG_D8GNqJN9vAgdNA",
             20_572,
+        ),
+        _EXECUTION_YOUTUBE_MODULE: (
+            "agent_reach/execution/v1/youtube.py",
+            "ZMyB-80bNrUW-IffoAmPvoSiKhbuT_UYhGRj_zzRLQQ",
+            13_984,
         ),
     }
 )
@@ -348,9 +354,31 @@ _EXPECTED_EXECUTION_CAPABILITIES: Final = (
         1_024,
         512,
     ),
+    (
+        "v1",
+        "youtube",
+        "read.video",
+        "youtube.read.video.arguments.v1",
+        ("youtube.video.v1",),
+        "yt-dlp",
+        "2026.7.4",
+        ("network_access.v1",),
+        1,
+        1_048_576,
+        16_384,
+        524_288,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        1_024,
+        512,
+    ),
 )
 HealthState = Literal["available", "setup_required", "degraded", "unavailable"]
-ExecutionRuntimeModule = Literal["rss", "bilibili"]
+ExecutionRuntimeModule = Literal["rss", "bilibili", "youtube"]
 
 
 class AgentReachBridgeError(RuntimeError):
@@ -566,7 +594,7 @@ def validate_agent_reach_execution_contract(
     except Exception:
         raise AgentReachBridgeError(_INCOMPATIBLE_PROVENANCE) from None
 
-    if runtime_module not in {None, "rss", "bilibili"}:
+    if runtime_module not in {None, "rss", "bilibili", "youtube"}:
         raise AgentReachBridgeError(_INCOMPATIBLE_EXECUTION_CONTRACT)
 
     _validate_execution_installation(installation)
@@ -848,19 +876,19 @@ def _validated_execution_api(
         _EXECUTION_REGISTRY_MODULE,
     )
     if runtime_module is not None:
-        runtime_module_name = (
-            _EXECUTION_RSS_MODULE
-            if runtime_module == "rss"
-            else _EXECUTION_BILIBILI_MODULE
-        )
-        runtime_function_name = (
-            "execute_rss" if runtime_module == "rss" else "execute_bilibili"
-        )
-        runtime_parameters = (
-            ("request", "context", "document")
-            if runtime_module == "rss"
-            else ("request", "context")
-        )
+        runtime_parameters: tuple[str, ...]
+        if runtime_module == "rss":
+            runtime_module_name = _EXECUTION_RSS_MODULE
+            runtime_function_name = "execute_rss"
+            runtime_parameters = ("request", "context", "document")
+        elif runtime_module == "bilibili":
+            runtime_module_name = _EXECUTION_BILIBILI_MODULE
+            runtime_function_name = "execute_bilibili"
+            runtime_parameters = ("request", "context")
+        else:
+            runtime_module_name = _EXECUTION_YOUTUBE_MODULE
+            runtime_function_name = "execute_youtube"
+            runtime_parameters = ("request", "context")
         validated_runtime_module = _validated_execution_module(
             module_loader(runtime_module_name),
             runtime_module_name,

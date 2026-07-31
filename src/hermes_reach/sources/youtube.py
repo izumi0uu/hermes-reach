@@ -9,10 +9,12 @@ import signal
 import sys
 import tempfile
 from collections.abc import Mapping
+from datetime import date
 from pathlib import Path
 from typing import Final, Protocol, cast
 
 from ..agent_reach_bridge import YTDLP_VERSION
+from ..normalized import MAX_NORMALIZED_INTEGER
 from ..runtime.adapters import (
     AdapterResult,
     FailureClass,
@@ -36,6 +38,23 @@ from .youtube_worker import (
 
 _WORKER_MODULE: Final = "hermes_reach.sources.youtube_worker"
 _VIDEO_ID: Final = re.compile(r"[A-Za-z0-9_-]{11}")
+_FORK_VIDEO_RESULT_FIELDS: Final = ("item", "truncated")
+_FORK_VIDEO_ITEM_FIELDS: Final = (
+    "text",
+    "native_id",
+    "title",
+    "url",
+    "author",
+    "published_at",
+    "duration_seconds",
+    "view_count",
+    "comment_count",
+)
+_MAX_FORK_TEXT_CHARACTERS: Final = 16_000
+_MAX_FORK_TITLE_CHARACTERS: Final = 4_096
+_MAX_FORK_TITLE_BYTES: Final = 1_024
+_MAX_FORK_AUTHOR_CHARACTERS: Final = 1_024
+_MAX_FORK_AUTHOR_BYTES: Final = 1_024
 _ERROR_CLASSES: Final[Mapping[str, FailureClass]] = {
     "setup_required": "permanent",
     "not_found": "not_found",
@@ -242,7 +261,7 @@ def _project_envelope(
             raise YouTubeProtocolError("backend_data_invalid")
         return AdapterResult(tuple(_video_item(item, search=True) for item in data))
     if operation == "read.video":
-        return AdapterResult((_video_item(data, search=False),))
+        return _fork_video_result(data)
     if operation == "read.subtitles":
         item, truncated = _subtitle_item(data)
         return AdapterResult((item,), truncated=truncated)
@@ -281,6 +300,56 @@ def _video_item(value: object, *, search: bool) -> RawItem:
             comment_count=_optional_integer(item.get("comment_count")),
             coverage="partial" if search else "complete",
         ),
+    )
+
+
+def _fork_video_result(value: object) -> AdapterResult:
+    result = _copied_closed_mapping(value, _FORK_VIDEO_RESULT_FIELDS)
+    truncated = result["truncated"]
+    if type(truncated) is not bool:
+        raise YouTubeProtocolError("backend_data_invalid")
+
+    item = _copied_closed_mapping(result["item"], _FORK_VIDEO_ITEM_FIELDS)
+    video_id = _fork_required_text(item["native_id"], maximum_characters=512)
+    video_url = item["url"]
+    expected_url = f"https://www.youtube.com/watch?v={video_id}"
+    if (
+        _VIDEO_ID.fullmatch(video_id) is None
+        or type(video_url) is not str
+        or video_url != expected_url
+    ):
+        raise YouTubeProtocolError("backend_identity_invalid")
+
+    return AdapterResult(
+        (
+            RawItem(
+                text=_fork_required_text(
+                    item["text"],
+                    maximum_characters=_MAX_FORK_TEXT_CHARACTERS,
+                ),
+                native_id=video_id,
+                kind="content",
+                title=_fork_required_text(
+                    item["title"],
+                    maximum_characters=_MAX_FORK_TITLE_CHARACTERS,
+                    maximum_bytes=_MAX_FORK_TITLE_BYTES,
+                ),
+                url=video_url,
+                author=_fork_optional_text(
+                    item["author"],
+                    maximum_characters=_MAX_FORK_AUTHOR_CHARACTERS,
+                    maximum_bytes=_MAX_FORK_AUTHOR_BYTES,
+                ),
+                published_at=_fork_published_at(item["published_at"]),
+                media=MediaMetadata(
+                    duration_seconds=_fork_optional_integer(item["duration_seconds"]),
+                    view_count=_fork_optional_integer(item["view_count"]),
+                    comment_count=_fork_optional_integer(item["comment_count"]),
+                    coverage="complete",
+                ),
+            ),
+        ),
+        truncated=truncated,
     )
 
 
@@ -400,6 +469,27 @@ def _closed_mapping(value: object, fields: set[str]) -> Mapping[str, object]:
     return cast(Mapping[str, object], value)
 
 
+def _copied_closed_mapping(
+    value: object,
+    fields: tuple[str, ...],
+) -> dict[str, object]:
+    try:
+        if not isinstance(value, Mapping):
+            raise YouTubeProtocolError("backend_data_invalid")
+        names = tuple(value)
+        if (
+            len(names) != len(fields)
+            or set(names) != set(fields)
+            or any(type(name) is not str for name in names)
+        ):
+            raise YouTubeProtocolError("backend_data_invalid")
+        return {name: value[name] for name in fields}
+    except YouTubeProtocolError:
+        raise
+    except Exception:
+        raise YouTubeProtocolError("backend_data_invalid") from None
+
+
 def _video_identity(item: Mapping[str, object]) -> tuple[str, str]:
     video_id = _required_text(item.get("id"))
     expected_url = f"https://www.youtube.com/watch?v={video_id}"
@@ -435,3 +525,70 @@ def _optional_integer(value: object) -> int | None:
     if isinstance(value, bool) or not isinstance(value, int):
         raise YouTubeProtocolError("backend_integer_invalid")
     return value
+
+
+def _fork_optional_text(
+    value: object,
+    *,
+    maximum_characters: int,
+    maximum_bytes: int | None = None,
+) -> str | None:
+    if value is None:
+        return None
+    if (
+        type(value) is not str
+        or not 0 < len(value) <= maximum_characters
+        or _contains_invalid_scalar(value)
+    ):
+        raise YouTubeProtocolError("backend_text_invalid")
+    try:
+        encoded_size = len(value.encode("utf-8", errors="strict"))
+    except UnicodeError:
+        raise YouTubeProtocolError("backend_text_invalid") from None
+    if maximum_bytes is not None and encoded_size > maximum_bytes:
+        raise YouTubeProtocolError("backend_text_invalid")
+    return value
+
+
+def _fork_required_text(
+    value: object,
+    *,
+    maximum_characters: int,
+    maximum_bytes: int | None = None,
+) -> str:
+    text = _fork_optional_text(
+        value,
+        maximum_characters=maximum_characters,
+        maximum_bytes=maximum_bytes,
+    )
+    if text is None:
+        raise YouTubeProtocolError("backend_text_invalid")
+    return text
+
+
+def _fork_published_at(value: object) -> str | None:
+    if value is None:
+        return None
+    if type(value) is not str or len(value) != 10 or not value.isascii():
+        raise YouTubeProtocolError("backend_date_invalid")
+    try:
+        parsed = date.fromisoformat(value)
+    except ValueError:
+        raise YouTubeProtocolError("backend_date_invalid") from None
+    if parsed.year < 1970 or parsed.isoformat() != value:
+        raise YouTubeProtocolError("backend_date_invalid")
+    return value
+
+
+def _fork_optional_integer(value: object) -> int | None:
+    if value is None:
+        return None
+    if type(value) is not int or not 0 <= value <= MAX_NORMALIZED_INTEGER:
+        raise YouTubeProtocolError("backend_integer_invalid")
+    return value
+
+
+def _contains_invalid_scalar(value: str) -> bool:
+    return any(
+        character == "\x00" or 0xD800 <= ord(character) <= 0xDFFF for character in value
+    )

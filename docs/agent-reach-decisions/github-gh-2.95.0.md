@@ -17,10 +17,12 @@ as historical evidence.
 
 Official Agent-Reach `1.5.0` at base commit
 `b4d52c46c9113cb0f653d6df4cf71ebadf4930ac`, carried by owner-fork
-integration commit `f195253d53befdb012d7aa575e732ec627ec29ac`, selects GitHub CLI
-command families for repository and code search, repository/issue/pull-request
-reads, Actions, and releases. The reviewed local executable was `gh 2.95.0`.
-The fork execution v1 ledger contains no GitHub capability.
+original integration commit `f195253d53befdb012d7aa575e732ec627ec29ac` and
+revalidated at current integration
+`2a5829cf3b50bc435c647bfae4c050b1837d0235`, selects GitHub CLI command
+families for repository and code search, repository/issue/pull-request reads,
+Actions, and releases. The reviewed local executable was `gh 2.95.0`. The fork
+execution v1 ledger still contains no GitHub capability.
 
 Hermetic tests with GitHub configuration and token variables removed showed
 that both `gh search` and `gh api` exit with authentication required. Ambient

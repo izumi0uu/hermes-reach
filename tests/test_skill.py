@@ -50,7 +50,7 @@ def test_safe_skill_exposes_only_the_five_semantic_reach_tools() -> None:
 
 
 def test_safe_skill_contains_no_upstream_execution_escape_hatches() -> None:
-    text = _skill_text().lower()
+    text = " ".join(_skill_text().lower().split())
     forbidden_fragments = (
         "```",
         "http://",
@@ -73,11 +73,17 @@ def test_safe_skill_contains_no_upstream_execution_escape_hatches() -> None:
     for fragment in forbidden_fragments:
         assert fragment not in text
     assert "b4d52c46c9113cb0f653d6df4cf71ebadf4930ac" in text
-    assert "f195253d53befdb012d7aa575e732ec627ec29ac" in text
+    assert "2a5829cf3b50bc435c647bfae4c050b1837d0235" in text
+    assert "f195253d53befdb012d7aa575e732ec627ec29ac" not in text
     assert "rss:read.feed" in text
     assert "rss:browse.entries" in text
     assert "bilibili:search.videos" in text
     assert "bilibili:read.video" in text
     assert "bilibili:browse.hot" in text
     assert "bilibili:browse.rank" in text
-    assert "other 57 catalog operations" in text
+    assert "youtube:read.video" in text
+    assert "youtube:search.videos" in text
+    assert "youtube:read.subtitles" in text
+    assert "seven direct owner-fork operations" in text
+    assert "three exact-backend thin wrappers" in text
+    assert "other 56 catalog operations" in text

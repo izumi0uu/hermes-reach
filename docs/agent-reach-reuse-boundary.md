@@ -1,8 +1,8 @@
 # Agent-Reach reuse boundary
 
-Status: frozen on 2026-07-30 against official Agent-Reach `1.5.0` base
-`b4d52c46c9113cb0f653d6df4cf71ebadf4930ac` and owner-fork integration
-commit `f195253d53befdb012d7aa575e732ec627ec29ac`.
+Status: frozen on 2026-07-31 against official Agent-Reach `1.5.0` base
+`b4d52c46c9113cb0f653d6df4cf71ebadf4930ac` and reviewed owner-fork integration
+commit `2a5829cf3b50bc435c647bfae4c050b1837d0235`.
 
 This document is the merge gate for source execution work. The canonical
 plugin architecture and terminology are defined in
@@ -22,7 +22,8 @@ Hermes
 
 Official Agent-Reach owns the reviewed 15-channel baseline and backend-routing
 evidence. The owner fork adds a narrow `execution.v1` boundary and currently
-owns exactly two RSS and four Bilibili operations. Hermes Reach owns
+owns exactly two RSS, four Bilibili, and one YouTube read-video operation.
+Hermes Reach owns
 protocol admission, authorization, host capabilities, safe invocation,
 isolation, normalization, bounds, redaction, receipts, availability, audit,
 and rollback.
@@ -30,7 +31,7 @@ and rollback.
 Official Agent-Reach 1.5.0 does not expose a unified operation execution API,
 so direct official runtime calls remain zero. That fact does not authorize a
 Hermes platform runtime. The reviewed owner fork is additive and operation
-scoped; its six calls do not imply execution support for the other 57 Hermes
+scoped; its seven calls do not imply execution support for the other 56 Hermes
 catalog rows.
 
 The following work stays fully inside Hermes Reach and is not platform drift:
@@ -72,7 +73,7 @@ official 1.5.0 supplies the 15-channel registry and backend routes instead.
 | --- | --- | --- | --- |
 | GitHub | 8 not implemented | `gh` CLI | Planned/unavailable; former anonymous REST exception disabled |
 | Twitter/X | 6 not implemented | `twitter-cli`, OpenCLI, `bird` | Planned/unavailable |
-| YouTube | 3 exact backend thin wrappers, 1 implemented but unbound, 1 not implemented | `yt-dlp`; transcription pipeline | Search, metadata, and subtitles use pinned yt-dlp; comments remain setup-required; transcription planned |
+| YouTube | 1 direct owner-fork runtime call, 2 exact backend thin wrappers, 1 implemented but unbound, 1 not implemented | fork `execution.v1` over `network_access.v1`; `yt-dlp`; transcription pipeline | Read-video uses fork-owned fixed yt-dlp execution; search/subtitles remain pinned wrappers; comments remain setup-required; transcription planned |
 | Reddit | 1 exact backend thin wrapper, 6 not implemented | OpenCLI, then `rdt-cli` | Fixed OpenCLI `read.post` is Connector-only; other operations planned |
 | Facebook | 4 not implemented | OpenCLI | Planned/unavailable |
 | Instagram | 4 not implemented | OpenCLI | Planned/unavailable |
@@ -93,13 +94,13 @@ The frozen accounting is:
 | Hermes catalog operations | 63 |
 | Catalog implemented | 11 |
 | Catalog planned | 52 |
-| Direct owner-fork runtime calls | 6 |
-| Exact-backend thin wrappers | 4 |
+| Direct owner-fork runtime calls | 7 |
+| Exact-backend thin wrappers | 3 |
 | Concrete executors | 10 |
 | Default-local bindings | 9 |
 | Connector-only concrete bindings | 1 |
 | Implemented but unbound contracts | 1 |
-| Operations outside fork execution | 57 |
+| Operations outside fork execution | 56 |
 | Hermes-native equivalents | 0 |
 | Reach reimplementations | 0 |
 | Direct official Agent-Reach runtime calls | 0 |
@@ -110,7 +111,8 @@ The ten concrete executors are:
 | --- | --- | --- | --- |
 | Default-local | RSS | Direct owner-fork runtime | `read.feed`, `browse.entries` |
 | Default-local | Bilibili | Direct owner-fork runtime | `search.videos`, `read.video`, `browse.hot`, `browse.rank` |
-| Default-local | YouTube | Exact backend thin wrapper | `search.videos`, `read.video`, `read.subtitles` |
+| Default-local | YouTube | Direct owner-fork runtime | `read.video` |
+| Default-local | YouTube | Exact backend thin wrapper | `search.videos`, `read.subtitles` |
 | Connector-only | Reddit | Exact backend thin wrapper | `read.post` |
 
 `youtube:read.comments` is catalog-implemented but is not one of those ten:
@@ -164,15 +166,21 @@ retry, public normalization, receipts, and audit. Neither layer exposes login,
 Cookie import, account, download, mutation, or fallback authority. See
 [Bilibili CLI 0.6.2](agent-reach-decisions/bilibili-cli-0.6.2.md).
 
-### YouTube exact backend
+### YouTube mixed execution ownership
 
-`search.videos`, `read.video`, and `read.subtitles` use
-`yt-dlp==2026.7.4`, `yt-dlp-ejs==0.8.0`, and `deno==2.8.3` in a fixed isolated
-worker. Hermes owns the closed public limit/language mapping, default
-`zh-Hans -> zh -> en` preference, manual-before-automatic choice, identity and
-file checks, projection, and bounds. yt-dlp owns native extraction ordering,
-metadata and caption discovery, download behavior, and YouTube network
-semantics. See
+`read.video` uses the fork's closed `execution.v1` API with a fieldless
+`network_access.v1` marker inside the fixed isolated YouTube worker. The fork
+owns exact yt-dlp/EJS/Deno validation, fixed metadata extraction, raw result
+validation, error mapping, identity/date/integer normalization, and
+YouTube-native projection. Hermes owns public validation, process containment,
+timeout/cancellation, retry policy, independent result validation, product
+normalization, receipts, and audit.
+
+`search.videos` and `read.subtitles` remain exact wrappers around
+`yt-dlp==2026.7.4`, `yt-dlp-ejs==0.8.0`, and `deno==2.8.3` in the same fixed
+worker. Hermes retains the closed public limit/language mapping, default
+`zh-Hans -> zh -> en` preference, manual-before-automatic choice, subtitle file
+checks, and those two projections until separate migrations. See
 [YouTube yt-dlp 2026.7.4](agent-reach-decisions/youtube-yt-dlp-2026.7.4.md).
 
 ### Reddit Connector exact backend
@@ -202,6 +210,9 @@ Strict closure reduced platform-execution drift from 13 of 23 concrete paths
 to zero of 10. Moving RSS and Bilibili invocation/projection into the owner
 fork then raised structured Agent-Reach execution reuse from zero to six
 operations.
+Moving only YouTube `read.video` into the same closed owner-fork runtime then
+raised the current structured reuse count from six to seven without changing
+the two remaining YouTube wrappers.
 The remaining Hermes code is plugin lifecycle, the v1 product contract,
 security controls, host capabilities, normalization, Connector, secrets,
 receipts, and audit, not a copied platform runtime.
@@ -217,9 +228,11 @@ receipts, and audit, not a copied platform runtime.
    or authority in the fork.
 4. Fork `main` remains a fast-forward mirror of official `main`; execution work
    is rebased onto a recorded official base and consumed by exact commit.
-5. Protect `hermes-reach-integration-0.1.0a2` as the immutable reachability and
-   recovery reference for the current exact commit. Hermes never depends on
-   that tag; the exact commit pin is authoritative.
+5. Keep `hermes-reach-integration-0.1.0a2` as the immutable rollback reference
+   for `f195253d53befdb012d7aa575e732ec627ec29ac`, and keep
+   `hermes-reach-integration-0.1.0a3` as the protected immutable reachability
+   reference for the current integration. Hermes never depends on either tag;
+   the exact commit pin is authoritative.
 6. Migrated platform invocation and projection must be removed from Hermes so
    there is one platform-semantics owner.
 7. An unbound contract remains `setup_required` or unavailable and is never
@@ -235,13 +248,15 @@ The complete machine-readable classifications live in
 [agent-reach-operation-ledger.json](agent-reach-operation-ledger.json). The
 smaller [agent-reach-reuse-decisions.json](agent-reach-reuse-decisions.json)
 contains 24 detailed P0/P1/P2 reviews: 15 not-implemented decisions, six direct
-owner-fork RSS/Bilibili decisions, and three default-local YouTube
-exact-backend wrappers. The
+owner-fork RSS/Bilibili decisions, one direct owner-fork YouTube read-video
+decision, and two default-local YouTube exact-backend wrappers. The
 Connector-only Reddit wrapper and implemented-but-unbound YouTube comments
 contract remain in the complete ledger and their dedicated tests.
 
-Rollback restores the previous Hermes release and exact pin
-`806205fd106f4f4453624becfd773acce8418cf1`, whose immutable recovery reference
-is `hermes-reach-integration-0.1.0a1`. It reactivates the previous Bilibili
-thin wrapper without any public protocol, grant, Connector, database, receipt,
-or audit migration. Neither recovery tag may be moved or deleted.
+Rollback of the current migration restores the previous Hermes release and
+exact pin `f195253d53befdb012d7aa575e732ec627ec29ac`, whose immutable recovery
+reference is `hermes-reach-integration-0.1.0a2`. It restores only YouTube
+read-video to its previous exact wrapper. The earlier Bilibili rollback pin
+`806205fd106f4f4453624becfd773acce8418cf1` remains reachable through
+`hermes-reach-integration-0.1.0a1`. No public protocol, grant, Connector,
+database, receipt, or audit migration is needed; neither tag may move.

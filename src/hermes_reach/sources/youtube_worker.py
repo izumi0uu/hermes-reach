@@ -13,7 +13,7 @@ from datetime import date
 from importlib import import_module
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import BinaryIO, Final, Literal, cast
+from typing import BinaryIO, Final, Literal, Protocol, cast
 from urllib.parse import parse_qs, urlsplit
 
 from ..agent_reach_bridge import (
@@ -23,6 +23,8 @@ from ..agent_reach_bridge import (
     YTDLP_EJS_DISTRIBUTION,
     YTDLP_EJS_VERSION,
     YTDLP_VERSION,
+    AgentReachExecutionApi,
+    validate_agent_reach_execution_contract,
 )
 
 WorkerOperation = Literal["search.videos", "read.video", "read.subtitles"]
@@ -38,9 +40,16 @@ MAX_QUERY_CHARACTERS: Final = 4096
 MAX_URL_CHARACTERS: Final = 128
 MAX_LANGUAGE_CHARACTERS: Final = 32
 MAX_LIMIT: Final = 50
+MAX_TEXT_CHARACTERS: Final = 16_000
+MAX_TITLE_CHARACTERS: Final = 4_096
+MAX_AUTHOR_CHARACTERS: Final = 1_024
 MAX_SUBTITLE_FILE_BYTES: Final = 512 * 1024
 MAX_SUBTITLE_TEXT_BYTES: Final = 256 * 1024
 MAX_NORMALIZED_INTEGER: Final = (1 << 53) - 1
+EXPECTED_SOURCE: Final = "youtube"
+EXPECTED_BACKEND_ID: Final = "yt-dlp"
+EXPECTED_BACKEND_VERSION: Final = YTDLP_VERSION
+VIDEO_SCHEMA: Final = "youtube.video.v1"
 DEFAULT_SUBTITLE_LANGUAGES: Final = ("zh-Hans", "zh", "en")
 _VIDEO_ID: Final = re.compile(r"[A-Za-z0-9_-]{11}")
 _LANGUAGE: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,31}")
@@ -54,6 +63,38 @@ _ERROR_CODES: Final = frozenset(
         "transient",
         "permanent",
     }
+)
+_FORK_ERROR_CODES: Final = frozenset(
+    {
+        "unsupported_protocol_version",
+        "invalid_request",
+        "unsupported_source",
+        "unsupported_operation",
+        "host_capability_missing",
+        "backend_unavailable",
+        "backend_incompatible",
+        "deadline_exceeded",
+        "cancelled",
+        "invalid_input",
+        "not_found",
+        "authentication",
+        "authorization",
+        "rate_limit",
+        "transient",
+        "permanent",
+        "backend_contract_violation",
+    }
+)
+_FORK_VIDEO_ITEM_FIELDS: Final = (
+    "text",
+    "native_id",
+    "title",
+    "url",
+    "author",
+    "published_at",
+    "duration_seconds",
+    "view_count",
+    "comment_count",
 )
 _FIXED_USER_AGENT: Final = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -82,6 +123,34 @@ class WorkerRequest:
     language: str | None = None
 
 
+class _ExecutionItem(Protocol):
+    schema_id: object
+    fields: object
+
+
+class _ExecutionSuccess(Protocol):
+    protocol_version: object
+    source: object
+    operation: object
+    backend_id: object
+    backend_version: object
+    items: object
+    truncated: object
+    partial_error_code: object
+
+
+class _ExecutionFailure(Protocol):
+    protocol_version: object
+    source: object
+    operation: object
+    backend_id: object
+    backend_version: object
+    error_code: object
+
+
+ExecutionApiProvider = Callable[[], AgentReachExecutionApi]
+
+
 class _NullLogger:
     def debug(self, _message: object) -> None:
         return None
@@ -91,6 +160,10 @@ class _NullLogger:
 
     def error(self, _message: object) -> None:
         return None
+
+
+def _load_execution_api() -> AgentReachExecutionApi:
+    return validate_agent_reach_execution_contract(runtime_module="youtube")
 
 
 def encode_request(
@@ -196,6 +269,8 @@ def _invoke_backend(
     executable: str = sys.executable,
     root: Path | None = None,
 ) -> object:
+    if request.operation == "read.video":
+        raise YouTubeProtocolError("worker_request_invalid")
     _require_versions(version_reader)
     deno = _deno_executable(executable)
     private_root = (root if root is not None else Path.cwd()).absolute()
@@ -259,13 +334,6 @@ def _invoke_backend(
             return _project_search(result, request.limit)
         if request.url is None:
             raise YouTubeProtocolError("worker_request_invalid")
-        if request.operation == "read.video":
-            result = cast(Callable[..., object], extract_info)(
-                request.url,
-                download=False,
-                ie_key="Youtube",
-            )
-            return _project_video(result, expected_id=_video_id_from_url(request.url))
         result = cast(Callable[..., object], extract_info)(
             request.url,
             download=True,
@@ -510,7 +578,14 @@ def _execute_request(
     version_reader: Callable[[str], str] = version,
     executable: str = sys.executable,
     root: Path | None = None,
+    *,
+    execution_api_provider: ExecutionApiProvider | None = None,
 ) -> Mapping[str, object]:
+    if request.operation == "read.video":
+        return _execute_fork_read_video(
+            request,
+            execution_api_provider=execution_api_provider,
+        )
     try:
         data = _invoke_backend(
             request,
@@ -528,6 +603,152 @@ def _execute_request(
         return _error_response(request.operation, "permanent")
     except Exception as error:
         return _error_response(request.operation, _backend_error_code(error))
+
+
+def _execute_fork_read_video(
+    request: WorkerRequest,
+    *,
+    execution_api_provider: ExecutionApiProvider | None = None,
+) -> Mapping[str, object]:
+    provider = (
+        execution_api_provider
+        if execution_api_provider is not None
+        else _load_execution_api
+    )
+    try:
+        api = provider()
+    except Exception:
+        return _error_response("read.video", "setup_required")
+
+    try:
+        if request.url is None:
+            raise YouTubeProtocolError("worker_request_invalid")
+        expected_id = _video_id_from_url(request.url)
+        canonical_url = _canonical_url(expected_id)
+        request_factory = cast(Callable[..., object], api.execution_request_type)
+        network_factory = cast(Callable[..., object], api.network_access_type)
+        limits_factory = cast(Callable[..., object], api.execution_limits_type)
+        context_factory = cast(Callable[..., object], api.execution_context_type)
+        execution_request = request_factory(
+            PROTOCOL_VERSION,
+            EXPECTED_SOURCE,
+            "read.video",
+            {"url": canonical_url},
+        )
+        network_access = network_factory()
+        limits = limits_factory(
+            maximum_items=1,
+            maximum_text_characters=MAX_TEXT_CHARACTERS,
+        )
+        context = context_factory((network_access,), limits=limits)
+        result = api.execute(execution_request, context)
+
+        if type(result) is api.execution_success_type:
+            success = cast(_ExecutionSuccess, result)
+            items = success.items
+            if (
+                not _exact_text(success.protocol_version, PROTOCOL_VERSION)
+                or not _exact_text(success.source, EXPECTED_SOURCE)
+                or not _exact_text(success.operation, "read.video")
+                or not _exact_text(success.backend_id, EXPECTED_BACKEND_ID)
+                or not _exact_text(
+                    success.backend_version,
+                    EXPECTED_BACKEND_VERSION,
+                )
+                or success.partial_error_code is not None
+                or type(success.truncated) is not bool
+                or type(items) is not tuple
+                or len(items) != 1
+                or type(items[0]) is not api.execution_item_type
+            ):
+                return _error_response("read.video", "permanent")
+            item = cast(_ExecutionItem, items[0])
+            if not _exact_text(item.schema_id, VIDEO_SCHEMA):
+                return _error_response("read.video", "permanent")
+            projected = _project_fork_video_fields(
+                item.fields,
+                expected_id=expected_id,
+            )
+            return _success_response(
+                "read.video",
+                {"item": projected, "truncated": success.truncated},
+            )
+
+        if type(result) is api.execution_failure_type:
+            failure = cast(_ExecutionFailure, result)
+            error_code = failure.error_code
+            if (
+                _exact_text(failure.protocol_version, PROTOCOL_VERSION)
+                and _exact_text(failure.source, EXPECTED_SOURCE)
+                and _exact_text(failure.operation, "read.video")
+                and _exact_text(failure.backend_id, EXPECTED_BACKEND_ID)
+                and _exact_text(
+                    failure.backend_version,
+                    EXPECTED_BACKEND_VERSION,
+                )
+                and type(error_code) is str
+                and error_code in _FORK_ERROR_CODES
+            ):
+                return _error_response(
+                    "read.video",
+                    _translate_fork_error(error_code),
+                )
+    except Exception:
+        return _error_response("read.video", "permanent")
+    return _error_response("read.video", "permanent")
+
+
+def _translate_fork_error(error_code: str) -> str:
+    if error_code in {"backend_unavailable", "backend_incompatible"}:
+        return "setup_required"
+    if error_code in {
+        "not_found",
+        "authentication",
+        "authorization",
+        "rate_limit",
+        "transient",
+        "permanent",
+    }:
+        return error_code
+    return "permanent"
+
+
+def _project_fork_video_fields(
+    value: object,
+    *,
+    expected_id: str,
+) -> dict[str, object]:
+    item = _copied_closed_mapping(value, _FORK_VIDEO_ITEM_FIELDS)
+    native_id = _fork_video_id(item["native_id"])
+    url = item["url"]
+    if (
+        native_id != expected_id
+        or type(url) is not str
+        or url != _canonical_url(native_id)
+    ):
+        raise YouTubeProtocolError("backend_identity_invalid")
+    return {
+        "text": _fork_required_text(
+            item["text"],
+            maximum_characters=MAX_TEXT_CHARACTERS,
+        ),
+        "native_id": native_id,
+        "title": _fork_required_text(
+            item["title"],
+            maximum_characters=MAX_TITLE_CHARACTERS,
+            maximum_bytes=1024,
+        ),
+        "url": _canonical_url(native_id),
+        "author": _fork_optional_text(
+            item["author"],
+            maximum_characters=MAX_AUTHOR_CHARACTERS,
+            maximum_bytes=1024,
+        ),
+        "published_at": _fork_published_at(item["published_at"]),
+        "duration_seconds": _fork_optional_integer(item["duration_seconds"]),
+        "view_count": _fork_optional_integer(item["view_count"]),
+        "comment_count": _fork_optional_integer(item["comment_count"]),
+    }
 
 
 def _backend_error_code(error: Exception) -> str:
@@ -633,7 +854,7 @@ def _validated_backend_envelope(value: object) -> Mapping[str, object]:
         for item in data:
             _validated_video_data(item)
     elif operation == "read.video":
-        _validated_video_data(data)
+        _validated_fork_video_data(data)
     else:
         _validated_subtitle_data(data)
     return cast(Mapping[str, object], value)
@@ -664,6 +885,16 @@ def _validated_video_data(value: object) -> Mapping[str, object]:
         _optional_integer(item.get(name))
     _upload_date(item.get("upload_date"))
     return item
+
+
+def _validated_fork_video_data(value: object) -> Mapping[str, object]:
+    result = _closed_mapping(value, {"item", "truncated"})
+    if type(result.get("truncated")) is not bool:
+        raise YouTubeProtocolError("backend_data_invalid")
+    item = _copied_closed_mapping(result.get("item"), _FORK_VIDEO_ITEM_FIELDS)
+    expected_id = _fork_video_id(item["native_id"])
+    _project_fork_video_fields(item, expected_id=expected_id)
+    return result
 
 
 def _validated_subtitle_data(value: object) -> Mapping[str, object]:
@@ -790,6 +1021,27 @@ def _closed_mapping(value: object, fields: set[str]) -> Mapping[str, object]:
     return item
 
 
+def _copied_closed_mapping(
+    value: object,
+    fields: tuple[str, ...],
+) -> dict[str, object]:
+    try:
+        if not isinstance(value, Mapping):
+            raise YouTubeProtocolError("backend_data_invalid")
+        names = tuple(value)
+        if (
+            len(names) != len(fields)
+            or set(names) != set(fields)
+            or any(type(name) is not str for name in names)
+        ):
+            raise YouTubeProtocolError("backend_data_invalid")
+        return {name: value[name] for name in fields}
+    except YouTubeProtocolError:
+        raise
+    except Exception:
+        raise YouTubeProtocolError("backend_data_invalid") from None
+
+
 def _bounded_request_text(value: object, maximum: int) -> str:
     if not isinstance(value, str) or not value.strip() or len(value) > maximum:
         raise YouTubeProtocolError("worker_request_invalid")
@@ -849,6 +1101,14 @@ def _optional_integer(value: object) -> int | None:
     return value
 
 
+def _fork_optional_integer(value: object) -> int | None:
+    if value is None:
+        return None
+    if type(value) is not int or not 0 <= value <= MAX_NORMALIZED_INTEGER:
+        raise YouTubeProtocolError("backend_integer_invalid")
+    return value
+
+
 def _optional_duration_seconds(value: object) -> int | None:
     if isinstance(value, float):
         if not value.is_integer():
@@ -877,8 +1137,73 @@ def _upload_date(value: object) -> str | None:
     return parsed.isoformat()
 
 
+def _fork_optional_text(
+    value: object,
+    *,
+    maximum_characters: int,
+    maximum_bytes: int | None = None,
+) -> str | None:
+    if value is None:
+        return None
+    if (
+        type(value) is not str
+        or not 0 < len(value) <= maximum_characters
+        or _contains_invalid_scalar(value)
+    ):
+        raise YouTubeProtocolError("backend_text_invalid")
+    try:
+        encoded_size = len(value.encode("utf-8", errors="strict"))
+    except UnicodeError:
+        raise YouTubeProtocolError("backend_text_invalid") from None
+    if maximum_bytes is not None and encoded_size > maximum_bytes:
+        raise YouTubeProtocolError("backend_text_invalid")
+    return value
+
+
+def _fork_required_text(
+    value: object,
+    *,
+    maximum_characters: int,
+    maximum_bytes: int | None = None,
+) -> str:
+    text = _fork_optional_text(
+        value,
+        maximum_characters=maximum_characters,
+        maximum_bytes=maximum_bytes,
+    )
+    if text is None:
+        raise YouTubeProtocolError("backend_text_invalid")
+    return text
+
+
+def _fork_published_at(value: object) -> str | None:
+    if value is None:
+        return None
+    if type(value) is not str or len(value) != 10 or not value.isascii():
+        raise YouTubeProtocolError("backend_date_invalid")
+    try:
+        parsed = date.fromisoformat(value)
+    except ValueError:
+        raise YouTubeProtocolError("backend_date_invalid") from None
+    if parsed.year < 1970 or parsed.isoformat() != value:
+        raise YouTubeProtocolError("backend_date_invalid")
+    return value
+
+
+def _contains_invalid_scalar(value: str) -> bool:
+    return any(
+        character == "\x00" or 0xD800 <= ord(character) <= 0xDFFF for character in value
+    )
+
+
 def _video_id(value: object) -> str:
     if not isinstance(value, str) or _VIDEO_ID.fullmatch(value) is None:
+        raise YouTubeProtocolError("backend_identity_invalid")
+    return value
+
+
+def _fork_video_id(value: object) -> str:
+    if type(value) is not str or _VIDEO_ID.fullmatch(value) is None:
         raise YouTubeProtocolError("backend_identity_invalid")
     return value
 
@@ -908,6 +1233,10 @@ def _valid_video_url(value: str) -> bool:
 
 def _canonical_url(video_id: str) -> str:
     return f"https://www.youtube.com/watch?v={video_id}"
+
+
+def _exact_text(value: object, expected: str) -> bool:
+    return type(value) is str and value == expected
 
 
 def main() -> int:
