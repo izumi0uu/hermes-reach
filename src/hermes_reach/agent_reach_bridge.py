@@ -21,10 +21,12 @@ AGENT_REACH_DISTRIBUTION: Final = "agent-reach"
 AGENT_REACH_VERSION: Final = "1.5.0"
 AGENT_REACH_OFFICIAL_BASE_COMMIT: Final = "b4d52c46c9113cb0f653d6df4cf71ebadf4930ac"
 AGENT_REACH_FORK_URL: Final = "https://github.com/izumi0uu/Agent-Reach.git"
-AGENT_REACH_FORK_COMMIT: Final = "2a5829cf3b50bc435c647bfae4c050b1837d0235"
+AGENT_REACH_FORK_COMMIT: Final = "2755b0c140a03ab5793540fb3245288891526586"
 AGENT_REACH_PROTOCOL_VERSION: Final = "v1"
 AGENT_REACH_FETCHED_DOCUMENT_CAPABILITY: Final = "fetched_document.v1"
 AGENT_REACH_NETWORK_ACCESS_CAPABILITY: Final = "network_access.v1"
+AGENT_REACH_PRIVATE_WORKSPACE_CAPABILITY: Final = "private_workspace.v1"
+AGENT_REACH_MCPORTER_ARTIFACTS_CAPABILITY: Final = "mcporter_artifacts.v1"
 # Compatibility alias for callers that previously knew only one exact dependency pin.
 AGENT_REACH_COMMIT: Final = AGENT_REACH_FORK_COMMIT
 BILIBILI_CLI_DISTRIBUTION: Final = "bilibili-cli"
@@ -80,6 +82,9 @@ _EXECUTION_REGISTRY_MODULE: Final = f"{_EXECUTION_MODULE}.registry"
 _EXECUTION_RSS_MODULE: Final = f"{_EXECUTION_MODULE}.rss"
 _EXECUTION_BILIBILI_MODULE: Final = f"{_EXECUTION_MODULE}.bilibili"
 _EXECUTION_YOUTUBE_MODULE: Final = f"{_EXECUTION_MODULE}.youtube"
+_EXECUTION_V2EX_TRANSPORT_MODULE: Final = f"{_EXECUTION_MODULE}._v2ex_transport"
+_EXECUTION_V2EX_MODULE: Final = f"{_EXECUTION_MODULE}.v2ex"
+_EXECUTION_EXA_MODULE: Final = f"{_EXECUTION_MODULE}.exa"
 _EXECUTION_MODULE_FILES: Final[Mapping[str, tuple[str, str, int]]] = MappingProxyType(
     {
         _AGENT_REACH_MODULE: (
@@ -94,18 +99,18 @@ _EXECUTION_MODULE_FILES: Final[Mapping[str, tuple[str, str, int]]] = MappingProx
         ),
         _EXECUTION_MODULE: (
             "agent_reach/execution/v1/__init__.py",
-            "cbG41giKIymO9FSlPRUjsgjaSL_Puq8uvmAZ1ia8KO8",
-            971,
+            "NXilKYeVwfHEGCC0jGPr1q16qGZX5Nmv7-y0YrGHaDw",
+            1_215,
         ),
         _EXECUTION_CONTRACTS_MODULE: (
             "agent_reach/execution/v1/contracts.py",
-            "4CmSy_Glr3-wL-Q1rGkVg-Ky-MYdTcSLP-IieAKvCMQ",
-            25_031,
+            "Zac8KjmJ34_bJx5wag-QREHqrhPg874PZeSDtEOrOts",
+            38_614,
         ),
         _EXECUTION_REGISTRY_MODULE: (
             "agent_reach/execution/v1/registry.py",
-            "VsJESvtz2othXWGdnHwdyzbWBrjdOetbYAng6aKmYuA",
-            10_005,
+            "xiSeoX_atsiMPFjzUzqEQBjkf7sshHmF-t58HrnbDQo",
+            16_373,
         ),
         _EXECUTION_RSS_MODULE: (
             "agent_reach/execution/v1/rss.py",
@@ -119,15 +124,32 @@ _EXECUTION_MODULE_FILES: Final[Mapping[str, tuple[str, str, int]]] = MappingProx
         ),
         _EXECUTION_YOUTUBE_MODULE: (
             "agent_reach/execution/v1/youtube.py",
-            "ZMyB-80bNrUW-IffoAmPvoSiKhbuT_UYhGRj_zzRLQQ",
-            13_984,
+            "lKhmR3N178FEabruKl-Uxs-Rtf19AaG96YIK0Q4fCYo",
+            29_793,
+        ),
+        _EXECUTION_V2EX_TRANSPORT_MODULE: (
+            "agent_reach/execution/v1/_v2ex_transport.py",
+            "5LG_QSzeW0iGjxx-K-bSwWHs1l3RhJXQfvcZdzF5aVw",
+            21_875,
+        ),
+        _EXECUTION_V2EX_MODULE: (
+            "agent_reach/execution/v1/v2ex.py",
+            "F5RE2KXl7s2UX5NtxWIlsEaLqCEKwxtGkTH2-Vk031w",
+            16_706,
+        ),
+        _EXECUTION_EXA_MODULE: (
+            "agent_reach/execution/v1/exa.py",
+            "Ep7GiZVVFPs4x4uChJ3uGQMFR6m7e2umVkYDL8ogojU",
+            32_569,
         ),
     }
 )
 _EXPECTED_EXECUTION_EXPORTS: Final = (
     "EXECUTION_ERROR_CODES",
     "FETCHED_DOCUMENT_CAPABILITY",
+    "MCPORTER_ARTIFACTS_CAPABILITY",
     "NETWORK_ACCESS_CAPABILITY",
+    "PRIVATE_WORKSPACE_CAPABILITY",
     "PROTOCOL_VERSION",
     "ExecutionContextV1",
     "ExecutionErrorCodeV1",
@@ -138,8 +160,10 @@ _EXPECTED_EXECUTION_EXPORTS: Final = (
     "ExecutionResultV1",
     "ExecutionSuccessV1",
     "FetchedDocumentV1",
+    "McporterArtifactsV1",
     "NetworkAccessV1",
     "OperationCapabilityV1",
+    "PrivateWorkspaceV1",
     "execute",
     "list_capabilities",
 )
@@ -195,6 +219,16 @@ _EXECUTION_CLASS_FIELDS: Final[Mapping[str, tuple[str, ...]]] = MappingProxyType
         ),
         "FetchedDocumentV1": ("body", "content_type", "content_location"),
         "NetworkAccessV1": (),
+        "PrivateWorkspaceV1": (),
+        "McporterArtifactsV1": (
+            "node_executable",
+            "node_sha256",
+            "mcporter_root",
+            "mcporter_cli",
+            "mcporter_tree_sha256",
+            "config_path",
+            "config_sha256",
+        ),
         "ExecutionLimitsV1": (
             "maximum_items",
             "maximum_text_characters",
@@ -376,9 +410,163 @@ _EXPECTED_EXECUTION_CAPABILITIES: Final = (
         1_024,
         512,
     ),
+    (
+        "v1",
+        "youtube",
+        "search.videos",
+        "youtube.search.videos.arguments.v1",
+        ("youtube.video.v1",),
+        "yt-dlp",
+        "2026.7.4",
+        ("network_access.v1",),
+        50,
+        1_048_576,
+        16_384,
+        524_288,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        1_024,
+        512,
+    ),
+    (
+        "v1",
+        "youtube",
+        "read.subtitles",
+        "youtube.read.subtitles.arguments.v1",
+        ("youtube.subtitle.v1",),
+        "yt-dlp",
+        "2026.7.4",
+        ("network_access.v1", "private_workspace.v1"),
+        1,
+        1_048_576,
+        16_384,
+        524_288,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        1_024,
+        512,
+    ),
+    (
+        "v1",
+        "v2ex",
+        "browse.hot",
+        "v2ex.browse.hot.arguments.v1",
+        ("v2ex.topic.v1",),
+        "v2ex-public-api",
+        "legacy-json-2026-07-31",
+        ("network_access.v1",),
+        50,
+        1_048_576,
+        16_384,
+        1_048_576,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        2_048,
+        512,
+    ),
+    (
+        "v1",
+        "v2ex",
+        "browse.node_topics",
+        "v2ex.browse.node_topics.arguments.v1",
+        ("v2ex.topic.v1",),
+        "v2ex-public-api",
+        "legacy-json-2026-07-31",
+        ("network_access.v1",),
+        50,
+        1_048_576,
+        16_384,
+        1_048_576,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        2_048,
+        512,
+    ),
+    (
+        "v1",
+        "v2ex",
+        "read.topic",
+        "v2ex.read.topic.arguments.v1",
+        ("v2ex.topic.v1", "v2ex.reply.v1"),
+        "v2ex-public-api",
+        "legacy-json-2026-07-31",
+        ("network_access.v1",),
+        21,
+        1_048_576,
+        16_384,
+        1_048_576,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        2_048,
+        512,
+    ),
+    (
+        "v1",
+        "v2ex",
+        "read.user",
+        "v2ex.read.user.arguments.v1",
+        ("v2ex.profile.v1",),
+        "v2ex-public-api",
+        "legacy-json-2026-07-31",
+        ("network_access.v1",),
+        1,
+        1_048_576,
+        16_384,
+        1_048_576,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        2_048,
+        512,
+    ),
+    (
+        "v1",
+        "exa",
+        "search.web",
+        "exa.search.web.arguments.v1",
+        ("exa.search.result.v1",),
+        "exa-mcporter",
+        "0.12.3+exa-web.v1",
+        ("network_access.v1", "mcporter_artifacts.v1"),
+        20,
+        1_048_576,
+        16_384,
+        524_288,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        2_048,
+        512,
+    ),
 )
 HealthState = Literal["available", "setup_required", "degraded", "unavailable"]
-ExecutionRuntimeModule = Literal["rss", "bilibili", "youtube"]
+ExecutionRuntimeModule = Literal["rss", "bilibili", "youtube", "v2ex", "exa"]
 
 
 class AgentReachBridgeError(RuntimeError):
@@ -432,11 +620,15 @@ class AgentReachExecutionApi:
     protocol_version: str
     fetched_document_capability: str
     network_access_capability: str
+    private_workspace_capability: str
+    mcporter_artifacts_capability: str
     capabilities: tuple[object, ...]
     operation_capability_type: type[object]
     execution_request_type: type[object]
     fetched_document_type: type[object]
     network_access_type: type[object]
+    private_workspace_type: type[object]
+    mcporter_artifacts_type: type[object]
     execution_limits_type: type[object]
     execution_context_type: type[object]
     execution_item_type: type[object]
@@ -594,7 +786,7 @@ def validate_agent_reach_execution_contract(
     except Exception:
         raise AgentReachBridgeError(_INCOMPATIBLE_PROVENANCE) from None
 
-    if runtime_module not in {None, "rss", "bilibili", "youtube"}:
+    if runtime_module not in {None, "rss", "bilibili", "youtube", "v2ex", "exa"}:
         raise AgentReachBridgeError(_INCOMPATIBLE_EXECUTION_CONTRACT)
 
     _validate_execution_installation(installation)
@@ -795,6 +987,16 @@ def _validated_execution_api(
         contracts_module,
         "NETWORK_ACCESS_CAPABILITY",
     )
+    private_workspace_capability = _owned_export(
+        public_module,
+        contracts_module,
+        "PRIVATE_WORKSPACE_CAPABILITY",
+    )
+    mcporter_artifacts_capability = _owned_export(
+        public_module,
+        contracts_module,
+        "MCPORTER_ARTIFACTS_CAPABILITY",
+    )
     error_codes = _owned_export(
         public_module,
         contracts_module,
@@ -807,6 +1009,10 @@ def _validated_execution_api(
         or fetched_document_capability != AGENT_REACH_FETCHED_DOCUMENT_CAPABILITY
         or type(network_access_capability) is not str
         or network_access_capability != AGENT_REACH_NETWORK_ACCESS_CAPABILITY
+        or type(private_workspace_capability) is not str
+        or private_workspace_capability != AGENT_REACH_PRIVATE_WORKSPACE_CAPABILITY
+        or type(mcporter_artifacts_capability) is not str
+        or mcporter_artifacts_capability != AGENT_REACH_MCPORTER_ARTIFACTS_CAPABILITY
         or type(error_codes) is not frozenset
         or error_codes != frozenset(_EXPECTED_EXECUTION_ERROR_CODES)
     ):
@@ -851,6 +1057,8 @@ def _validated_execution_api(
         != (
             class_exports["FetchedDocumentV1"],
             class_exports["NetworkAccessV1"],
+            class_exports["PrivateWorkspaceV1"],
+            class_exports["McporterArtifactsV1"],
         )
         or get_origin(result_type) is not UnionType
         or get_args(result_type)
@@ -885,15 +1093,29 @@ def _validated_execution_api(
             runtime_module_name = _EXECUTION_BILIBILI_MODULE
             runtime_function_name = "execute_bilibili"
             runtime_parameters = ("request", "context")
-        else:
+        elif runtime_module == "youtube":
             runtime_module_name = _EXECUTION_YOUTUBE_MODULE
             runtime_function_name = "execute_youtube"
+            runtime_parameters = ("request", "context")
+        elif runtime_module == "v2ex":
+            runtime_module_name = _EXECUTION_V2EX_MODULE
+            runtime_function_name = "execute_v2ex"
+            runtime_parameters = ("request", "context")
+        else:
+            runtime_module_name = _EXECUTION_EXA_MODULE
+            runtime_function_name = "execute_exa"
             runtime_parameters = ("request", "context")
         validated_runtime_module = _validated_execution_module(
             module_loader(runtime_module_name),
             runtime_module_name,
             installation,
         )
+        if runtime_module == "v2ex":
+            _validated_execution_module(
+                module_loader(_EXECUTION_V2EX_TRANSPORT_MODULE),
+                _EXECUTION_V2EX_TRANSPORT_MODULE,
+                installation,
+            )
         _validated_execution_function(
             getattr(validated_runtime_module, runtime_function_name, None),
             runtime_function_name,
@@ -922,11 +1144,15 @@ def _validated_execution_api(
         protocol_version=protocol,
         fetched_document_capability=fetched_document_capability,
         network_access_capability=network_access_capability,
+        private_workspace_capability=private_workspace_capability,
+        mcporter_artifacts_capability=mcporter_artifacts_capability,
         capabilities=capabilities,
         operation_capability_type=capability_type,
         execution_request_type=class_exports["ExecutionRequestV1"],
         fetched_document_type=class_exports["FetchedDocumentV1"],
         network_access_type=class_exports["NetworkAccessV1"],
+        private_workspace_type=class_exports["PrivateWorkspaceV1"],
+        mcporter_artifacts_type=class_exports["McporterArtifactsV1"],
         execution_limits_type=class_exports["ExecutionLimitsV1"],
         execution_context_type=class_exports["ExecutionContextV1"],
         execution_item_type=class_exports["ExecutionItemV1"],
@@ -1031,7 +1257,7 @@ def _validated_execution_class(
     dataclass_fields = getattr(value_type, "__dataclass_fields__", None)
     slots = getattr(value_type, "__slots__", None)
     post_init = value_type.__dict__.get("__post_init__")
-    is_fieldless_marker = expected_name == "NetworkAccessV1"
+    is_fieldless_marker = expected_name in {"NetworkAccessV1", "PrivateWorkspaceV1"}
     if (
         getattr(parameters, "frozen", False) is not True
         or type(dataclass_fields) is not dict

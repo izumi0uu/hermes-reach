@@ -18,6 +18,10 @@ from .connector.identity import VpsKeyStore
 from .connector.transport import PinnedWssClient
 from .runtime.dispatcher import RuntimeDispatcher
 from .sources.connector import connector_bindings
+from .sources.exa_artifacts import (
+    ExaArtifactAttestation,
+    exa_artifacts_from_environment,
+)
 from .sources.registry import build_alpha1_registry, build_alpha1_runtime
 
 VPS_STATE_DIRECTORY_ENVIRONMENT: Final = "HERMES_REACH_VPS_STATE_DIRECTORY"
@@ -25,10 +29,18 @@ _REDDIT_OPERATION: Final = ("reddit", "read.post")
 _VPS_RECEIPT_LEDGER: Final = "receipts.jsonl"
 
 
-def build_vps_runtime(state_directory: Path) -> RuntimeDispatcher:
+def build_vps_runtime(
+    state_directory: Path,
+    *,
+    exa_artifacts: ExaArtifactAttestation | None = None,
+    exa_artifacts_invalid: bool = False,
+) -> RuntimeDispatcher:
     """Compose Alpha-1 plus the one exact Connector adapter from local state."""
 
-    registry = build_alpha1_registry()
+    registry = build_alpha1_registry(
+        exa_artifacts=exa_artifacts,
+        exa_artifacts_invalid=exa_artifacts_invalid,
+    )
     try:
         if not isinstance(state_directory, Path) or not state_directory.is_absolute():
             raise ValueError("The VPS state directory must be absolute.")
@@ -65,21 +77,40 @@ def build_vps_runtime(state_directory: Path) -> RuntimeDispatcher:
 
 
 def runtime_from_environment(environment: Mapping[str, str]) -> RuntimeDispatcher:
-    """Read only the explicit VPS state pointer used at plugin registration."""
+    """Compose from only the explicit VPS pointer and Exa artifact declarations."""
 
+    try:
+        exa_artifacts = exa_artifacts_from_environment(environment)
+        exa_artifacts_invalid = False
+    except ValueError:
+        exa_artifacts = None
+        exa_artifacts_invalid = True
     try:
         value = environment.get(VPS_STATE_DIRECTORY_ENVIRONMENT)
     except Exception:
         value = ""
     if value is None:
-        return DEFAULT_RUNTIME
+        if exa_artifacts is None and not exa_artifacts_invalid:
+            return DEFAULT_RUNTIME
+        return build_alpha1_runtime(
+            exa_artifacts=exa_artifacts,
+            exa_artifacts_invalid=exa_artifacts_invalid,
+        )
     if type(value) is not str or not value or "\x00" in value:
-        return build_vps_runtime(Path("."))
+        return build_vps_runtime(
+            Path("."),
+            exa_artifacts=exa_artifacts,
+            exa_artifacts_invalid=exa_artifacts_invalid,
+        )
     try:
         state_directory = Path(value)
     except (TypeError, ValueError):
         state_directory = Path(".")
-    return build_vps_runtime(state_directory)
+    return build_vps_runtime(
+        state_directory,
+        exa_artifacts=exa_artifacts,
+        exa_artifacts_invalid=exa_artifacts_invalid,
+    )
 
 
 DEFAULT_RUNTIME = build_alpha1_runtime()

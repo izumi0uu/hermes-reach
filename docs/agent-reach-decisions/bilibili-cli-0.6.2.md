@@ -12,8 +12,8 @@
 - Original owner-fork integration pin: `izumi0uu/Agent-Reach` at
   `f195253d53befdb012d7aa575e732ec627ec29ac`
 - Original recovery reference: `hermes-reach-integration-0.1.0a2`
-- Current YouTube integration revalidation pin:
-  `2a5829cf3b50bc435c647bfae4c050b1837d0235`
+- Current public-platform batch revalidation candidate:
+  `2755b0c140a03ab5793540fb3245288891526586`
 
 ## Decision
 
@@ -117,7 +117,7 @@ authority. They do not make an actively malicious pinned dependency safe.
 Before importing fork execution code, Hermes verifies exact PEP 610 owner-fork
 URL and commit provenance, complete import-chain RECORD algorithm/digest/size
 and disk bytes, module origins, exports, dataclass fields, union members, error
-codes, function signatures, the ordered seven capability descriptors, and the
+codes, function signatures, the ordered 14 capability descriptors, and the
 unchanged 15-channel catalog. Immediately before execution it also checks the
 origin and signature of `execute_bilibili(request, context)`.
 
@@ -125,8 +125,9 @@ The exact commit pin is the dependency authority. The protected immutable tag
 `hermes-reach-integration-0.1.0a2` is now the rollback reachability reference
 for the original Bilibili integration at
 `f195253d53befdb012d7aa575e732ec627ec29ac`. Protected immutable tag
-`hermes-reach-integration-0.1.0a3` preserves reachability for the current
-reviewed integration.
+`hermes-reach-integration-0.1.0a3` preserves reachability for the previous
+reviewed integration `2a5829cf3b50bc435c647bfae4c050b1837d0235`. The current
+batch candidate has no recovery tag before explicit integration approval.
 Hermes never resolves the dependency by tag or branch.
 
 ## Review Milestone

@@ -7,16 +7,18 @@ description: Route bounded, read-only internet retrieval through Hermes Reach.
 
 This skill adapts the routing scope of Agent-Reach 1.5.0 from official baseline
 `b4d52c46c9113cb0f653d6df4cf71ebadf4930ac` through exact owner-fork
-integration commit `2a5829cf3b50bc435c647bfae4c050b1837d0235` to the Hermes Reach safety
-contract. Fork execution protocol v1 owns exactly seven direct owner-fork
+commit `2755b0c140a03ab5793540fb3245288891526586` to the Hermes Reach safety
+contract. Fork execution protocol v1 owns exactly 14 direct owner-fork
 operations: two RSS operations
 (`rss:read.feed`, `rss:browse.entries`) and four Bilibili operations
 (`bilibili:search.videos`, `bilibili:read.video`, `bilibili:browse.hot`,
-`bilibili:browse.rank`), plus YouTube `youtube:read.video`. YouTube
-`youtube:search.videos` and `youtube:read.subtitles` remain exact-backend thin
-wrappers. Together with Connector-only `reddit:read.post`, there are exactly
-three exact-backend thin wrappers. Fork execution does not make the other 56
-catalog operations executable.
+`bilibili:browse.rank`), all three executable YouTube operations
+(`youtube:search.videos`, `youtube:read.video`, `youtube:read.subtitles`), all
+four V2EX operations, and Exa `exa:search.web`. Connector-only
+`reddit:read.post` is the one exact-backend thin wrapper. Exa Web still reports
+`setup_required` until the operator supplies the complete reviewed artifact
+attestation. Fork execution does not make the other 49 catalog operations
+executable.
 
 ## Execution Boundary
 

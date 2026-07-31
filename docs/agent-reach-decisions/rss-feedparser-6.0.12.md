@@ -11,8 +11,8 @@
   `b4d52c46c9113cb0f653d6df4cf71ebadf4930ac`
 - Original owner-fork integration commit:
   `f195253d53befdb012d7aa575e732ec627ec29ac`
-- Current YouTube integration revalidation commit:
-  `2a5829cf3b50bc435c647bfae4c050b1837d0235`
+- Current public-platform batch revalidation candidate:
+  `2755b0c140a03ab5793540fb3245288891526586`
 
 ## Decision
 
@@ -39,13 +39,13 @@ Before plugin registration, Hermes validates all of the following without
 executing a backend:
 
 - installed Agent-Reach version is exactly `1.5.0`;
-- PEP 610 provenance names `izumi0uu/Agent-Reach` and exact reviewed integration
-  `2a5829cf3b50bc435c647bfae4c050b1837d0235`;
+- PEP 610 provenance names `izumi0uu/Agent-Reach` and exact reviewed candidate
+  `2755b0c140a03ab5793540fb3245288891526586`;
 - RECORD SHA-256, size, and installed content match for the two parent package
-  initializers Python executes and all six reviewed `execution.v1` files
+  initializers Python executes and all nine reviewed `execution.v1` files
   before any fork module is imported;
 - execution protocol is exactly `v1`;
-- discovery contains exactly seven ordered descriptors, including exactly the
+- discovery contains exactly 14 ordered descriptors, including exactly the
   two reviewed RSS descriptors and their closed argument/result schemas;
 - both descriptors require only `fetched_document.v1`; and
 - backend identity, feedparser version, and every hard limit match Hermes's
@@ -54,8 +54,10 @@ executing a backend:
 Any mismatch fails closed before Reach tools, CLI, or skill registration. The
 original RSS/Bilibili integration remains recoverable through
 `hermes-reach-integration-0.1.0a2`. Protected immutable tag
-`hermes-reach-integration-0.1.0a3` preserves reachability for the current
-integration; Hermes is always pinned by commit and never resolves by tag.
+`hermes-reach-integration-0.1.0a3` preserves reachability for the previous
+integration `2a5829cf3b50bc435c647bfae4c050b1837d0235`. The current batch
+candidate has no recovery tag before explicit integration approval; Hermes is
+always pinned by commit and never resolves by tag.
 
 ## Ownership and security composition
 

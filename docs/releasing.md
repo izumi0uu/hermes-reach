@@ -5,7 +5,7 @@ GitHub Releases. PyPI is intentionally deferred because the package requires
 the reviewed `izumi0uu/Agent-Reach` owner fork from one exact Git commit, and
 Warehouse does not accept that direct VCS `Requires-Dist`. The fork records its
 official `Panniantong/Agent-Reach` base, but the install dependency is the exact
-fork integration commit. Do not vendor, loosen, retarget, or remove that
+reviewed fork commit. Do not vendor, loosen, retarget, or remove that
 dependency to make an index upload succeed.
 
 Installing the public wheel therefore requires Git, PyPI access for normal
@@ -16,21 +16,25 @@ deletion so old installs and rollback remain reachable. The tag is only a
 recovery reference and never the dependency selector; the commit in wheel
 metadata remains authoritative.
 
-The integrated YouTube commit and rollback integration references are:
+The current reviewed candidate and rollback integration references are:
 
 | Purpose | Recovery reference | Exact dependency commit |
 | --- | --- | --- |
-| Integrated YouTube read-video runtime | `hermes-reach-integration-0.1.0a3` | `2a5829cf3b50bc435c647bfae4c050b1837d0235` |
+| Current 14-operation public-platform batch candidate | none; not release-eligible until approved integration and final-pin validation | `2755b0c140a03ab5793540fb3245288891526586` |
+| Rollback: integrated YouTube read-video runtime | `hermes-reach-integration-0.1.0a3` | `2a5829cf3b50bc435c647bfae4c050b1837d0235` |
 | Rollback: RSS + Bilibili execution v1, YouTube exact wrappers | `hermes-reach-integration-0.1.0a2` | `f195253d53befdb012d7aa575e732ec627ec29ac` |
 | Earlier rollback: RSS execution v1 / Hermes Bilibili wrapper | `hermes-reach-integration-0.1.0a1` | `806205fd106f4f4453624becfd773acce8418cf1` |
 
-The audited candidate `9e744d0c33f9e6498cf66c2ea376a653000e9be4` and final integration
-`2a5829cf3b50bc435c647bfae4c050b1837d0235` both resolve to tree
-`070e4507fde7e55eceaba4d29e6a459c4a972f60`. Protected immutable tag
-`hermes-reach-integration-0.1.0a3` points directly to the final commit under the
-repository's no-update/no-deletion integration-tag ruleset. Do not confuse fork recovery tags
-with the Hermes package release tag `v0.1.0a1`. Installation metadata always
-selects the exact commit, never an integration tag.
+The current reviewed batch candidate
+`2755b0c140a03ab5793540fb3245288891526586` resolves to tree
+`55648469505908aa655745f5ca7704d495f12183`. It is pushed for review but is not
+yet merged or tagged. A package release is forbidden until explicit owner
+approval, rebase integration, proof that the final tree is byte-equivalent,
+Hermes movement to the final SHA, and repetition of every pin-sensitive gate.
+The previous integration `2a5829cf3b50bc435c647bfae4c050b1837d0235`
+remains protected by `hermes-reach-integration-0.1.0a3`. Do not confuse fork
+recovery tags with the Hermes package release tag `v0.1.0a1`. Installation
+metadata always selects the exact commit, never an integration tag.
 
 The release invariant is:
 
@@ -59,6 +63,8 @@ controls:
 
 The workflow cannot configure or prove these repository settings. A tag push
 without them is an operator error, even if the YAML gate passes.
+Candidate `2755b0c140a03ab5793540fb3245288891526586` currently fails the immutable
+integration-tag prerequisite by design and must not be published as-is.
 
 ## Local dry run
 
@@ -122,8 +128,8 @@ The workflow then:
    checksummed wheel, sdist, and `SHA256SUMS` set;
 5. on Python 3.11, 3.12, and 3.13, installs the exact wheel without a dependency
    cache, repository lock, offline mode, or source checkout, then runs
-   `uv pip check` and validates fork provenance, the seven-descriptor execution
-   handshake including `runtime_module="youtube"`, and the 15-channel catalog;
+   `uv pip check` and validates fork provenance, the 14-descriptor execution
+   handshake including each runtime module, and the 15-channel catalog;
 6. creates separate GitHub OIDC build attestations for the wheel and sdist
    whose digests are listed in `SHA256SUMS`;
 7. rechecks the remote tag and current remote `main` ancestry, then publishes a
@@ -261,7 +267,12 @@ assert document["vcs_info"] == {
     "requested_revision": AGENT_REACH_FORK_COMMIT,
     "commit_id": AGENT_REACH_FORK_COMMIT,
 }, document
-api = validate_agent_reach_execution_contract(runtime_module="youtube")
+apis = tuple(
+    validate_agent_reach_execution_contract(runtime_module=runtime_module)
+    for runtime_module in ("rss", "bilibili", "youtube", "v2ex", "exa")
+)
+api = apis[0]
+assert all(candidate.capabilities == api.capabilities for candidate in apis)
 assert tuple((item.source, item.operation) for item in api.capabilities) == (
     ("rss", "read.feed"),
     ("rss", "browse.entries"),
@@ -270,8 +281,15 @@ assert tuple((item.source, item.operation) for item in api.capabilities) == (
     ("bilibili", "browse.hot"),
     ("bilibili", "browse.rank"),
     ("youtube", "read.video"),
+    ("youtube", "search.videos"),
+    ("youtube", "read.subtitles"),
+    ("v2ex", "browse.hot"),
+    ("v2ex", "browse.node_topics"),
+    ("v2ex", "read.topic"),
+    ("v2ex", "read.user"),
+    ("exa", "search.web"),
 )
-print("exact Agent-Reach PEP 610 and YouTube runtime handshake verified")
+print("exact Agent-Reach PEP 610 and five-module runtime handshake verified")
 PY
 ```
 
@@ -383,17 +401,20 @@ Retain `$SMOKE_ROOT` with the release evidence until the audit is complete.
   assets, move the old tag, or reuse the withdrawn version.
 - User rollback remains: disable Reach, start a new Hermes session, uninstall
   from the same Hermes Python environment, then run `uv pip check`.
-- A code rollback that reverses the YouTube read-video fork migration restores
-  exact fork pin `f195253d53befdb012d7aa575e732ec627ec29ac`, recoverable
-  through `hermes-reach-integration-0.1.0a2`, and restores only
-  `youtube:read.video` to its prior exact-backend wrapper. Search, subtitles,
-  comments, transcription, protocol, grants, Connector state, database,
-  receipts, and audit require no migration.
+- A code rollback that reverses the 14-operation public-platform batch restores
+  exact fork pin `2a5829cf3b50bc435c647bfae4c050b1837d0235`, recoverable
+  through `hermes-reach-integration-0.1.0a3`. YouTube search/subtitles return to
+  exact wrappers, V2EX and Exa return to their prior disabled states, and
+  YouTube `read.video` remains fork-owned. Protocol, grants, Connector state,
+  database, receipts, and audit require no migration.
+- The older YouTube read-video rollback pin
+  `f195253d53befdb012d7aa575e732ec627ec29ac` remains recoverable through
+  `hermes-reach-integration-0.1.0a2`.
 - A code rollback that specifically reverses Bilibili fork execution restores
   the previous Hermes release and exact fork pin
   `806205fd106f4f4453624becfd773acce8418cf1`, recoverable through
   `hermes-reach-integration-0.1.0a1`. It needs no protocol, grant, Connector,
-  database, receipt, or audit migration. Never move either integration tag.
+  database, receipt, or audit migration. Never move any integration tag.
 
 Publishing to PyPI requires a separately reviewed, index-compatible dependency
 strategy for the reviewed Agent-Reach integration. The current exact owner-fork

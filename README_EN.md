@@ -8,19 +8,21 @@ It pins an [owner fork](https://github.com/izumi0uu/Agent-Reach) based on a
 reviewed official [Agent-Reach](https://github.com/Panniantong/Agent-Reach)
 baseline. The official baseline supplies channel, backend-routing, and
 compatibility evidence; the fork's structured execution v1 currently carries
-two RSS, four Bilibili, and one YouTube `read.video` operation. Hermes Reach
-then exposes search, read, browse, transcribe, and status operations through a
+two RSS, four Bilibili, three YouTube, four V2EX, and one Exa Web operation.
+Hermes Reach then exposes search, read, browse, transcribe, and status operations through a
 [Hermes Agent](https://github.com/NousResearch/hermes-agent) plugin.
 
 > [!IMPORTANT]
-> The project is **pre-alpha**. The default local registry has seven owner-fork
-> runtime calls (RSS 2, Bilibili 4, and YouTube `read.video` 1) plus two fixed
-> YouTube backend wrappers for search and subtitles. The remote Connector can
-> explicitly activate the single Reddit `read.post` OpenCLI wrapper at both
-> ends, making three exact-backend wrappers in total, while default Connector
-> composition remains empty. Web, GitHub, V2EX, and other unaudited platforms
-> remain planned and unavailable. The fork does not make the other 56 catalog
-> operations executable.
+> The project is **pre-alpha**. There are 14 direct owner-fork operations: RSS
+> 2, Bilibili 4, YouTube 3, V2EX 4, and Exa Web 1. The first 13 are locally
+> available by default. Exa Web has a default-local binding surface but is
+> composed only after the operator supplies the complete Node/mcporter/config
+> artifact attestation; otherwise it remains `setup_required`. The remote
+> Connector can explicitly activate the sole exact-backend thin wrapper,
+> Reddit `read.post`, at both ends, while default Connector composition remains
+> empty. Web, GitHub, Exa code, and other unaudited operations remain planned
+> and unavailable. The fork does not make the other 49 catalog operations
+> executable.
 
 ## The problem Hermes Reach solves
 
@@ -83,11 +85,12 @@ The default installation registers five tools, but `reach_status` remains author
 | --- | --- | --- |
 | Locally available | RSS/Atom | Read feeds and browse entries through owner-fork execution v1 with fixed `feedparser` provenance |
 | Locally available | Bilibili | Search/read videos and browse hot/rank through owner-fork execution v1 with fixed `bili-cli` provenance |
-| Locally available | YouTube | `read.video` uses owner-fork execution v1; search and subtitles remain two fixed `yt-dlp` backend wrappers |
+| Locally available | YouTube | Search, video reads, and subtitles all use owner-fork execution v1 with fixed `yt-dlp==2026.7.4` plus the pinned EJS/Deno closure |
+| Locally available | V2EX | Browse hot/node topics and read topics/replies/users through owner-fork execution v1 with a fixed public API and bounded transport |
+| Local artifact setup required | Exa | `search.web` only; the executor is implemented and is composed after a complete well-formed Node/mcporter/config path-and-digest declaration, then revalidates actual artifacts at execution |
 | Explicitly configurable | Reddit | `read.post` only; requires activation on both the trusted device and VPS and remains unavailable by default |
 | Implemented, unbound | YouTube | `read.comments` remains `setup_required` and performs no backend call |
-| Planned, unbound | Exa | `reach_status` reports `setup_required` with no binding; the closed contracts await a pinned `mcporter` closure and retention review |
-| Planned, unavailable | Web, GitHub, V2EX, Twitter/X, Xiaohongshu, Facebook, Instagram, LinkedIn, Xueqiu, Xiaoyuzhou, and all other Reddit operations | Await an official callable or a safe exact Agent-Reach-selected backend |
+| Planned, unavailable | Web, GitHub, Exa `search.code`, Twitter/X, Xiaohongshu, Facebook, Instagram, LinkedIn, Xueqiu, Xiaoyuzhou, and all other Reddit operations | Await an official callable or a safe exact Agent-Reach-selected backend |
 
 The five tools have narrow responsibilities:
 
@@ -178,7 +181,7 @@ capabilities:
 
 This pre-release wheel is not an offline dependency bundle. Installation needs
 Git, PyPI network access, and GitHub HTTPS access for the exact
-`izumi0uu/Agent-Reach` owner-fork integration commit. It resolves all other
+`izumi0uu/Agent-Reach` owner-fork commit. It resolves all other
 declared dependencies without reading this repository's `uv.lock`. Before
 release, that commit must have an immutable integration tag protected from
 movement and deletion so old installs and rollback remain reachable. The tag
@@ -244,6 +247,36 @@ Then read Chinese subtitles from the specified video.
 
 The default doctor checks local state only. `hermes reach doctor --upstream` also runs the restricted and redacted Agent-Reach checks.
 
+### Enable Exa Web search
+
+Exa Web uses no API key and never discovers Node/mcporter from PATH, npm,
+editor state, or user configuration. First provision a reviewed
+`mcporter==0.12.3` artifact closure and credential-free sterile configuration,
+then provide all seven values in the environment that starts Hermes:
+
+```bash
+export HERMES_REACH_EXA_NODE_EXECUTABLE=/absolute/path/to/node
+export HERMES_REACH_EXA_NODE_SHA256=<64-lowercase-hex>
+export HERMES_REACH_EXA_MCPORTER_ROOT=/absolute/path/to/mcporter
+export HERMES_REACH_EXA_MCPORTER_CLI=/absolute/path/to/mcporter/dist/cli.js
+export HERMES_REACH_EXA_MCPORTER_TREE_SHA256=<64-lowercase-hex>
+export HERMES_REACH_EXA_CONFIG_PATH=/absolute/path/to/sterile-config.json
+export HERMES_REACH_EXA_CONFIG_SHA256=<64-lowercase-hex>
+```
+
+This repository neither installs the artifacts nor ships reusable production
+digests. The values must come from the operator's review record for the actual
+deployed closure; do not improvise a set from an unaudited global installation.
+This version also has no automated provisioning or attestation generator, so
+the default `setup_required` state is intentional.
+With all seven values absent, partial, or malformed, `exa:search.web` is
+`setup_required` and does not probe or execute a backend. Start a new Hermes
+process after configuration and inspect composition with `reach status`.
+`available` proves only that the declaration is complete and well formed; the
+isolated worker revalidates actual files, digests, versions, and the dependency
+tree on first execution. Hermes excludes the query from receipts and audit,
+but Exa receives it and may retain it. `exa:search.code` remains unavailable.
+
 ### Enable Reddit `read.post`
 
 Initialize state on the trusted device, then start the only permitted OpenCLI executor in the foreground:
@@ -289,27 +322,24 @@ This environment value is only a pointer to owner-only local paired state. It is
 Hermes Reach integrates the exact pinned Agent-Reach owner fork through
 `hermes_reach.register`. The official baseline supplies the 15-channel
 registry, backend-routing evidence, compatibility metadata, and restricted
-doctor. Fork execution v1 currently owns two RSS, four Bilibili, and one
-YouTube `read.video` operation; YouTube search and subtitles remain exact
-backend wrappers. Hermes Reach supplies the five closed tools, security policy,
-host capability, Connector, normalization, and audit. Other platform retrieval
-remains with the exact backend selected by Agent-Reach.
+doctor. Fork execution v1 currently owns two RSS, four Bilibili, three YouTube,
+four V2EX, and one Exa Web operation. Hermes Reach supplies the five closed
+tools, security policy, host capabilities, Connector, normalization, and audit.
+The only remaining executable exact-backend thin wrapper is Connector-only
+Reddit `read.post`.
 
 ```mermaid
 flowchart TD
     Hermes["Hermes Agent"] --> Plugin["Hermes Reach<br/>five reach_* tools"]
-    Upstream["Official Agent-Reach 1.5.0 baseline<br/>15 channels · backend evidence"] --> Fork["Owner fork at exact commit<br/>execution v1: RSS 2 · Bilibili 4 · YouTube read 1"]
+    Upstream["Official Agent-Reach 1.5.0 baseline<br/>15 channels · backend evidence"] --> Fork["Owner fork at exact commit<br/>execution v1: RSS 2 · Bilibili 4 · YouTube 3 · V2EX 4 · Exa Web 1"]
     Fork --> Bridge["Provenance and capability bridge"]
     Bridge --> Plugin
     Plugin --> Guard["Hermes security and control plane<br/>validation · grants · isolation · bounds · audit"]
-    Guard --> ForkOps["7 direct owner-fork calls<br/>RSS 2 · Bilibili 4 · YouTube read 1"]
-    Guard --> Local["2 default-local thin wrappers<br/>YouTube search · subtitles"]
+    Guard --> ForkOps["14 direct owner-fork calls<br/>RSS 2 · Bilibili 4 · YouTube 3 · V2EX 4 · Exa Web 1"]
     Guard --> Connector["1 explicit Connector binding<br/>Reddit read.post"]
-    ForkOps --> ForkBackends["Fork-owned invocation and projection<br/>feedparser · bili-cli · yt-dlp"]
-    Local --> Backends["Exact backend<br/>yt-dlp"]
+    ForkOps --> ForkBackends["Fork-owned invocation and projection<br/>feedparser · bili-cli · yt-dlp · V2EX API · Exa mcporter"]
     Connector --> OpenCLI["Fixed OpenCLI read"]
     ForkBackends --> Results["Bounded Hermes v1 results and audit metadata"]
-    Backends --> Results
     OpenCLI --> Results
 ```
 
@@ -317,29 +347,28 @@ flowchart TD
 
 The 15-channel registry, backend metadata, and official compatibility baseline
 come from official Agent-Reach. Owner-fork execution v1 directly runs two RSS,
-four Bilibili, and one YouTube `read.video` operation. The Hermes product
-catalog has 63 read-only operations: 11 are marked implemented and 52 are
-planned. Ten have concrete executors: seven owner-fork runtime calls and three
-exact-backend wrappers (two YouTube search/subtitle wrappers and one
-Connector-only Reddit wrapper). Nine bindings are default-local and
-one is Connector-only. One additional contract, `youtube:read.comments`, is
+four Bilibili, three YouTube, four V2EX, and one Exa Web operation. The Hermes
+product catalog has 63 read-only operations: 16 are marked implemented and 47
+are planned. Fifteen have concrete executors: 14 owner-fork runtime calls and
+one Connector-only Reddit exact-backend wrapper. Fourteen binding surfaces are
+default-local and one is Connector-only. Exa Web's executor is implemented but
+is not composed without complete artifact evidence, so its normal state is
+`setup_required`. One additional contract, `youtube:read.comments`, is
 implemented but unbound and is not counted as a concrete executor.
 
 Official Agent-Reach 1.5.0 has no unified structured operation execution API,
 so the number of direct official runtime calls remains zero. The reviewed owner
-fork adds only operation-scoped execution and currently owns exactly seven
-RSS/Bilibili/YouTube-read calls; it is not a general 15-channel runtime.
-YouTube search and subtitles remain exact backend wrappers. Other executable
-paths use fixed wrappers around exact Agent-Reach-selected backends. The 13 former Hermes
-platform implementations for Web, GitHub, and V2EX are disabled; Hermes-native
-and reimplementation exceptions are both zero.
+fork adds only operation-scoped execution and currently owns exactly 14
+fork calls; it is not a general 15-channel runtime. The 13 former Hermes
+platform implementations for Web, GitHub, and V2EX remain disabled; V2EX is
+available again only through the new fork descriptors. Hermes-native and
+reimplementation exceptions are both zero.
 
 Hermes Reach owns protocol, authorization, host capabilities, safe invocation,
-normalization, bounds, redaction, receipts, and audit. RSS/Bilibili and YouTube
-`read.video` invocation and source-native projection belong to the exact owner
-fork. YouTube search/subtitle and other platform knowledge, backend selection,
-and retrieval semantics stay in official Agent-Reach evidence or its exact
-backend. See
+normalization, bounds, redaction, receipts, and audit. Invocation and
+source-native projection for all 14 direct operations belong to the exact
+owner fork. Reddit `read.post` still wraps the exact OpenCLI route selected by
+Agent-Reach. See
 [Agent-Reach as a Hermes plugin](docs/agent-reach-plugin-boundary.md) for the
 canonical architecture and the
 [Agent-Reach reuse boundary](docs/agent-reach-reuse-boundary.md) for the
@@ -347,17 +376,14 @@ operation matrix and reactivation gates.
 
 The project pins Agent-Reach `1.5.0`: the reviewed official base is
 `b4d52c46c9113cb0f653d6df4cf71ebadf4930ac`, the reviewed owner-fork integration
-commit is `2a5829cf3b50bc435c647bfae4c050b1837d0235`, and the execution protocol
-is `v1`. The complete 63-row state lives in the
-[operation ledger](docs/agent-reach-operation-ledger.json); the two RSS, four
-Bilibili, and one YouTube descriptors do not claim execution support for the
-other 56 rows. The integration commit was rebase-merged from audited candidate
-`9e744d0c33f9e6498cf66c2ea376a653000e9be4`; both have tree
-`070e4507fde7e55eceaba4d29e6a459c4a972f60`, and protected immutable recovery
-tag `hermes-reach-integration-0.1.0a3` preserves final-commit reachability. Immediate
-rollback restores exact pin `f195253d53befdb012d7aa575e732ec627ec29ac`, reachable through
-`hermes-reach-integration-0.1.0a2`. Tags preserve reachability only; the exact
-commit remains dependency authority.
+candidate is `2755b0c140a03ab5793540fb3245288891526586`, and the execution
+protocol is `v1`. The complete 63-row state lives in the
+[operation ledger](docs/agent-reach-operation-ledger.json); the 14 descriptors
+do not claim execution support for the other 49 rows. The current candidate
+tree is `55648469505908aa655745f5ca7704d495f12183`; it has not been merged or
+given a new recovery tag. Immediate rollback restores exact pin
+`2a5829cf3b50bc435c647bfae4c050b1837d0235`, reachable through
+`hermes-reach-integration-0.1.0a3`. The tag is only a recovery reference, not a dependency selector; the exact commit remains authoritative.
 
 ### Connector path when explicitly composed
 
@@ -389,11 +415,12 @@ The roadmap describes development order, not release dates. Incomplete capabilit
 | Complete | Exact remote execution bridge | Explicit Connector adapters, authorized-operation delivery, receipts, and retries; default composition remains empty |
 | Complete | First source executor | Fixed OpenCLI read, closed YAML mapping, and WSS receipt test for Reddit `read.post`; unbound by default |
 | Complete | Explicit two-sided production composition | Attest and confirm OpenCLI on the trusted device; build the sole Reddit adapter from owner-only paired VPS state |
-| Complete | RSS/Bilibili/YouTube-read fork execution and exact backends | Two RSS, four Bilibili, and one YouTube `read.video` direct owner-fork runtime calls; YouTube search and subtitles remain two default-local wrappers; YouTube comments remains unbound |
-| Complete | Freeze strict plugin boundary | Disable 13 Web/GitHub/V2EX platform exceptions while retaining catalog discovery and historical evidence |
+| Complete | Fourteen closed owner-fork operations | RSS 2, Bilibili 4, YouTube 3, V2EX 4, and Exa Web 1; only Reddit `read.post` remains a Connector-only thin wrapper, and YouTube comments remains unbound |
+| Complete | Freeze strict plugin boundary | Close all 13 Hermes Web/GitHub/V2EX platform exceptions; reactivate V2EX only through new fork descriptors while Web/GitHub remain unavailable |
 | Complete | Verify the real plugin lifecycle | Prove default-disabled install, enable, disable, and package-manager uninstall in a clean Hermes 0.19 environment |
-| Now | Establish a public pre-release channel | Install one exact sdist offline, lifecycle-test the exact wheel, then checksum and attest both before least-privilege publication |
-| Then | Review structured execution evidence | Choose one narrow owner-fork contract or exact Agent-Reach backend per planned operation; build no Hermes platform runtime and expose no generic fork dispatch |
+| Now | Complete public-platform batch delivery | Review the two unmerged fork and Hermes PRs; after approval, rebase-integrate, update the final SHA, and rerun every pin-sensitive gate |
+| Then | Establish a public pre-release channel | Install one exact sdist offline, lifecycle-test the exact wheel, then checksum and attest both before least-privilege publication |
+| Then | Review structured execution evidence | Select narrow owner-fork contracts or exact Agent-Reach backends for planned operations in homogeneous batches; build no Hermes platform runtime and expose no generic fork dispatch |
 | Later | Support authenticated platforms and production operations | Twitter/X and similar sources, one-step grants, audit export, alerts, upgrades, and rollback |
 
 ## Development

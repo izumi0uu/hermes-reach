@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from ..agent_reach_bridge import FEEDPARSER_VERSION
-from ..catalog import EXA_SETUP_REQUIRED_REASON
+from ..catalog import EXA_CODE_UNAVAILABLE_REASON, EXA_SETUP_REQUIRED_REASON
 from ..runtime.adapters import AdapterBinding, AdapterCallable, AdapterRegistry
 from ..runtime.availability import Availability
 from ..runtime.dispatcher import RuntimeDispatcher
 from .bilibili import production_bilibili_backend
+from .exa import exa_bindings
+from .exa_artifacts import ExaArtifactAttestation
 from .media import (
     AuditedBilibiliBackend,
     AuditedYouTubeBackend,
@@ -18,6 +20,9 @@ from .media import (
 )
 from .public_http import PublicHttpClient, PublicHttpTransport
 from .rss import RssAdapter
+from .v2ex import V2exAdapter
+from .v2ex_worker import EXPECTED_BACKEND_ID as V2EX_BACKEND_ID
+from .v2ex_worker import EXPECTED_BACKEND_VERSION as V2EX_BACKEND_VERSION
 from .youtube import production_youtube_backend
 
 
@@ -26,6 +31,9 @@ def build_alpha1_registry(
     exa_client: None = None,
     youtube_backend: AuditedYouTubeBackend | None = None,
     bilibili_backend: AuditedBilibiliBackend | None = None,
+    *,
+    exa_artifacts: ExaArtifactAttestation | None = None,
+    exa_artifacts_invalid: bool = False,
 ) -> AdapterRegistry:
     """Register deterministic adapters without probing network or secrets."""
 
@@ -52,10 +60,11 @@ def build_alpha1_registry(
         backend_version=FEEDPARSER_VERSION,
     )
 
-    _mark_exa(
+    _register_v2ex(registry)
+    _configure_exa(
         registry,
-        "setup_required",
-        EXA_SETUP_REQUIRED_REASON,
+        exa_artifacts,
+        artifacts_invalid=exa_artifacts_invalid,
     )
     _register_media_backends(registry, youtube_backend, bilibili_backend)
     return registry
@@ -66,6 +75,9 @@ def build_alpha1_runtime(
     exa_client: None = None,
     youtube_backend: AuditedYouTubeBackend | None = None,
     bilibili_backend: AuditedBilibiliBackend | None = None,
+    *,
+    exa_artifacts: ExaArtifactAttestation | None = None,
+    exa_artifacts_invalid: bool = False,
 ) -> RuntimeDispatcher:
     return RuntimeDispatcher(
         build_alpha1_registry(
@@ -73,6 +85,8 @@ def build_alpha1_runtime(
             exa_client,
             youtube_backend,
             bilibili_backend,
+            exa_artifacts=exa_artifacts,
+            exa_artifacts_invalid=exa_artifacts_invalid,
         )
     )
 
@@ -100,14 +114,41 @@ def _register(
     )
 
 
-def _mark_exa(registry: AdapterRegistry, state: Availability, reason: str) -> None:
-    for operation in ("search.web", "search.code"):
+def _register_v2ex(registry: AdapterRegistry) -> None:
+    adapter = V2exAdapter()
+    for operation in ("browse.hot", "browse.node_topics", "read.topic", "read.user"):
+        _register(
+            registry,
+            "v2ex",
+            operation,
+            V2EX_BACKEND_ID,
+            adapter.execute,
+            backend_version=V2EX_BACKEND_VERSION,
+        )
+
+
+def _configure_exa(
+    registry: AdapterRegistry,
+    artifacts: ExaArtifactAttestation | None,
+    *,
+    artifacts_invalid: bool,
+) -> None:
+    registry.mark(
+        "exa",
+        "search.code",
+        "unavailable",
+        EXA_CODE_UNAVAILABLE_REASON,
+    )
+    if artifacts_invalid or artifacts is None:
         registry.mark(
             "exa",
-            operation,
-            state,
-            reason,
+            "search.web",
+            "setup_required",
+            EXA_SETUP_REQUIRED_REASON,
         )
+        return
+    for binding in exa_bindings(artifacts):
+        registry.register(binding)
 
 
 def _register_media_backends(

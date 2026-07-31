@@ -221,6 +221,160 @@ EXPECTED_EXECUTION_CAPABILITIES = (
         1_024,
         512,
     ),
+    (
+        "v1",
+        "youtube",
+        "search.videos",
+        "youtube.search.videos.arguments.v1",
+        ("youtube.video.v1",),
+        "yt-dlp",
+        "2026.7.4",
+        ("network_access.v1",),
+        50,
+        1_048_576,
+        16_384,
+        524_288,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        1_024,
+        512,
+    ),
+    (
+        "v1",
+        "youtube",
+        "read.subtitles",
+        "youtube.read.subtitles.arguments.v1",
+        ("youtube.subtitle.v1",),
+        "yt-dlp",
+        "2026.7.4",
+        ("network_access.v1", "private_workspace.v1"),
+        1,
+        1_048_576,
+        16_384,
+        524_288,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        1_024,
+        512,
+    ),
+    (
+        "v1",
+        "v2ex",
+        "browse.hot",
+        "v2ex.browse.hot.arguments.v1",
+        ("v2ex.topic.v1",),
+        "v2ex-public-api",
+        "legacy-json-2026-07-31",
+        ("network_access.v1",),
+        50,
+        1_048_576,
+        16_384,
+        1_048_576,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        2_048,
+        512,
+    ),
+    (
+        "v1",
+        "v2ex",
+        "browse.node_topics",
+        "v2ex.browse.node_topics.arguments.v1",
+        ("v2ex.topic.v1",),
+        "v2ex-public-api",
+        "legacy-json-2026-07-31",
+        ("network_access.v1",),
+        50,
+        1_048_576,
+        16_384,
+        1_048_576,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        2_048,
+        512,
+    ),
+    (
+        "v1",
+        "v2ex",
+        "read.topic",
+        "v2ex.read.topic.arguments.v1",
+        ("v2ex.topic.v1", "v2ex.reply.v1"),
+        "v2ex-public-api",
+        "legacy-json-2026-07-31",
+        ("network_access.v1",),
+        21,
+        1_048_576,
+        16_384,
+        1_048_576,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        2_048,
+        512,
+    ),
+    (
+        "v1",
+        "v2ex",
+        "read.user",
+        "v2ex.read.user.arguments.v1",
+        ("v2ex.profile.v1",),
+        "v2ex-public-api",
+        "legacy-json-2026-07-31",
+        ("network_access.v1",),
+        1,
+        1_048_576,
+        16_384,
+        1_048_576,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        2_048,
+        512,
+    ),
+    (
+        "v1",
+        "exa",
+        "search.web",
+        "exa.search.web.arguments.v1",
+        ("exa.search.result.v1",),
+        "exa-mcporter",
+        "0.12.3+exa-web.v1",
+        ("network_access.v1", "mcporter_artifacts.v1"),
+        20,
+        1_048_576,
+        16_384,
+        524_288,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        2_048,
+        512,
+    ),
 )
 FROZEN_CALLS: tuple[tuple[str, dict[str, object], str, str], ...] = (
     (
@@ -322,46 +476,6 @@ FROZEN_CALLS: tuple[tuple[str, dict[str, object], str, str], ...] = (
         },
         "github",
         "browse.releases",
-    ),
-    (
-        "reach_browse",
-        {
-            "source": "v2ex",
-            "operation": "browse.hot",
-            "options": {"limit": 3},
-        },
-        "v2ex",
-        "browse.hot",
-    ),
-    (
-        "reach_browse",
-        {
-            "source": "v2ex",
-            "operation": "browse.node_topics",
-            "options": {"node": "python", "page": 3, "limit": 5},
-        },
-        "v2ex",
-        "browse.node_topics",
-    ),
-    (
-        "reach_read",
-        {
-            "source": "v2ex",
-            "operation": "read.topic",
-            "target": {"native_id": "42"},
-        },
-        "v2ex",
-        "read.topic",
-    ),
-    (
-        "reach_read",
-        {
-            "source": "v2ex",
-            "operation": "read.user",
-            "target": {"native_id": "alice"},
-        },
-        "v2ex",
-        "read.user",
     ),
 )
 
@@ -722,11 +836,11 @@ def _assert_frozen_calls(registry: Any, client: FixtureHttpClient) -> None:
     catalog_operations = {
         (source.name, operation.name)
         for source in SOURCE_CATALOG
-        if source.name in {"web", "github", "v2ex"}
+        if source.name in {"web", "github"}
         for operation in source.operations
     }
-    assert len(requested_operations) == 13
-    assert len(set(requested_operations)) == 13
+    assert len(requested_operations) == 9
+    assert len(set(requested_operations)) == 9
     assert set(requested_operations) == catalog_operations
 
     effects: list[str] = []
@@ -904,7 +1018,8 @@ def main() -> None:
             assert availability["rss"] == "available"
             assert availability["web"] == "unavailable"
             assert availability["github"] == "unavailable"
-            assert availability["v2ex"] == "unavailable"
+            assert availability["v2ex"] == "available"
+            assert availability["exa"] == "setup_required"
 
             from hermes_reach.agent_reach_bridge import (
                 validate_agent_reach_execution_contract,

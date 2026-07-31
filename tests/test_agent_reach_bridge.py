@@ -329,9 +329,13 @@ def test_static_handshake_only_discovers_capabilities(
         "agent_reach.execution.v1.rss",
         "agent_reach.execution.v1.bilibili",
         "agent_reach.execution.v1.youtube",
+        "agent_reach.execution.v1._v2ex_transport",
+        "agent_reach.execution.v1.v2ex",
+        "agent_reach.execution.v1.exa",
         "yt_dlp",
         "yt_dlp_ejs",
         "deno",
+        "httpcore",
     )
     for module_name in runtime_and_backend_modules:
         monkeypatch.delitem(sys.modules, module_name, raising=False)
@@ -341,13 +345,17 @@ def test_static_handshake_only_discovers_capabilities(
     assert api.execute is _execution_module().execute
     assert api.network_access_capability == "network_access.v1"
     assert api.network_access_type.__name__ == "NetworkAccessV1"
-    assert len(api.capabilities) == 7
+    assert api.private_workspace_capability == "private_workspace.v1"
+    assert api.private_workspace_type.__name__ == "PrivateWorkspaceV1"
+    assert api.mcporter_artifacts_capability == "mcporter_artifacts.v1"
+    assert api.mcporter_artifacts_type.__name__ == "McporterArtifactsV1"
+    assert len(api.capabilities) == 14
     assert all(
         module_name not in sys.modules for module_name in runtime_and_backend_modules
     )
 
 
-def test_static_handshake_freezes_order_and_youtube_descriptor_schema() -> None:
+def test_static_handshake_freezes_order_and_new_descriptor_schemas() -> None:
     api = validate_agent_reach_execution_contract(direct_url_reader=_direct_url)
 
     assert tuple(
@@ -360,14 +368,33 @@ def test_static_handshake_freezes_order_and_youtube_descriptor_schema() -> None:
         ("bilibili", "browse.hot"),
         ("bilibili", "browse.rank"),
         ("youtube", "read.video"),
+        ("youtube", "search.videos"),
+        ("youtube", "read.subtitles"),
+        ("v2ex", "browse.hot"),
+        ("v2ex", "browse.node_topics"),
+        ("v2ex", "read.topic"),
+        ("v2ex", "read.user"),
+        ("exa", "search.web"),
     )
-    youtube = api.capabilities[-1]
-    assert youtube.argument_schema_id == "youtube.read.video.arguments.v1"
-    assert youtube.result_schema_ids == ("youtube.video.v1",)
-    assert youtube.backend_id == "yt-dlp"
-    assert youtube.backend_version == "2026.7.4"
-    assert youtube.required_host_capabilities == ("network_access.v1",)
-    assert youtube.maximum_items == 1
+    by_operation = {
+        (capability.source, capability.operation): capability
+        for capability in api.capabilities
+    }
+    subtitles = by_operation[("youtube", "read.subtitles")]
+    assert subtitles.argument_schema_id == "youtube.read.subtitles.arguments.v1"
+    assert subtitles.result_schema_ids == ("youtube.subtitle.v1",)
+    assert subtitles.required_host_capabilities == (
+        "network_access.v1",
+        "private_workspace.v1",
+    )
+    topic = by_operation[("v2ex", "read.topic")]
+    assert topic.result_schema_ids == ("v2ex.topic.v1", "v2ex.reply.v1")
+    exa = by_operation[("exa", "search.web")]
+    assert exa.backend_id == "exa-mcporter"
+    assert exa.required_host_capabilities == (
+        "network_access.v1",
+        "mcporter_artifacts.v1",
+    )
 
 
 @pytest.mark.parametrize(
@@ -376,6 +403,9 @@ def test_static_handshake_freezes_order_and_youtube_descriptor_schema() -> None:
         "agent_reach/execution/v1/contracts.py",
         "agent_reach/execution/v1/registry.py",
         "agent_reach/execution/v1/youtube.py",
+        "agent_reach/execution/v1/_v2ex_transport.py",
+        "agent_reach/execution/v1/v2ex.py",
+        "agent_reach/execution/v1/exa.py",
     ],
 )
 @pytest.mark.parametrize(
@@ -417,6 +447,9 @@ def test_static_handshake_rejects_record_metadata_drift(
         "agent_reach/execution/v1/contracts.py",
         "agent_reach/execution/v1/registry.py",
         "agent_reach/execution/v1/youtube.py",
+        "agent_reach/execution/v1/_v2ex_transport.py",
+        "agent_reach/execution/v1/v2ex.py",
+        "agent_reach/execution/v1/exa.py",
     ],
 )
 def test_static_handshake_rejects_record_content_drift(
@@ -528,6 +561,9 @@ def test_static_handshake_rejects_parent_initializer_content_drift_before_import
         "agent_reach/execution/v1/rss.py",
         "agent_reach/execution/v1/bilibili.py",
         "agent_reach/execution/v1/youtube.py",
+        "agent_reach/execution/v1/_v2ex_transport.py",
+        "agent_reach/execution/v1/v2ex.py",
+        "agent_reach/execution/v1/exa.py",
     ],
 )
 def test_static_handshake_requires_every_fork_runtime_record(relative: str) -> None:
@@ -594,22 +630,46 @@ def test_static_handshake_rejects_every_descriptor_drift(
 
 
 @pytest.mark.parametrize(
-    ("field", "drifted_value"),
+    ("key", "field", "drifted_value"),
     [
-        ("argument_schema_id", "youtube.read.video.arguments.v2"),
-        ("result_schema_ids", ("youtube.video.v2",)),
+        (
+            ("youtube", "search.videos"),
+            "argument_schema_id",
+            "youtube.search.videos.arguments.v2",
+        ),
+        (
+            ("youtube", "read.subtitles"),
+            "result_schema_ids",
+            ("youtube.subtitle.v2",),
+        ),
+        (
+            ("v2ex", "read.topic"),
+            "result_schema_ids",
+            ("v2ex.topic.v1",),
+        ),
+        (
+            ("exa", "search.web"),
+            "required_host_capabilities",
+            ("network_access.v1",),
+        ),
     ],
 )
-def test_static_handshake_rejects_youtube_descriptor_schema_drift(
+def test_static_handshake_rejects_new_descriptor_schema_drift(
     monkeypatch: pytest.MonkeyPatch,
+    key: tuple[str, str],
     field: str,
     drifted_value: object,
 ) -> None:
     execution = _execution_module()
     registry = _registry_module()
     capabilities = list(execution.list_capabilities())
-    capabilities[-1] = _drifted_capability(
-        capabilities[-1],
+    index = next(
+        index
+        for index, capability in enumerate(capabilities)
+        if (capability.source, capability.operation) == key
+    )
+    capabilities[index] = _drifted_capability(
+        capabilities[index],
         field,
         drifted_value,
     )
@@ -625,6 +685,8 @@ def test_static_handshake_rejects_youtube_descriptor_schema_drift(
         "protocol",
         "fetched_document_capability",
         "network_access_capability",
+        "private_workspace_capability",
+        "mcporter_artifacts_capability",
         "missing_capability",
         "reversed_capabilities",
         "list_capabilities",
@@ -643,6 +705,10 @@ def test_static_handshake_rejects_protocol_host_and_registry_drift(
         monkeypatch.setattr(execution, "FETCHED_DOCUMENT_CAPABILITY", "fetched_url.v1")
     elif drift == "network_access_capability":
         monkeypatch.setattr(execution, "NETWORK_ACCESS_CAPABILITY", "network.v2")
+    elif drift == "private_workspace_capability":
+        monkeypatch.setattr(execution, "PRIVATE_WORKSPACE_CAPABILITY", "workspace.v2")
+    elif drift == "mcporter_artifacts_capability":
+        monkeypatch.setattr(execution, "MCPORTER_ARTIFACTS_CAPABILITY", "process.v1")
     elif drift == "missing_capability":
         monkeypatch.setattr(registry, "_CAPABILITIES", capabilities[:1])
     elif drift == "reversed_capabilities":
@@ -739,7 +805,10 @@ def test_static_handshake_rejects_module_origin_drift(
         validate_agent_reach_execution_contract(direct_url_reader=_direct_url)
 
 
-@pytest.mark.parametrize("runtime_module", ["rss", "bilibili", "youtube"])
+@pytest.mark.parametrize(
+    "runtime_module",
+    ["rss", "bilibili", "youtube", "v2ex", "exa"],
+)
 def test_worker_handshake_rejects_runtime_module_origin_drift(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -788,11 +857,53 @@ def test_worker_handshake_accepts_youtube_without_importing_backend(
         runtime_module="youtube",
     )
 
-    assert len(api.capabilities) == 7
+    assert len(api.capabilities) == 14
     assert all(
         module_name not in sys.modules
         for module_name in ("yt_dlp", "yt_dlp_ejs", "deno")
     )
+
+
+@pytest.mark.parametrize(
+    ("runtime_module", "function_name"),
+    [("v2ex", "execute_v2ex"), ("exa", "execute_exa")],
+)
+def test_worker_handshake_rejects_new_runtime_signature_drift(
+    monkeypatch: pytest.MonkeyPatch,
+    runtime_module: str,
+    function_name: str,
+) -> None:
+    runtime = import_module(f"agent_reach.execution.v1.{runtime_module}")
+
+    def execute(request: object) -> object:
+        return request
+
+    execute.__module__ = runtime.__name__
+    execute.__name__ = function_name
+    execute.__qualname__ = function_name
+    monkeypatch.setattr(runtime, function_name, execute)
+
+    with pytest.raises(AgentReachBridgeError, match="capability contract"):
+        validate_agent_reach_execution_contract(
+            direct_url_reader=_direct_url,
+            runtime_module=cast(bridge.ExecutionRuntimeModule, runtime_module),
+        )
+
+
+def test_v2ex_worker_handshake_rejects_private_transport_origin_drift(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    runtime = import_module("agent_reach.execution.v1._v2ex_transport")
+    shadow = tmp_path / "_v2ex_transport.py"
+    shadow.write_text("# shadow\n", encoding="ascii")
+    monkeypatch.setattr(runtime, "__file__", str(shadow))
+
+    with pytest.raises(AgentReachBridgeError, match="capability contract"):
+        validate_agent_reach_execution_contract(
+            direct_url_reader=_direct_url,
+            runtime_module="v2ex",
+        )
 
 
 def test_worker_handshake_rejects_youtube_runtime_signature_drift(

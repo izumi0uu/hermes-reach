@@ -102,10 +102,10 @@ def test_catalog_marks_only_reviewed_backend_paths_implemented() -> None:
         if operation.implementation_state == "implemented"
     }
     assert len(operations) == 63
-    assert len(implemented) == 11
+    assert len(implemented) == 16
     assert (
         sum(operation.implementation_state == "planned" for operation in operations)
-        == 52
+        == 47
     )
     assert implemented == {
         ("youtube", "search.videos"),
@@ -119,27 +119,38 @@ def test_catalog_marks_only_reviewed_backend_paths_implemented() -> None:
         ("bilibili", "browse.rank"),
         ("rss", "read.feed"),
         ("rss", "browse.entries"),
+        ("v2ex", "browse.hot"),
+        ("v2ex", "browse.node_topics"),
+        ("v2ex", "read.topic"),
+        ("v2ex", "read.user"),
+        ("exa", "search.web"),
     }
     assert all(operation.unavailable_reason for operation in operations)
 
 
-def test_exa_operations_are_planned_without_changing_their_public_schema() -> None:
+def test_exa_web_is_credential_free_while_incompatible_code_stays_planned() -> None:
     source = get_source("exa")
 
     assert source is not None
-    assert source.access_class == "api_key"
-    for name in ("search.web", "search.code"):
+    assert source.access_class == "credential_free"
+    for name, expected_state in (
+        ("search.web", "implemented"),
+        ("search.code", "planned"),
+    ):
         operation = get_operation(source, name)
 
         assert operation is not None
         assert operation.tool == "search"
         assert operation.alpha_wave == 1
-        assert operation.access_class == "api_key"
-        assert operation.implementation_state == "planned"
+        assert operation.access_class == "credential_free"
+        assert operation.implementation_state == expected_state
         assert [option.name for option in operation.options] == ["limit"]
         assert operation.options[0].minimum == 1
         assert operation.options[0].maximum == 50
         assert operation.targets == ()
+    code = get_operation(source, "search.code")
+    assert code is not None
+    assert "incompatible deprecated live contract" in code.unavailable_reason
 
 
 def test_alpha1_operation_inputs_are_catalog_owned() -> None:
