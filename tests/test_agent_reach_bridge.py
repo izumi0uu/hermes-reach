@@ -332,6 +332,7 @@ def test_static_handshake_only_discovers_capabilities(
         "agent_reach.execution.v1._v2ex_transport",
         "agent_reach.execution.v1.v2ex",
         "agent_reach.execution.v1.exa",
+        "agent_reach.execution.v1.opencli_social",
         "yt_dlp",
         "yt_dlp_ejs",
         "deno",
@@ -349,7 +350,9 @@ def test_static_handshake_only_discovers_capabilities(
     assert api.private_workspace_type.__name__ == "PrivateWorkspaceV1"
     assert api.mcporter_artifacts_capability == "mcporter_artifacts.v1"
     assert api.mcporter_artifacts_type.__name__ == "McporterArtifactsV1"
-    assert len(api.capabilities) == 14
+    assert api.opencli_session_capability == "opencli_session.v1"
+    assert api.opencli_session_type.__name__ == "OpenCliSessionV1"
+    assert len(api.capabilities) == 29
     assert all(
         module_name not in sys.modules for module_name in runtime_and_backend_modules
     )
@@ -375,6 +378,21 @@ def test_static_handshake_freezes_order_and_new_descriptor_schemas() -> None:
         ("v2ex", "read.topic"),
         ("v2ex", "read.user"),
         ("exa", "search.web"),
+        ("reddit", "search.posts"),
+        ("reddit", "read.post"),
+        ("reddit", "browse.subreddit"),
+        ("reddit", "browse.hot"),
+        ("reddit", "browse.popular"),
+        ("reddit", "browse.all"),
+        ("reddit", "read.subreddit"),
+        ("facebook", "search"),
+        ("facebook", "read.profile"),
+        ("facebook", "browse.feed"),
+        ("facebook", "browse.groups"),
+        ("instagram", "search.users"),
+        ("instagram", "read.profile"),
+        ("instagram", "browse.user_posts"),
+        ("instagram", "browse.explore"),
     )
     by_operation = {
         (capability.source, capability.operation): capability
@@ -395,6 +413,46 @@ def test_static_handshake_freezes_order_and_new_descriptor_schemas() -> None:
         "network_access.v1",
         "mcporter_artifacts.v1",
     )
+    social = api.capabilities[14:]
+    assert all(capability.backend_id == "opencli" for capability in social)
+    assert all(capability.backend_version == "1.8.6-hermes.1" for capability in social)
+    assert all(
+        capability.required_host_capabilities == ("opencli_session.v1",)
+        for capability in social
+    )
+    reddit_thread = by_operation[("reddit", "read.post")]
+    assert reddit_thread.result_schema_ids == ("reddit.thread.item.v1",)
+    assert reddit_thread.maximum_items == 14
+    groups = by_operation[("facebook", "browse.groups")]
+    assert groups.result_schema_ids == ("facebook.group.v1",)
+    explore = by_operation[("instagram", "browse.explore")]
+    assert explore.argument_schema_id == "instagram.browse.explore.arguments.v1"
+
+
+def test_static_handshake_attests_opencli_runtime_and_guard_records() -> None:
+    installation = bridge._default_installation_reader(AGENT_REACH_DISTRIBUTION)
+
+    assert len(installation.files) == 13
+    assert {
+        relative: (installed.hash_algorithm, installed.hash_value, installed.size)
+        for relative, installed in installation.files.items()
+        if relative
+        in {
+            "agent_reach/execution/v1/opencli_social.py",
+            "agent_reach/execution/v1/_opencli_no_lifecycle.mjs",
+        }
+    } == {
+        "agent_reach/execution/v1/opencli_social.py": (
+            "sha256",
+            "c-irjFRKQ87pkk41jARop60kbrvRK7TrCWRT3hCZAQo",
+            68_608,
+        ),
+        "agent_reach/execution/v1/_opencli_no_lifecycle.mjs": (
+            "sha256",
+            "nJzZv4Fj-z-6hj-Upx6eoJ6jMjuE-JoGtV49HxlRUhM",
+            3_539,
+        ),
+    }
 
 
 @pytest.mark.parametrize(
@@ -406,6 +464,8 @@ def test_static_handshake_freezes_order_and_new_descriptor_schemas() -> None:
         "agent_reach/execution/v1/_v2ex_transport.py",
         "agent_reach/execution/v1/v2ex.py",
         "agent_reach/execution/v1/exa.py",
+        "agent_reach/execution/v1/opencli_social.py",
+        "agent_reach/execution/v1/_opencli_no_lifecycle.mjs",
     ],
 )
 @pytest.mark.parametrize(
@@ -450,6 +510,8 @@ def test_static_handshake_rejects_record_metadata_drift(
         "agent_reach/execution/v1/_v2ex_transport.py",
         "agent_reach/execution/v1/v2ex.py",
         "agent_reach/execution/v1/exa.py",
+        "agent_reach/execution/v1/opencli_social.py",
+        "agent_reach/execution/v1/_opencli_no_lifecycle.mjs",
     ],
 )
 def test_static_handshake_rejects_record_content_drift(
@@ -564,6 +626,8 @@ def test_static_handshake_rejects_parent_initializer_content_drift_before_import
         "agent_reach/execution/v1/_v2ex_transport.py",
         "agent_reach/execution/v1/v2ex.py",
         "agent_reach/execution/v1/exa.py",
+        "agent_reach/execution/v1/opencli_social.py",
+        "agent_reach/execution/v1/_opencli_no_lifecycle.mjs",
     ],
 )
 def test_static_handshake_requires_every_fork_runtime_record(relative: str) -> None:
@@ -807,7 +871,7 @@ def test_static_handshake_rejects_module_origin_drift(
 
 @pytest.mark.parametrize(
     "runtime_module",
-    ["rss", "bilibili", "youtube", "v2ex", "exa"],
+    ["rss", "bilibili", "youtube", "v2ex", "exa", "opencli_social"],
 )
 def test_worker_handshake_rejects_runtime_module_origin_drift(
     monkeypatch: pytest.MonkeyPatch,
@@ -857,7 +921,7 @@ def test_worker_handshake_accepts_youtube_without_importing_backend(
         runtime_module="youtube",
     )
 
-    assert len(api.capabilities) == 14
+    assert len(api.capabilities) == 29
     assert all(
         module_name not in sys.modules
         for module_name in ("yt_dlp", "yt_dlp_ejs", "deno")
@@ -866,7 +930,11 @@ def test_worker_handshake_accepts_youtube_without_importing_backend(
 
 @pytest.mark.parametrize(
     ("runtime_module", "function_name"),
-    [("v2ex", "execute_v2ex"), ("exa", "execute_exa")],
+    [
+        ("v2ex", "execute_v2ex"),
+        ("exa", "execute_exa"),
+        ("opencli_social", "execute_opencli_social"),
+    ],
 )
 def test_worker_handshake_rejects_new_runtime_signature_drift(
     monkeypatch: pytest.MonkeyPatch,

@@ -34,6 +34,7 @@ from hermes_reach.connector.protocol import (
 )
 from hermes_reach.connector.tls import ConnectorTLSStore, verify_connector_ca_der
 from hermes_reach.connector.transport import PairingExchange, WssEndpoint
+from hermes_reach.runtime.dispatcher import RuntimeDispatcher
 from hermes_reach.sources.exa_artifacts import (
     EXA_CONFIG_PATH_ENVIRONMENT,
     EXA_CONFIG_SHA256_ENVIRONMENT,
@@ -43,8 +44,23 @@ from hermes_reach.sources.exa_artifacts import (
     EXA_NODE_EXECUTABLE_ENVIRONMENT,
     EXA_NODE_SHA256_ENVIRONMENT,
 )
+from hermes_reach.sources.opencli_social_contract import (
+    OPENCLI_SOCIAL_OPERATIONS,
+    OPENCLI_SOCIAL_SCOPES,
+)
 
 _LEAF_FINGERPRINT = "ab" * 32
+
+
+def _social_states(
+    runtime: RuntimeDispatcher,
+) -> dict[tuple[str, str], tuple[str, str | None]]:
+    availability = runtime.operation_availability
+    return {
+        key: (record.state, record.cause_code)
+        for key in OPENCLI_SOCIAL_OPERATIONS
+        for record in (availability(*key),)
+    }
 
 
 def _id(value: int) -> str:
@@ -252,7 +268,7 @@ def test_invalid_configured_state_preserves_alpha1_and_creates_nothing(
     runtime = runtime_from_environment({VPS_STATE_DIRECTORY_ENVIRONMENT: str(missing)})
 
     assert runtime.operation_availability("rss", "read.feed").state == "available"
-    assert runtime.operation_availability("reddit", "read.post").state == "unavailable"
+    assert {state for state, _ in _social_states(runtime).values()} == {"unavailable"}
     assert not missing.exists()
 
 
@@ -271,7 +287,7 @@ def test_missing_vps_state_does_not_discard_valid_exa_artifacts(tmp_path: Path) 
 
 
 @pytest.mark.parametrize("state", ["unpaired", "malformed"])
-def test_unpaired_or_malformed_configured_state_closes_only_reddit(
+def test_unpaired_or_malformed_configured_state_closes_all_social_operations(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, state: str
 ) -> None:
     state_directory = tmp_path / state
@@ -285,12 +301,12 @@ def test_unpaired_or_malformed_configured_state_closes_only_reddit(
     runtime = build_vps_runtime(state_directory)
 
     assert runtime.operation_availability("rss", "read.feed").state == "available"
-    assert runtime.operation_availability("reddit", "read.post").state == "unavailable"
+    assert {state for state, _ in _social_states(runtime).values()} == {"unavailable"}
     assert not (state_directory / "receipts.jsonl").exists()
     assert not (state_directory / "vps-connector-snapshot.json").exists()
 
 
-def test_wrong_vps_key_closes_only_reddit(
+def test_wrong_vps_key_closes_all_social_operations(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     state_directory = _paired_state(
@@ -306,7 +322,7 @@ def test_wrong_vps_key_closes_only_reddit(
     runtime = build_vps_runtime(state_directory)
 
     assert runtime.operation_availability("rss", "read.feed").state == "available"
-    assert runtime.operation_availability("reddit", "read.post").state == "unavailable"
+    assert {state for state, _ in _social_states(runtime).values()} == {"unavailable"}
     assert not (state_directory / "receipts.jsonl").exists()
     assert not (state_directory / "vps-connector-snapshot.json").exists()
 
@@ -333,7 +349,7 @@ def test_expired_grant_closes_only_reddit_without_startup_dial(
     assert not (state_directory / "vps-connector-snapshot.json").exists()
 
 
-def test_verified_reddit_pairing_builds_one_degraded_connector_adapter(
+def test_verified_single_scope_pairing_builds_only_one_degraded_social_adapter(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     state_directory = _paired_state(
@@ -347,6 +363,35 @@ def test_verified_reddit_pairing_builds_one_degraded_connector_adapter(
     reddit = runtime.operation_availability("reddit", "read.post")
     assert reddit.state == "degraded"
     assert reddit.cause_code == "connector_offline"
+    other_states = {
+        key: value
+        for key, value in _social_states(runtime).items()
+        if key != ("reddit", "read.post")
+    }
+    assert set(other_states.values()) == {("setup_required", "grant_scope_denied")}
+    assert not (state_directory / "receipts.jsonl").exists()
+    assert not (state_directory / "vps-connector-snapshot.json").exists()
+
+
+def test_verified_complete_social_grant_builds_all_fifteen_degraded_adapters(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    state_directory = _paired_state(
+        tmp_path,
+        tuple(
+            sorted(
+                OPENCLI_SOCIAL_SCOPES,
+                key=lambda scope: (scope.source, scope.operation),
+            )
+        ),
+    )
+
+    monkeypatch.setattr(connector_identity.sys, "platform", "linux")
+    runtime = build_vps_runtime(state_directory)
+
+    states = _social_states(runtime)
+    assert len(states) == 15
+    assert set(states.values()) == {("degraded", "connector_offline")}
     assert not (state_directory / "receipts.jsonl").exists()
     assert not (state_directory / "vps-connector-snapshot.json").exists()
 
@@ -392,5 +437,8 @@ def test_verified_wrong_scope_pairing_is_setup_required_without_startup_dial(
     reddit = runtime.operation_availability("reddit", "read.post")
     assert reddit.state == "setup_required"
     assert reddit.cause_code == "grant_scope_denied"
+    assert set(_social_states(runtime).values()) == {
+        ("setup_required", "grant_scope_denied")
+    }
     assert not (state_directory / "receipts.jsonl").exists()
     assert not (state_directory / "vps-connector-snapshot.json").exists()

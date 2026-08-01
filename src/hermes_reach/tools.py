@@ -123,7 +123,11 @@ async def _dispatch_group(
     if availability.state not in {"available", "degraded"}:
         return unavailable_group(call, availability)
     try:
-        result = await _RUNTIME.dispatch(call, trace_id=trace_id)
+        result = await _RUNTIME.dispatch(
+            call,
+            call.operation.runtime.data_scope,
+            trace_id=trace_id,
+        )
         if result is None:
             refreshed = _RUNTIME.operation_availability(
                 call.source.name, call.operation.name

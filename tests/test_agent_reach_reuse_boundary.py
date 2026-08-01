@@ -21,10 +21,11 @@ from hermes_reach.sources.registry import build_alpha1_registry
 ROOT = Path(__file__).resolve().parents[1]
 DECISIONS = ROOT / "docs" / "agent-reach-reuse-decisions.json"
 OPERATION_LEDGER = ROOT / "docs" / "agent-reach-operation-ledger.json"
-PREVIOUS_AGENT_REACH_REVIEWED_HEAD = "9e744d0c33f9e6498cf66c2ea376a653000e9be4"
-PREVIOUS_AGENT_REACH_INTEGRATION_TREE = "070e4507fde7e55eceaba4d29e6a459c4a972f60"
-FINAL_AGENT_REACH_REVIEWED_HEAD = "fd93d2ec86511a4a1514b7ebd13cd996be709692"
-FINAL_AGENT_REACH_INTEGRATION_TREE = "e19835071ae6560431b66d5a21e51b598d3d9c81"
+PREVIOUS_AGENT_REACH_REVIEWED_HEAD = "fd93d2ec86511a4a1514b7ebd13cd996be709692"
+PREVIOUS_AGENT_REACH_INTEGRATION_TREE = "e19835071ae6560431b66d5a21e51b598d3d9c81"
+FINAL_AGENT_REACH_REVIEWED_HEAD = "a3dcdb3a6638e14ceda8cfa9a3cc7a010d80fa80"
+FINAL_AGENT_REACH_INTEGRATION_TREE = "302db7526ed84b1565fa24baf5c06ced69385d80"
+OPENCLI_SOCIAL_VERSION = "1.8.6-hermes.1"
 REVIEW_FIELDS = frozenset(
     {
         "source",
@@ -87,15 +88,36 @@ P2_V2EX_FORK_RUNTIME = frozenset(
 
 P2_EXA_FORK_RUNTIME = frozenset({("exa", "search.web")})
 
+P2_OPENCLI_SOCIAL_FORK_RUNTIME = frozenset(
+    {
+        ("reddit", "search.posts"),
+        ("reddit", "read.post"),
+        ("reddit", "browse.subreddit"),
+        ("reddit", "browse.hot"),
+        ("reddit", "browse.popular"),
+        ("reddit", "browse.all"),
+        ("reddit", "read.subreddit"),
+        ("facebook", "search"),
+        ("facebook", "read.profile"),
+        ("facebook", "browse.feed"),
+        ("facebook", "browse.groups"),
+        ("instagram", "search.users"),
+        ("instagram", "read.profile"),
+        ("instagram", "browse.user_posts"),
+        ("instagram", "browse.explore"),
+    }
+)
+
 DIRECT_OWNER_FORK_RUNTIME = (
     P1_RSS_FORK_RUNTIME
     | P2_BILIBILI_FORK_RUNTIME
     | P2_YOUTUBE_FORK_RUNTIME
     | P2_V2EX_FORK_RUNTIME
     | P2_EXA_FORK_RUNTIME
+    | P2_OPENCLI_SOCIAL_FORK_RUNTIME
 )
 
-EXACT_BACKEND_THIN_WRAPPER = frozenset({("reddit", "read.post")})
+EXACT_BACKEND_THIN_WRAPPER: frozenset[tuple[str, str]] = frozenset()
 
 IMPLEMENTED_BUT_UNBOUND = frozenset({("youtube", "read.comments")})
 
@@ -117,7 +139,10 @@ CLOSED_PLATFORM_EXCEPTIONS = frozenset(
     }
 )
 
-REDDIT_CONNECTOR_EXACT_WRAPPER = frozenset({("reddit", "read.post")})
+CONNECTOR_ONLY_OWNER_FORK_RUNTIME = P2_OPENCLI_SOCIAL_FORK_RUNTIME
+DEFAULT_LOCAL_OWNER_FORK_RUNTIME = (
+    DIRECT_OWNER_FORK_RUNTIME - CONNECTOR_ONLY_OWNER_FORK_RUNTIME
+)
 
 REACH_REIMPLEMENTATION: frozenset[tuple[str, str]] = frozenset()
 
@@ -155,21 +180,22 @@ def test_frozen_reuse_audit_counts_are_review_visible() -> None:
 
     assert len(operations) == 63
     assert len(DIRECT_AGENT_REACH_RUNTIME) == 0
-    assert len(DIRECT_OWNER_FORK_RUNTIME) == 14
-    assert EXACT_BACKEND_THIN_WRAPPER == REDDIT_CONNECTOR_EXACT_WRAPPER
-    assert len(EXACT_BACKEND_THIN_WRAPPER) == 1
-    assert len(DIRECT_OWNER_FORK_RUNTIME | EXACT_BACKEND_THIN_WRAPPER) == 15
-    assert len(operations) - len(DIRECT_OWNER_FORK_RUNTIME) == 49
+    assert len(DIRECT_OWNER_FORK_RUNTIME) == 29
+    assert EXACT_BACKEND_THIN_WRAPPER == frozenset()
+    assert len(DIRECT_OWNER_FORK_RUNTIME | EXACT_BACKEND_THIN_WRAPPER) == 29
+    assert len(operations) - len(DIRECT_OWNER_FORK_RUNTIME) == 34
+    assert len(DEFAULT_LOCAL_OWNER_FORK_RUNTIME) == 14
+    assert len(CONNECTOR_ONLY_OWNER_FORK_RUNTIME) == 15
     assert IMPLEMENTED_BUT_UNBOUND == {("youtube", "read.comments")}
     assert HERMES_NATIVE_EQUIVALENT == frozenset()
     assert REACH_REIMPLEMENTATION == frozenset()
     assert (
         sum(operation.implementation_state == "implemented" for operation in operations)
-        == 16
+        == 30
     )
     assert (
         sum(operation.implementation_state == "planned" for operation in operations)
-        == 47
+        == 33
     )
 
 
@@ -221,13 +247,13 @@ def test_operation_ledger_closes_every_catalog_operation_and_fork_contract() -> 
         if operation.implementation_state == "planned"
     }
 
-    default_local = DIRECT_OWNER_FORK_RUNTIME
+    default_local = DEFAULT_LOCAL_OWNER_FORK_RUNTIME
     for key, row in keyed.items():
         assert set(row) == OPERATION_LEDGER_FIELDS
         assert (ROOT / row["decision_record"]).is_file()
         if key in default_local:
             assert row["binding_surface"] == "default_local"
-        elif key in REDDIT_CONNECTOR_EXACT_WRAPPER:
+        elif key in CONNECTOR_ONLY_OWNER_FORK_RUNTIME:
             assert row["binding_surface"] == "connector_only"
         elif key in IMPLEMENTED_BUT_UNBOUND:
             assert row["binding_surface"] == "unbound"
@@ -362,6 +388,131 @@ def test_operation_ledger_closes_every_catalog_operation_and_fork_contract() -> 
         },
     }
 
+    social_contracts = (
+        (
+            "reddit",
+            "search.posts",
+            "reddit.search.posts.arguments.v1",
+            "reddit.post.v1",
+            50,
+        ),
+        (
+            "reddit",
+            "read.post",
+            "reddit.read.post.arguments.v1",
+            "reddit.thread.item.v1",
+            14,
+        ),
+        (
+            "reddit",
+            "browse.subreddit",
+            "reddit.browse.subreddit.arguments.v1",
+            "reddit.post.v1",
+            50,
+        ),
+        (
+            "reddit",
+            "browse.hot",
+            "reddit.browse.hot.arguments.v1",
+            "reddit.post.v1",
+            50,
+        ),
+        (
+            "reddit",
+            "browse.popular",
+            "reddit.browse.popular.arguments.v1",
+            "reddit.post.v1",
+            50,
+        ),
+        (
+            "reddit",
+            "browse.all",
+            "reddit.browse.all.arguments.v1",
+            "reddit.post.v1",
+            50,
+        ),
+        (
+            "reddit",
+            "read.subreddit",
+            "reddit.read.subreddit.arguments.v1",
+            "reddit.subreddit.v1",
+            1,
+        ),
+        (
+            "facebook",
+            "search",
+            "facebook.search.arguments.v1",
+            "facebook.search.result.v1",
+            50,
+        ),
+        (
+            "facebook",
+            "read.profile",
+            "facebook.read.profile.arguments.v1",
+            "facebook.profile.v1",
+            1,
+        ),
+        (
+            "facebook",
+            "browse.feed",
+            "facebook.browse.feed.arguments.v1",
+            "facebook.post.v1",
+            50,
+        ),
+        (
+            "facebook",
+            "browse.groups",
+            "facebook.browse.groups.arguments.v1",
+            "facebook.group.v1",
+            50,
+        ),
+        (
+            "instagram",
+            "search.users",
+            "instagram.search.users.arguments.v1",
+            "instagram.user.v1",
+            50,
+        ),
+        (
+            "instagram",
+            "read.profile",
+            "instagram.read.profile.arguments.v1",
+            "instagram.profile.v1",
+            1,
+        ),
+        (
+            "instagram",
+            "browse.user_posts",
+            "instagram.browse.user_posts.arguments.v1",
+            "instagram.post.v1",
+            50,
+        ),
+        (
+            "instagram",
+            "browse.explore",
+            "instagram.browse.explore.arguments.v1",
+            "instagram.post.v1",
+            50,
+        ),
+    )
+    social_limits = {**shared_limits, "maximum_output_bytes": 524_288}
+    for (
+        source,
+        operation,
+        argument_schema,
+        result_schema,
+        maximum_items,
+    ) in social_contracts:
+        assert keyed[(source, operation)]["execution_contract"] == {
+            "protocol_version": AGENT_REACH_PROTOCOL_VERSION,
+            "argument_schema_id": argument_schema,
+            "result_schema_ids": [result_schema],
+            "backend_id": "opencli",
+            "backend_version": OPENCLI_SOCIAL_VERSION,
+            "required_host_capabilities": ["opencli_session.v1"],
+            "limits": {"maximum_items": maximum_items, **social_limits},
+        }
+
 
 def test_governance_docs_preserve_worker_and_recovery_tag_boundaries() -> None:
     plugin_boundary = (ROOT / "docs" / "agent-reach-plugin-boundary.md").read_text(
@@ -379,11 +530,15 @@ def test_governance_docs_preserve_worker_and_recovery_tag_boundaries() -> None:
     youtube_decision = (
         ROOT / "docs" / "agent-reach-decisions" / "youtube-yt-dlp-2026.7.4.md"
     ).read_text(encoding="utf-8")
+    opencli_decision = (
+        ROOT / "docs" / "agent-reach-decisions" / "opencli-social-1.8.6-hermes.1.md"
+    ).read_text(encoding="utf-8")
     normalized_plugin_boundary = " ".join(plugin_boundary.split())
     normalized_reuse_boundary = " ".join(reuse_boundary.split())
     normalized_rss_decision = " ".join(rss_decision.split())
     normalized_bilibili_decision = " ".join(bilibili_decision.split())
     normalized_youtube_decision = " ".join(youtube_decision.split())
+    normalized_opencli_decision = " ".join(opencli_decision.split())
 
     assert "not a kernel-level syscall sandbox" in normalized_plugin_boundary
     assert "both parent package initializers" in normalized_plugin_boundary
@@ -406,8 +561,8 @@ def test_governance_docs_preserve_worker_and_recovery_tag_boundaries() -> None:
     assert "preserves final-integration reachability" in normalized_plugin_boundary
     assert PREVIOUS_AGENT_REACH_REVIEWED_HEAD in normalized_youtube_decision
     assert PREVIOUS_AGENT_REACH_INTEGRATION_TREE in normalized_youtube_decision
-    assert FINAL_AGENT_REACH_REVIEWED_HEAD in normalized_youtube_decision
-    assert FINAL_AGENT_REACH_INTEGRATION_TREE in normalized_youtube_decision
+    assert FINAL_AGENT_REACH_REVIEWED_HEAD in normalized_opencli_decision
+    assert FINAL_AGENT_REACH_INTEGRATION_TREE in normalized_opencli_decision
     assert "hermes-reach-integration-0.1.0a3" in normalized_youtube_decision
     assert "not a dependency selector" in normalized_youtube_decision
     assert "hermes-reach-integration-0.1.0a1" in normalized_bilibili_decision
@@ -463,6 +618,7 @@ def test_review_decisions_are_pinned_to_catalog_and_runtime_state() -> None:
         | P2_YOUTUBE_FORK_RUNTIME
         | P2_V2EX_FORK_RUNTIME
         | P2_EXA_FORK_RUNTIME
+        | P2_OPENCLI_SOCIAL_FORK_RUNTIME
     )
     assert {
         key
@@ -501,7 +657,17 @@ def test_review_decisions_are_pinned_to_catalog_and_runtime_state() -> None:
         assert review["approval"].startswith("owner-approved-")
         assert review["review_milestone"]
         assert (ROOT / review["decision_record"]).is_file()
-        assert catalog[key].runtime.data_scope == "public"
+        expected_scope = (
+            "account_visible"
+            if key
+            in {
+                ("facebook", "browse.feed"),
+                ("facebook", "browse.groups"),
+                ("instagram", "browse.explore"),
+            }
+            else "public"
+        )
+        assert catalog[key].runtime.data_scope == expected_scope
         availability = registry.availability(*key)
         if key in CLOSED_PLATFORM_EXCEPTIONS:
             assert catalog[key].implementation_state == "planned"
@@ -521,6 +687,12 @@ def test_review_decisions_are_pinned_to_catalog_and_runtime_state() -> None:
             assert availability.state == "setup_required"
             assert availability.backend_id is None
             assert registry.has_binding(*key) is False
+        elif key in P2_OPENCLI_SOCIAL_FORK_RUNTIME:
+            assert catalog[key].implementation_state == "implemented"
+            assert review["current_backend"] == "opencli"
+            assert availability.state == "unavailable"
+            assert availability.backend_id is None
+            assert registry.has_binding(*key) is False
         else:
             assert catalog[key].implementation_state == "implemented"
             assert availability.state == "available"
@@ -534,17 +706,18 @@ def test_review_decisions_are_pinned_to_catalog_and_runtime_state() -> None:
             if key in P2_V2EX_FORK_RUNTIME:
                 assert availability.backend_version == "legacy-json-2026-07-31"
 
-    default_local_bindings = DIRECT_OWNER_FORK_RUNTIME
+    default_local_bindings = DEFAULT_LOCAL_OWNER_FORK_RUNTIME
     assert len(default_local_bindings) == 14
     assert all(
         registry.has_binding(*key)
         for key in default_local_bindings - P2_EXA_FORK_RUNTIME
     )
 
-    reddit = registry.availability("reddit", "read.post")
-    assert reddit.state == "unavailable"
-    assert reddit.backend_id is None
-    assert registry.has_binding("reddit", "read.post") is False
+    for key in CONNECTOR_ONLY_OWNER_FORK_RUNTIME:
+        social = registry.availability(*key)
+        assert social.state == "unavailable"
+        assert social.backend_id is None
+        assert registry.has_binding(*key) is False
 
     comments = registry.availability("youtube", "read.comments")
     assert comments.state == "setup_required"

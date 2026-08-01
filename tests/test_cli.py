@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import hashlib
 import json
 from collections.abc import Callable
 from pathlib import Path
@@ -22,12 +21,80 @@ from hermes_reach.connector.execution import ConnectorExecutionComposition
 from hermes_reach.connector.protocol import GrantScope
 from hermes_reach.connector.transport import WssEndpoint
 from hermes_reach.runtime.release import ReleaseReport
+from hermes_reach.sources.opencli_social import OpenCliSessionAttestation
+
+_SOCIAL_FLAG_PATHS = (
+    ("--opencli-social-node", Path("/private/node-canary")),
+    ("--opencli-social-root", Path("/private/opencli-canary")),
+    (
+        "--opencli-social-cli",
+        Path(
+            "/private/opencli-canary/node_modules/@jackwener/opencli/dist/src/main.js"
+        ),
+    ),
+    ("--opencli-social-session-home", Path("/private/session-canary")),
+)
+_SOCIAL_SCOPE_LABELS = (
+    "reddit:search.posts:public",
+    "reddit:read.post:public",
+    "reddit:browse.subreddit:public",
+    "reddit:browse.hot:public",
+    "reddit:browse.popular:public",
+    "reddit:browse.all:public",
+    "reddit:read.subreddit:public",
+    "facebook:search:public",
+    "facebook:read.profile:public",
+    "facebook:browse.feed:account_visible",
+    "facebook:browse.groups:account_visible",
+    "instagram:search.users:public",
+    "instagram:read.profile:public",
+    "instagram:browse.user_posts:public",
+    "instagram:browse.explore:account_visible",
+)
 
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     register_cli(parser)
     return parser
+
+
+def _social_serve_arguments(mask: int = 0b1111) -> list[str]:
+    arguments = [
+        "connector",
+        "serve",
+        "--state-directory",
+        "/private/connector",
+        "--bind",
+        "127.0.0.1",
+        "--port",
+        "8443",
+    ]
+    for index, (flag, path) in enumerate(_SOCIAL_FLAG_PATHS):
+        if mask & (1 << index):
+            arguments.extend((flag, str(path)))
+    return arguments
+
+
+class _ReaderSpy:
+    def __init__(self, enabled: bool, events: list[str] | None = None) -> None:
+        self.enabled = enabled
+        self.events = events
+        self.output: list[str] = []
+        self.prompts: list[tuple[str, str]] = []
+        self.closed = False
+
+    def _write(self, value: str) -> None:
+        self.output.append(value)
+
+    def _confirm(self, prompt: str, expected: str) -> bool:
+        self.prompts.append((prompt, expected))
+        if self.events is not None:
+            self.events.append("confirm")
+        return self.enabled
+
+    def close(self) -> None:
+        self.closed = True
 
 
 def test_status_json_is_local_catalog_data() -> None:
@@ -184,7 +251,15 @@ def test_connector_cli_exposes_role_init_pair_and_foreground_serve() -> None:
     assert serve.func is connector_command
     assert serve.bind_host == "100.64.0.9"
     assert serve.port == 8443
-    assert serve.reddit_opencli is None
+    assert serve.opencli_social_node is None
+    assert serve.opencli_social_root is None
+    assert serve.opencli_social_cli is None
+    assert serve.opencli_social_session_home is None
+    social_serve = parser.parse_args(_social_serve_arguments())
+    assert social_serve.opencli_social_node == _SOCIAL_FLAG_PATHS[0][1]
+    assert social_serve.opencli_social_root == _SOCIAL_FLAG_PATHS[1][1]
+    assert social_serve.opencli_social_cli == _SOCIAL_FLAG_PATHS[2][1]
+    assert social_serve.opencli_social_session_home == _SOCIAL_FLAG_PATHS[3][1]
     assert pair.func is connector_command
     assert pair.connector_endpoint == "wss://100.64.0.9:8443"
     assert pair.scope == [
@@ -209,29 +284,113 @@ def test_connector_cli_exposes_role_init_pair_and_foreground_serve() -> None:
         )
 
 
-def test_connector_serve_reddit_activation_requires_exact_tty_enable(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+def test_connector_serve_without_social_inputs_keeps_the_empty_composition(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    executable = tmp_path / "opencli"
-    executable.write_bytes(b"fixture-opencli")
-    executable.chmod(0o700)
+    reader = _ReaderSpy(False)
+    calls: list[ConnectorExecutionComposition | None] = []
 
-    class FakeReader:
-        def __init__(self, enabled: bool) -> None:
-            self.enabled = enabled
-            self.output: list[str] = []
-            self.prompts: list[tuple[str, str]] = []
-            self.closed = False
+    class MutationSpy:
+        def serve(
+            self,
+            state_directory: Path,
+            *,
+            reader: object,
+            bind_host: str,
+            port: int,
+            execution_composition: ConnectorExecutionComposition | None = None,
+        ) -> None:
+            assert state_directory == Path("/private/connector")
+            assert bind_host == "127.0.0.1"
+            assert port == 8443
+            calls.append(execution_composition)
 
-        def _write(self, value: str) -> None:
-            self.output.append(value)
+    monkeypatch.setattr(cli, "TtyPassphraseReader", lambda: reader)
+    monkeypatch.setattr(
+        cli,
+        "attest_opencli_social_session",
+        lambda *_: pytest.fail("unconfigured serve must not attest OpenCLI"),
+    )
 
-        def _confirm(self, prompt: str, expected: str) -> bool:
-            self.prompts.append((prompt, expected))
-            return self.enabled
+    connector_command(
+        _parser().parse_args(_social_serve_arguments(mask=0)),
+        mutation_service=MutationSpy(),  # type: ignore[arg-type]
+    )
 
-        def close(self) -> None:
-            self.closed = True
+    assert calls == [None]
+    assert reader.output == []
+    assert reader.prompts == []
+    assert reader.closed
+
+
+@pytest.mark.parametrize("mask", range(1, 0b1111))
+def test_connector_serve_rejects_every_partial_social_input_set(
+    monkeypatch: pytest.MonkeyPatch,
+    mask: int,
+) -> None:
+    reader = _ReaderSpy(False)
+    serve_calls = 0
+
+    class MutationSpy:
+        def serve(self, *_: object, **__: object) -> None:
+            nonlocal serve_calls
+            serve_calls += 1
+
+    monkeypatch.setattr(cli, "TtyPassphraseReader", lambda: reader)
+    monkeypatch.setattr(
+        cli,
+        "attest_opencli_social_session",
+        lambda *_: pytest.fail("partial social inputs must not be attested"),
+    )
+
+    connector_command(
+        _parser().parse_args(_social_serve_arguments(mask=mask)),
+        mutation_service=MutationSpy(),  # type: ignore[arg-type]
+    )
+
+    rendered = "".join(reader.output)
+    assert serve_calls == 0
+    assert reader.prompts == []
+    assert "connector_state_invalid" in rendered
+    assert all(str(path) not in rendered for _, path in _SOCIAL_FLAG_PATHS)
+    assert reader.closed
+
+
+def test_connector_serve_social_activation_attests_before_exact_tty_enable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    node = _SOCIAL_FLAG_PATHS[0][1]
+    root = _SOCIAL_FLAG_PATHS[1][1]
+    entrypoint = _SOCIAL_FLAG_PATHS[2][1]
+    session_home = _SOCIAL_FLAG_PATHS[3][1]
+    node_sha256 = "a" * 64
+    tree_sha256 = "b" * 64
+    events: list[str] = []
+    attestation_calls: list[tuple[Path, Path, Path, Path]] = []
+
+    def attest(
+        selected_node: Path,
+        selected_root: Path,
+        selected_entrypoint: Path,
+        selected_session_home: Path,
+    ) -> OpenCliSessionAttestation:
+        events.append("attest")
+        attestation_calls.append(
+            (
+                selected_node,
+                selected_root,
+                selected_entrypoint,
+                selected_session_home,
+            )
+        )
+        return OpenCliSessionAttestation(
+            selected_node,
+            node_sha256,
+            selected_root,
+            selected_entrypoint,
+            tree_sha256,
+            selected_session_home,
+        )
 
     class MutationSpy:
         def __init__(self) -> None:
@@ -246,47 +405,55 @@ def test_connector_serve_reddit_activation_requires_exact_tty_enable(
             port: int,
             execution_composition: ConnectorExecutionComposition | None = None,
         ) -> None:
-            assert state_directory == tmp_path / "connector"
+            events.append("serve")
+            assert state_directory == Path("/private/connector")
             assert bind_host == "127.0.0.1"
             assert port == 8443
             self.compositions.append(execution_composition)
 
-    args = _parser().parse_args(
-        [
-            "connector",
-            "serve",
-            "--state-directory",
-            str(tmp_path / "connector"),
-            "--bind",
-            "127.0.0.1",
-            "--port",
-            "8443",
-            "--reddit-opencli",
-            str(executable),
-        ]
-    )
-    assert args.reddit_opencli == executable
+    args = _parser().parse_args(_social_serve_arguments())
     mutation = MutationSpy()
+    monkeypatch.setattr(cli, "attest_opencli_social_session", attest)
 
-    denied = FakeReader(False)
+    denied = _ReaderSpy(False, events)
     monkeypatch.setattr(cli, "TtyPassphraseReader", lambda: denied)
     connector_command(args, mutation_service=mutation)  # type: ignore[arg-type]
+
+    assert events == ["attest", "confirm"]
     assert mutation.compositions == []
     assert denied.prompts == [("Type enable to continue: ", "enable")]
     assert denied.closed
 
-    enabled = FakeReader(True)
+    events.clear()
+    enabled = _ReaderSpy(True, events)
     monkeypatch.setattr(cli, "TtyPassphraseReader", lambda: enabled)
     connector_command(args, mutation_service=mutation)  # type: ignore[arg-type]
 
     rendered = "".join(enabled.output)
-    assert "scope: reddit:read.post:public" in rendered
-    assert f"OpenCLI path: {executable.resolve()}" in rendered
-    assert hashlib.sha256(b"fixture-opencli").hexdigest() in rendered
+    rendered_scope_labels = tuple(
+        line.removeprefix("scope: ")
+        for line in rendered.splitlines()
+        if line.startswith("scope: ")
+    )
+    assert events == ["attest", "confirm", "serve"]
+    assert attestation_calls == [(node, root, entrypoint, session_home)] * 2
+    assert "backend: opencli/1.8.6-hermes.1" in rendered
+    assert f"Node SHA-256: {node_sha256}" in rendered
+    assert f"OpenCLI tree SHA-256: {tree_sha256}" in rendered
+    assert "scopes: 15" in rendered
+    assert rendered_scope_labels == _SOCIAL_SCOPE_LABELS
+    assert all(str(path) not in rendered for _, path in _SOCIAL_FLAG_PATHS)
     assert enabled.prompts == [("Type enable to continue: ", "enable")]
     assert enabled.closed
     assert len(mutation.compositions) == 1
-    assert repr(mutation.compositions[0]) == "ConnectorExecutionComposition(count=1)"
+    composition = mutation.compositions[0]
+    assert repr(composition) == "ConnectorExecutionComposition(count=15)"
+    assert composition is not None
+    for label in _SOCIAL_SCOPE_LABELS:
+        source, operation, data_scope = label.split(":")
+        assert composition.required_scope(source, operation) == GrantScope(
+            source, operation, data_scope
+        )
 
 
 def test_connector_init_dispatches_through_tty_only_service_boundary(

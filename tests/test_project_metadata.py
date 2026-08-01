@@ -10,7 +10,8 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 PROJECT_VERSION = "0.1.0a1"
-AGENT_REACH_COMMIT = "9b69146588b1d162515b81db26b51643c15de8eb"
+AGENT_REACH_COMMIT = "ec4a5e36434c9df9ee236dc12734843163fc17ac"
+ROLLBACK_AGENT_REACH_COMMIT = "9b69146588b1d162515b81db26b51643c15de8eb"
 LEGACY_AGENT_REACH_COMMITS = frozenset(
     {
         "2755b0c140a03ab5793540fb3245288891526586",
@@ -166,6 +167,20 @@ def test_release_surface_contains_no_legacy_agent_reach_pin() -> None:
             assert legacy_commit not in text, path.relative_to(ROOT).as_posix()
         for legacy_tree in LEGACY_AGENT_REACH_TREES:
             assert legacy_tree not in text, path.relative_to(ROOT).as_posix()
+
+
+def test_active_selectors_do_not_replace_historical_rollback_evidence() -> None:
+    active_selectors = (
+        ROOT / "pyproject.toml",
+        ROOT / "uv.lock",
+        ROOT / "src" / "hermes_reach" / "agent_reach_bridge.py",
+    )
+
+    for path in active_selectors:
+        assert ROLLBACK_AGENT_REACH_COMMIT not in path.read_text(encoding="utf-8")
+
+    release_guide = (ROOT / "docs" / "releasing.md").read_text(encoding="utf-8")
+    assert ROLLBACK_AGENT_REACH_COMMIT in release_guide
 
 
 def test_manifest_includes_reviewed_docs_and_prunes_tests() -> None:

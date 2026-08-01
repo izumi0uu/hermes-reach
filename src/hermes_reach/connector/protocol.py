@@ -76,7 +76,12 @@ _FAILURE_CLASSES: Final = frozenset(
 )
 _DECISIONS: Final = frozenset({"allow", "deny"})
 _OUTCOMES: Final = frozenset({"ok", "error"})
-_SAFE_BACKENDS: Final = frozenset({("reach-bounded-executor-v1", "1")})
+_SAFE_BACKENDS: Final = frozenset(
+    {
+        ("reach-bounded-executor-v1", "1"),
+        ("opencli", "1.8.6-hermes.1"),
+    }
+)
 _ITEM_KINDS: Final = frozenset(
     {"content", "entry", "topic", "reply", "profile", "result"}
 )

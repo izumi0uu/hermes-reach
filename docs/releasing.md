@@ -20,17 +20,21 @@ The current final integration and rollback references are:
 
 | Purpose | Recovery reference | Exact dependency commit |
 | --- | --- | --- |
-| Current 14-operation public-platform integration | pending; not release-eligible until a protected immutable recovery tag exists | `9b69146588b1d162515b81db26b51643c15de8eb` |
+| Current 29-operation public-platform integration | pending; not release-eligible until a protected immutable recovery tag exists | `ec4a5e36434c9df9ee236dc12734843163fc17ac` |
+| Rollback: 14-operation public-platform integration | pending; no immutable recovery tag was created by the social batch | `9b69146588b1d162515b81db26b51643c15de8eb` |
 | Rollback: integrated YouTube read-video runtime | `hermes-reach-integration-0.1.0a3` | `2a5829cf3b50bc435c647bfae4c050b1837d0235` |
 | Rollback: RSS + Bilibili execution v1, YouTube exact wrappers | `hermes-reach-integration-0.1.0a2` | `f195253d53befdb012d7aa575e732ec627ec29ac` |
 | Earlier rollback: RSS execution v1 / Hermes Bilibili wrapper | `hermes-reach-integration-0.1.0a1` | `806205fd106f4f4453624becfd773acce8418cf1` |
 
-The final integration `9b69146588b1d162515b81db26b51643c15de8eb`
-resolves to tree `e19835071ae6560431b66d5a21e51b598d3d9c81`. It was rebase-merged
-from reviewed PR head `fd93d2ec86511a4a1514b7ebd13cd996be709692`, whose tree is
+The final integration `ec4a5e36434c9df9ee236dc12734843163fc17ac`
+resolves to tree `302db7526ed84b1565fa24baf5c06ced69385d80`. It was rebase-merged
+from reviewed PR head `a3dcdb3a6638e14ceda8cfa9a3cc7a010d80fa80`, whose tree is
 byte-equivalent. Hermes pins the final SHA and repeats every pin-sensitive gate.
 A package release remains forbidden until the final integration receives one
 protected immutable recovery tag and all release gates pass.
+The prior integration `9b69146588b1d162515b81db26b51643c15de8eb`, tree
+`e19835071ae6560431b66d5a21e51b598d3d9c81`, remains the exact social-batch
+rollback pin; it is historical evidence, not an active dependency selector.
 The previous integration `2a5829cf3b50bc435c647bfae4c050b1837d0235`
 remains protected by `hermes-reach-integration-0.1.0a3`. Do not confuse fork
 recovery tags with the Hermes package release tag `v0.1.0a1`. Installation
@@ -63,7 +67,7 @@ controls:
 
 The workflow cannot configure or prove these repository settings. A tag push
 without them is an operator error, even if the YAML gate passes.
-Final integration `9b69146588b1d162515b81db26b51643c15de8eb` currently lacks the immutable
+Final integration `ec4a5e36434c9df9ee236dc12734843163fc17ac` currently lacks the immutable
 integration-tag prerequisite and must not be published as-is.
 
 ## Local dry run
@@ -128,8 +132,9 @@ The workflow then:
    checksummed wheel, sdist, and `SHA256SUMS` set;
 5. on Python 3.11, 3.12, and 3.13, installs the exact wheel without a dependency
    cache, repository lock, offline mode, or source checkout, then runs
-   `uv pip check` and validates fork provenance, the 14-descriptor execution
-   handshake including each runtime module, and the 15-channel catalog;
+   `uv pip check` and validates fork provenance, the 29-descriptor execution
+   handshake including each of the six runtime modules and all 13 attested
+   execution files, and the 15-channel catalog;
 6. creates separate GitHub OIDC build attestations for the wheel and sdist
    whose digests are listed in `SHA256SUMS`;
 7. rechecks the remote tag and current remote `main` ancestry, then publishes a
@@ -269,10 +274,19 @@ assert document["vcs_info"] == {
 }, document
 apis = tuple(
     validate_agent_reach_execution_contract(runtime_module=runtime_module)
-    for runtime_module in ("rss", "bilibili", "youtube", "v2ex", "exa")
+    for runtime_module in (
+        "rss",
+        "bilibili",
+        "youtube",
+        "v2ex",
+        "exa",
+        "opencli_social",
+    )
 )
 api = apis[0]
 assert all(candidate.capabilities == api.capabilities for candidate in apis)
+assert api.opencli_session_capability == "opencli_session.v1"
+assert api.opencli_session_type.__name__ == "OpenCliSessionV1"
 assert tuple((item.source, item.operation) for item in api.capabilities) == (
     ("rss", "read.feed"),
     ("rss", "browse.entries"),
@@ -288,8 +302,23 @@ assert tuple((item.source, item.operation) for item in api.capabilities) == (
     ("v2ex", "read.topic"),
     ("v2ex", "read.user"),
     ("exa", "search.web"),
+    ("reddit", "search.posts"),
+    ("reddit", "read.post"),
+    ("reddit", "browse.subreddit"),
+    ("reddit", "browse.hot"),
+    ("reddit", "browse.popular"),
+    ("reddit", "browse.all"),
+    ("reddit", "read.subreddit"),
+    ("facebook", "search"),
+    ("facebook", "read.profile"),
+    ("facebook", "browse.feed"),
+    ("facebook", "browse.groups"),
+    ("instagram", "search.users"),
+    ("instagram", "read.profile"),
+    ("instagram", "browse.user_posts"),
+    ("instagram", "browse.explore"),
 )
-print("exact Agent-Reach PEP 610 and five-module runtime handshake verified")
+print("exact Agent-Reach PEP 610 and six-module runtime handshake verified")
 PY
 ```
 
@@ -401,6 +430,11 @@ Retain `$SMOKE_ROOT` with the release evidence until the audit is complete.
   assets, move the old tag, or reuse the withdrawn version.
 - User rollback remains: disable Reach, start a new Hermes session, uninstall
   from the same Hermes Python environment, then run `uv pip check`.
+- A code rollback that reverses the OpenCLI social batch restores the prior
+  Hermes release and exact fork pin
+  `9b69146588b1d162515b81db26b51643c15de8eb`. The 15 Connector-only social
+  bindings become unavailable again; the rollback pin remains evidence and
+  must not become an active selector in the current release.
 - A code rollback that reverses the 14-operation public-platform batch restores
   exact fork pin `2a5829cf3b50bc435c647bfae4c050b1837d0235`, recoverable
   through `hermes-reach-integration-0.1.0a3`. YouTube search/subtitles return to

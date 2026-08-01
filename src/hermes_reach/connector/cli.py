@@ -148,9 +148,24 @@ def register_connector_cli(
     connector_serve.add_argument("--bind", dest="bind_host", required=True)
     connector_serve.add_argument("--port", type=int, required=True)
     connector_serve.add_argument(
-        "--reddit-opencli",
+        "--opencli-social-node",
         type=Path,
-        help="Enable the exact Reddit read executor with an absolute OpenCLI path",
+        help="Absolute Node executable for the attested social runtime",
+    )
+    connector_serve.add_argument(
+        "--opencli-social-root",
+        type=Path,
+        help="Absolute dedicated OpenCLI npm prefix",
+    )
+    connector_serve.add_argument(
+        "--opencli-social-cli",
+        type=Path,
+        help="Absolute fixed OpenCLI entrypoint inside the npm prefix",
+    )
+    connector_serve.add_argument(
+        "--opencli-social-session-home",
+        type=Path,
+        help="Absolute trusted-device home containing the live OpenCLI session",
     )
     connector_serve.set_defaults(func=handler)
 

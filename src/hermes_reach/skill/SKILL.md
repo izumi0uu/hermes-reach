@@ -7,17 +7,20 @@ description: Route bounded, read-only internet retrieval through Hermes Reach.
 
 This skill adapts the routing scope of Agent-Reach 1.5.0 from official baseline
 `b4d52c46c9113cb0f653d6df4cf71ebadf4930ac` through exact owner-fork
-commit `9b69146588b1d162515b81db26b51643c15de8eb` to the Hermes Reach safety
-contract. Fork execution protocol v1 owns exactly 14 direct owner-fork
+commit `ec4a5e36434c9df9ee236dc12734843163fc17ac` to the Hermes Reach safety
+contract. Fork execution protocol v1 owns exactly 29 direct owner-fork
 operations: two RSS operations
 (`rss:read.feed`, `rss:browse.entries`) and four Bilibili operations
 (`bilibili:search.videos`, `bilibili:read.video`, `bilibili:browse.hot`,
 `bilibili:browse.rank`), all three executable YouTube operations
 (`youtube:search.videos`, `youtube:read.video`, `youtube:read.subtitles`), all
-four V2EX operations, and Exa `exa:search.web`. Connector-only
-`reddit:read.post` is the one exact-backend thin wrapper. Exa Web still reports
+four V2EX operations, Exa `exa:search.web`, and all 15 catalog operations for
+Reddit, Facebook, and Instagram through the exact pinned fork-owned social
+runtime. The 15 social operations are Connector-only and
+require exact `public` or `account_visible` grants; Hermes owns no social
+platform command or parser. Exa Web still reports
 `setup_required` until the operator supplies the complete reviewed artifact
-attestation. Fork execution does not make the other 49 catalog operations
+attestation. Fork execution does not make the other 34 catalog operations
 executable.
 
 ## Execution Boundary

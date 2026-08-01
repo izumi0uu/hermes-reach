@@ -31,6 +31,8 @@ _BILIBILI_VIDEO_ID: Final = re.compile(r"BV[A-Za-z0-9]{10}")
 _REDDIT_POST_ID: Final = re.compile(r"[A-Za-z0-9]{1,32}")
 _REDDIT_SUBREDDIT: Final = re.compile(r"[A-Za-z0-9_]{1,32}")
 _REDDIT_POST_SLUG: Final = re.compile(r"[A-Za-z0-9_-]{1,256}")
+_SUBREDDIT_IDENTIFIER: Final = re.compile(r"[A-Za-z][A-Za-z0-9_]{2,20}")
+_SOCIAL_USERNAME: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}")
 
 
 class ReachValidationError(Exception):
@@ -412,6 +414,18 @@ def _validate_string_format(value: str, string_format: str, field: str) -> None:
     if string_format == "github_resource" and _github_resource(value):
         return
     if string_format == "reddit_post_url" and reddit_post_id_from_url(value):
+        return
+    if (
+        string_format == "subreddit_identifier"
+        and value.isascii()
+        and _SUBREDDIT_IDENTIFIER.fullmatch(value)
+    ):
+        return
+    if (
+        string_format == "social_username"
+        and value.isascii()
+        and _SOCIAL_USERNAME.fullmatch(value)
+    ):
         return
     if string_format == "youtube_video_url" and _youtube_video_url(value):
         return

@@ -21,12 +21,13 @@ AGENT_REACH_DISTRIBUTION: Final = "agent-reach"
 AGENT_REACH_VERSION: Final = "1.5.0"
 AGENT_REACH_OFFICIAL_BASE_COMMIT: Final = "b4d52c46c9113cb0f653d6df4cf71ebadf4930ac"
 AGENT_REACH_FORK_URL: Final = "https://github.com/izumi0uu/Agent-Reach.git"
-AGENT_REACH_FORK_COMMIT: Final = "9b69146588b1d162515b81db26b51643c15de8eb"
+AGENT_REACH_FORK_COMMIT: Final = "ec4a5e36434c9df9ee236dc12734843163fc17ac"
 AGENT_REACH_PROTOCOL_VERSION: Final = "v1"
 AGENT_REACH_FETCHED_DOCUMENT_CAPABILITY: Final = "fetched_document.v1"
 AGENT_REACH_NETWORK_ACCESS_CAPABILITY: Final = "network_access.v1"
 AGENT_REACH_PRIVATE_WORKSPACE_CAPABILITY: Final = "private_workspace.v1"
 AGENT_REACH_MCPORTER_ARTIFACTS_CAPABILITY: Final = "mcporter_artifacts.v1"
+AGENT_REACH_OPENCLI_SESSION_CAPABILITY: Final = "opencli_session.v1"
 # Compatibility alias for callers that previously knew only one exact dependency pin.
 AGENT_REACH_COMMIT: Final = AGENT_REACH_FORK_COMMIT
 BILIBILI_CLI_DISTRIBUTION: Final = "bilibili-cli"
@@ -85,6 +86,8 @@ _EXECUTION_YOUTUBE_MODULE: Final = f"{_EXECUTION_MODULE}.youtube"
 _EXECUTION_V2EX_TRANSPORT_MODULE: Final = f"{_EXECUTION_MODULE}._v2ex_transport"
 _EXECUTION_V2EX_MODULE: Final = f"{_EXECUTION_MODULE}.v2ex"
 _EXECUTION_EXA_MODULE: Final = f"{_EXECUTION_MODULE}.exa"
+_EXECUTION_OPENCLI_SOCIAL_MODULE: Final = f"{_EXECUTION_MODULE}.opencli_social"
+_EXECUTION_OPENCLI_GUARD_RESOURCE: Final = f"{_EXECUTION_MODULE}._opencli_no_lifecycle"
 _EXECUTION_MODULE_FILES: Final[Mapping[str, tuple[str, str, int]]] = MappingProxyType(
     {
         _AGENT_REACH_MODULE: (
@@ -99,18 +102,18 @@ _EXECUTION_MODULE_FILES: Final[Mapping[str, tuple[str, str, int]]] = MappingProx
         ),
         _EXECUTION_MODULE: (
             "agent_reach/execution/v1/__init__.py",
-            "NXilKYeVwfHEGCC0jGPr1q16qGZX5Nmv7-y0YrGHaDw",
-            1_215,
+            "E0Rh3_5lAxmaCRb14bq33zUslhtYfAAT7PK4EZd-fEU",
+            1_327,
         ),
         _EXECUTION_CONTRACTS_MODULE: (
             "agent_reach/execution/v1/contracts.py",
-            "j4FR7ydBfg8VIIkypoiSdEDh5oLxsCZAQZPVsflSBHU",
-            38_673,
+            "GNEszOYYOi1rhQo0XJGBO8vJ0tUTGy-Nb08FPPwfwvo",
+            54_266,
         ),
         _EXECUTION_REGISTRY_MODULE: (
             "agent_reach/execution/v1/registry.py",
-            "TAcG6NhbwmwEIUXXpuhSgoHP2_vtzru0AEqzDvb260k",
-            16_628,
+            "allM21uoqORwCHcNPHRp8b0qCyJeCbesDLrkdaFGXHI",
+            23_126,
         ),
         _EXECUTION_RSS_MODULE: (
             "agent_reach/execution/v1/rss.py",
@@ -142,6 +145,16 @@ _EXECUTION_MODULE_FILES: Final[Mapping[str, tuple[str, str, int]]] = MappingProx
             "106HW8O8nRfdpsUrGjacUUmkHyucAZ13YKjUlBypby4",
             32_724,
         ),
+        _EXECUTION_OPENCLI_SOCIAL_MODULE: (
+            "agent_reach/execution/v1/opencli_social.py",
+            "c-irjFRKQ87pkk41jARop60kbrvRK7TrCWRT3hCZAQo",
+            68_608,
+        ),
+        _EXECUTION_OPENCLI_GUARD_RESOURCE: (
+            "agent_reach/execution/v1/_opencli_no_lifecycle.mjs",
+            "nJzZv4Fj-z-6hj-Upx6eoJ6jMjuE-JoGtV49HxlRUhM",
+            3_539,
+        ),
     }
 )
 _EXPECTED_EXECUTION_EXPORTS: Final = (
@@ -149,6 +162,7 @@ _EXPECTED_EXECUTION_EXPORTS: Final = (
     "FETCHED_DOCUMENT_CAPABILITY",
     "MCPORTER_ARTIFACTS_CAPABILITY",
     "NETWORK_ACCESS_CAPABILITY",
+    "OPENCLI_SESSION_CAPABILITY",
     "PRIVATE_WORKSPACE_CAPABILITY",
     "PROTOCOL_VERSION",
     "ExecutionContextV1",
@@ -162,6 +176,7 @@ _EXPECTED_EXECUTION_EXPORTS: Final = (
     "FetchedDocumentV1",
     "McporterArtifactsV1",
     "NetworkAccessV1",
+    "OpenCliSessionV1",
     "OperationCapabilityV1",
     "PrivateWorkspaceV1",
     "execute",
@@ -228,6 +243,14 @@ _EXECUTION_CLASS_FIELDS: Final[Mapping[str, tuple[str, ...]]] = MappingProxyType
             "mcporter_tree_sha256",
             "config_path",
             "config_sha256",
+        ),
+        "OpenCliSessionV1": (
+            "node_executable",
+            "node_sha256",
+            "opencli_root",
+            "opencli_cli",
+            "opencli_tree_sha256",
+            "session_home",
         ),
         "ExecutionLimitsV1": (
             "maximum_items",
@@ -564,9 +587,341 @@ _EXPECTED_EXECUTION_CAPABILITIES: Final = (
         2_048,
         512,
     ),
+    (
+        "v1",
+        "reddit",
+        "search.posts",
+        "reddit.search.posts.arguments.v1",
+        ("reddit.post.v1",),
+        "opencli",
+        "1.8.6-hermes.1",
+        ("opencli_session.v1",),
+        50,
+        1_048_576,
+        16_384,
+        524_288,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        2_048,
+        512,
+    ),
+    (
+        "v1",
+        "reddit",
+        "read.post",
+        "reddit.read.post.arguments.v1",
+        ("reddit.thread.item.v1",),
+        "opencli",
+        "1.8.6-hermes.1",
+        ("opencli_session.v1",),
+        14,
+        1_048_576,
+        16_384,
+        524_288,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        2_048,
+        512,
+    ),
+    (
+        "v1",
+        "reddit",
+        "browse.subreddit",
+        "reddit.browse.subreddit.arguments.v1",
+        ("reddit.post.v1",),
+        "opencli",
+        "1.8.6-hermes.1",
+        ("opencli_session.v1",),
+        50,
+        1_048_576,
+        16_384,
+        524_288,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        2_048,
+        512,
+    ),
+    (
+        "v1",
+        "reddit",
+        "browse.hot",
+        "reddit.browse.hot.arguments.v1",
+        ("reddit.post.v1",),
+        "opencli",
+        "1.8.6-hermes.1",
+        ("opencli_session.v1",),
+        50,
+        1_048_576,
+        16_384,
+        524_288,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        2_048,
+        512,
+    ),
+    (
+        "v1",
+        "reddit",
+        "browse.popular",
+        "reddit.browse.popular.arguments.v1",
+        ("reddit.post.v1",),
+        "opencli",
+        "1.8.6-hermes.1",
+        ("opencli_session.v1",),
+        50,
+        1_048_576,
+        16_384,
+        524_288,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        2_048,
+        512,
+    ),
+    (
+        "v1",
+        "reddit",
+        "browse.all",
+        "reddit.browse.all.arguments.v1",
+        ("reddit.post.v1",),
+        "opencli",
+        "1.8.6-hermes.1",
+        ("opencli_session.v1",),
+        50,
+        1_048_576,
+        16_384,
+        524_288,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        2_048,
+        512,
+    ),
+    (
+        "v1",
+        "reddit",
+        "read.subreddit",
+        "reddit.read.subreddit.arguments.v1",
+        ("reddit.subreddit.v1",),
+        "opencli",
+        "1.8.6-hermes.1",
+        ("opencli_session.v1",),
+        1,
+        1_048_576,
+        16_384,
+        524_288,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        2_048,
+        512,
+    ),
+    (
+        "v1",
+        "facebook",
+        "search",
+        "facebook.search.arguments.v1",
+        ("facebook.search.result.v1",),
+        "opencli",
+        "1.8.6-hermes.1",
+        ("opencli_session.v1",),
+        50,
+        1_048_576,
+        16_384,
+        524_288,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        2_048,
+        512,
+    ),
+    (
+        "v1",
+        "facebook",
+        "read.profile",
+        "facebook.read.profile.arguments.v1",
+        ("facebook.profile.v1",),
+        "opencli",
+        "1.8.6-hermes.1",
+        ("opencli_session.v1",),
+        1,
+        1_048_576,
+        16_384,
+        524_288,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        2_048,
+        512,
+    ),
+    (
+        "v1",
+        "facebook",
+        "browse.feed",
+        "facebook.browse.feed.arguments.v1",
+        ("facebook.post.v1",),
+        "opencli",
+        "1.8.6-hermes.1",
+        ("opencli_session.v1",),
+        50,
+        1_048_576,
+        16_384,
+        524_288,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        2_048,
+        512,
+    ),
+    (
+        "v1",
+        "facebook",
+        "browse.groups",
+        "facebook.browse.groups.arguments.v1",
+        ("facebook.group.v1",),
+        "opencli",
+        "1.8.6-hermes.1",
+        ("opencli_session.v1",),
+        50,
+        1_048_576,
+        16_384,
+        524_288,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        2_048,
+        512,
+    ),
+    (
+        "v1",
+        "instagram",
+        "search.users",
+        "instagram.search.users.arguments.v1",
+        ("instagram.user.v1",),
+        "opencli",
+        "1.8.6-hermes.1",
+        ("opencli_session.v1",),
+        50,
+        1_048_576,
+        16_384,
+        524_288,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        2_048,
+        512,
+    ),
+    (
+        "v1",
+        "instagram",
+        "read.profile",
+        "instagram.read.profile.arguments.v1",
+        ("instagram.profile.v1",),
+        "opencli",
+        "1.8.6-hermes.1",
+        ("opencli_session.v1",),
+        1,
+        1_048_576,
+        16_384,
+        524_288,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        2_048,
+        512,
+    ),
+    (
+        "v1",
+        "instagram",
+        "browse.user_posts",
+        "instagram.browse.user_posts.arguments.v1",
+        ("instagram.post.v1",),
+        "opencli",
+        "1.8.6-hermes.1",
+        ("opencli_session.v1",),
+        50,
+        1_048_576,
+        16_384,
+        524_288,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        2_048,
+        512,
+    ),
+    (
+        "v1",
+        "instagram",
+        "browse.explore",
+        "instagram.browse.explore.arguments.v1",
+        ("instagram.post.v1",),
+        "opencli",
+        "1.8.6-hermes.1",
+        ("opencli_session.v1",),
+        50,
+        1_048_576,
+        16_384,
+        524_288,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        2_048,
+        512,
+    ),
 )
 HealthState = Literal["available", "setup_required", "degraded", "unavailable"]
-ExecutionRuntimeModule = Literal["rss", "bilibili", "youtube", "v2ex", "exa"]
+ExecutionRuntimeModule = Literal[
+    "rss", "bilibili", "youtube", "v2ex", "exa", "opencli_social"
+]
 
 
 class AgentReachBridgeError(RuntimeError):
@@ -622,6 +977,7 @@ class AgentReachExecutionApi:
     network_access_capability: str
     private_workspace_capability: str
     mcporter_artifacts_capability: str
+    opencli_session_capability: str
     capabilities: tuple[object, ...]
     operation_capability_type: type[object]
     execution_request_type: type[object]
@@ -629,6 +985,7 @@ class AgentReachExecutionApi:
     network_access_type: type[object]
     private_workspace_type: type[object]
     mcporter_artifacts_type: type[object]
+    opencli_session_type: type[object]
     execution_limits_type: type[object]
     execution_context_type: type[object]
     execution_item_type: type[object]
@@ -786,7 +1143,15 @@ def validate_agent_reach_execution_contract(
     except Exception:
         raise AgentReachBridgeError(_INCOMPATIBLE_PROVENANCE) from None
 
-    if runtime_module not in {None, "rss", "bilibili", "youtube", "v2ex", "exa"}:
+    if runtime_module not in {
+        None,
+        "rss",
+        "bilibili",
+        "youtube",
+        "v2ex",
+        "exa",
+        "opencli_social",
+    }:
         raise AgentReachBridgeError(_INCOMPATIBLE_EXECUTION_CONTRACT)
 
     _validate_execution_installation(installation)
@@ -997,6 +1362,11 @@ def _validated_execution_api(
         contracts_module,
         "MCPORTER_ARTIFACTS_CAPABILITY",
     )
+    opencli_session_capability = _owned_export(
+        public_module,
+        contracts_module,
+        "OPENCLI_SESSION_CAPABILITY",
+    )
     error_codes = _owned_export(
         public_module,
         contracts_module,
@@ -1013,6 +1383,8 @@ def _validated_execution_api(
         or private_workspace_capability != AGENT_REACH_PRIVATE_WORKSPACE_CAPABILITY
         or type(mcporter_artifacts_capability) is not str
         or mcporter_artifacts_capability != AGENT_REACH_MCPORTER_ARTIFACTS_CAPABILITY
+        or type(opencli_session_capability) is not str
+        or opencli_session_capability != AGENT_REACH_OPENCLI_SESSION_CAPABILITY
         or type(error_codes) is not frozenset
         or error_codes != frozenset(_EXPECTED_EXECUTION_ERROR_CODES)
     ):
@@ -1059,6 +1431,7 @@ def _validated_execution_api(
             class_exports["NetworkAccessV1"],
             class_exports["PrivateWorkspaceV1"],
             class_exports["McporterArtifactsV1"],
+            class_exports["OpenCliSessionV1"],
         )
         or get_origin(result_type) is not UnionType
         or get_args(result_type)
@@ -1101,9 +1474,13 @@ def _validated_execution_api(
             runtime_module_name = _EXECUTION_V2EX_MODULE
             runtime_function_name = "execute_v2ex"
             runtime_parameters = ("request", "context")
-        else:
+        elif runtime_module == "exa":
             runtime_module_name = _EXECUTION_EXA_MODULE
             runtime_function_name = "execute_exa"
+            runtime_parameters = ("request", "context")
+        else:
+            runtime_module_name = _EXECUTION_OPENCLI_SOCIAL_MODULE
+            runtime_function_name = "execute_opencli_social"
             runtime_parameters = ("request", "context")
         validated_runtime_module = _validated_execution_module(
             module_loader(runtime_module_name),
@@ -1146,6 +1523,7 @@ def _validated_execution_api(
         network_access_capability=network_access_capability,
         private_workspace_capability=private_workspace_capability,
         mcporter_artifacts_capability=mcporter_artifacts_capability,
+        opencli_session_capability=opencli_session_capability,
         capabilities=capabilities,
         operation_capability_type=capability_type,
         execution_request_type=class_exports["ExecutionRequestV1"],
@@ -1153,6 +1531,7 @@ def _validated_execution_api(
         network_access_type=class_exports["NetworkAccessV1"],
         private_workspace_type=class_exports["PrivateWorkspaceV1"],
         mcporter_artifacts_type=class_exports["McporterArtifactsV1"],
+        opencli_session_type=class_exports["OpenCliSessionV1"],
         execution_limits_type=class_exports["ExecutionLimitsV1"],
         execution_context_type=class_exports["ExecutionContextV1"],
         execution_item_type=class_exports["ExecutionItemV1"],

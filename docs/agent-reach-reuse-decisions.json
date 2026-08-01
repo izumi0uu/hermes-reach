@@ -5,7 +5,7 @@
     "official_repository": "Panniantong/Agent-Reach",
     "official_base_commit": "b4d52c46c9113cb0f653d6df4cf71ebadf4930ac",
     "fork_repository": "izumi0uu/Agent-Reach",
-    "fork_execution_commit": "9b69146588b1d162515b81db26b51643c15de8eb",
+    "fork_execution_commit": "ec4a5e36434c9df9ee236dc12734843163fc17ac",
     "execution_protocol": "v1"
   },
   "reviews": [
@@ -272,6 +272,171 @@
       "current_backend": "yt-dlp",
       "review_milestone": "any official base, fork commit, execution protocol/capability, yt-dlp/yt-dlp-ejs/Deno pin, subtitle selection/file behavior, fixed options or API call, worker protocol, backend identity, error mapping, or projection change",
       "decision_record": "docs/agent-reach-decisions/youtube-yt-dlp-2026.7.4.md"
+    },
+    {
+      "source": "reddit",
+      "operation": "search.posts",
+      "upstream_execution": "agent_reach.execution.v1.execute(reddit:search.posts, opencli_session.v1) -> OpenCLI 1.8.6-hermes.1 reddit search",
+      "classification": "direct_owner_fork_runtime",
+      "semantic_delta": "The owner fork owns the fixed OpenCLI command, complete artifact revalidation and private snapshot, lifecycle-mutation guard, typed YAML/error parsing, bounds, and Reddit-native projection; Hermes supplies trusted-device authorization, worker containment, product normalization, receipts, and audit.",
+      "approval": "owner-approved-fork-runtime-opencli-social-2026-08-01",
+      "current_backend": "opencli",
+      "review_milestone": "any official base, fork commit, execution protocol/capability, OpenCLI package/tree, Node closure, browser lifecycle/session behavior, command/schema, worker protocol, backend identity, error mapping, or projection change",
+      "decision_record": "docs/agent-reach-decisions/opencli-social-1.8.6-hermes.1.md"
+    },
+    {
+      "source": "reddit",
+      "operation": "read.post",
+      "upstream_execution": "agent_reach.execution.v1.execute(reddit:read.post, opencli_session.v1) -> OpenCLI 1.8.6-hermes.1 reddit read",
+      "classification": "direct_owner_fork_runtime",
+      "semantic_delta": "The owner fork replaces the retired Hermes Reddit wrapper and owns the fixed OpenCLI command, complete artifact revalidation and private snapshot, lifecycle-mutation guard, typed YAML/error parsing, bounds, identity correlation, and Reddit-native projection; Hermes supplies trusted-device authorization, worker containment, product normalization, receipts, and audit.",
+      "approval": "owner-approved-fork-runtime-opencli-social-2026-08-01",
+      "current_backend": "opencli",
+      "review_milestone": "any official base, fork commit, execution protocol/capability, OpenCLI package/tree, Node closure, browser lifecycle/session behavior, command/schema, worker protocol, backend identity, error mapping, or projection change",
+      "decision_record": "docs/agent-reach-decisions/opencli-social-1.8.6-hermes.1.md"
+    },
+    {
+      "source": "reddit",
+      "operation": "browse.subreddit",
+      "upstream_execution": "agent_reach.execution.v1.execute(reddit:browse.subreddit, opencli_session.v1) -> OpenCLI 1.8.6-hermes.1 reddit subreddit",
+      "classification": "direct_owner_fork_runtime",
+      "semantic_delta": "The owner fork owns the fixed OpenCLI command, subreddit argument mapping, artifact/session closure, typed parsing, bounds, identity correlation, error mapping, and Reddit-native projection; Hermes supplies trusted-device authorization, worker containment, product normalization, receipts, and audit.",
+      "approval": "owner-approved-fork-runtime-opencli-social-2026-08-01",
+      "current_backend": "opencli",
+      "review_milestone": "any official base, fork commit, execution protocol/capability, OpenCLI package/tree, Node closure, browser lifecycle/session behavior, command/schema, worker protocol, backend identity, error mapping, or projection change",
+      "decision_record": "docs/agent-reach-decisions/opencli-social-1.8.6-hermes.1.md"
+    },
+    {
+      "source": "reddit",
+      "operation": "browse.hot",
+      "upstream_execution": "agent_reach.execution.v1.execute(reddit:browse.hot, opencli_session.v1) -> OpenCLI 1.8.6-hermes.1 reddit hot",
+      "classification": "direct_owner_fork_runtime",
+      "semantic_delta": "The owner fork owns the fixed OpenCLI command, artifact/session closure, typed parsing, limits, error mapping, and Reddit-native projection; Hermes supplies trusted-device authorization, worker containment, product normalization, receipts, and audit.",
+      "approval": "owner-approved-fork-runtime-opencli-social-2026-08-01",
+      "current_backend": "opencli",
+      "review_milestone": "any official base, fork commit, execution protocol/capability, OpenCLI package/tree, Node closure, browser lifecycle/session behavior, command/schema, worker protocol, backend identity, error mapping, or projection change",
+      "decision_record": "docs/agent-reach-decisions/opencli-social-1.8.6-hermes.1.md"
+    },
+    {
+      "source": "reddit",
+      "operation": "browse.popular",
+      "upstream_execution": "agent_reach.execution.v1.execute(reddit:browse.popular, opencli_session.v1) -> OpenCLI 1.8.6-hermes.1 reddit popular",
+      "classification": "direct_owner_fork_runtime",
+      "semantic_delta": "The owner fork owns the fixed OpenCLI command, artifact/session closure, typed parsing, limits, error mapping, and Reddit-native projection; Hermes supplies trusted-device authorization, worker containment, product normalization, receipts, and audit.",
+      "approval": "owner-approved-fork-runtime-opencli-social-2026-08-01",
+      "current_backend": "opencli",
+      "review_milestone": "any official base, fork commit, execution protocol/capability, OpenCLI package/tree, Node closure, browser lifecycle/session behavior, command/schema, worker protocol, backend identity, error mapping, or projection change",
+      "decision_record": "docs/agent-reach-decisions/opencli-social-1.8.6-hermes.1.md"
+    },
+    {
+      "source": "reddit",
+      "operation": "browse.all",
+      "upstream_execution": "agent_reach.execution.v1.execute(reddit:browse.all, opencli_session.v1) -> OpenCLI 1.8.6-hermes.1 reddit frontpage",
+      "classification": "direct_owner_fork_runtime",
+      "semantic_delta": "The owner fork owns the reviewed /r/all OpenCLI semantics, fixed command, artifact/session closure, typed parsing, limits, error mapping, and Reddit-native projection; Hermes supplies trusted-device authorization, worker containment, product normalization, receipts, and audit.",
+      "approval": "owner-approved-fork-runtime-opencli-social-2026-08-01",
+      "current_backend": "opencli",
+      "review_milestone": "any official base, fork commit, execution protocol/capability, OpenCLI package/tree, Node closure, browser lifecycle/session behavior, command/schema, worker protocol, backend identity, error mapping, or projection change",
+      "decision_record": "docs/agent-reach-decisions/opencli-social-1.8.6-hermes.1.md"
+    },
+    {
+      "source": "reddit",
+      "operation": "read.subreddit",
+      "upstream_execution": "agent_reach.execution.v1.execute(reddit:read.subreddit, opencli_session.v1) -> OpenCLI 1.8.6-hermes.1 reddit subreddit-info",
+      "classification": "direct_owner_fork_runtime",
+      "semantic_delta": "The owner fork owns the fixed OpenCLI command, subreddit identity, artifact/session closure, typed parsing, bounds, error mapping, and Reddit-native projection; Hermes supplies trusted-device authorization, worker containment, product normalization, receipts, and audit.",
+      "approval": "owner-approved-fork-runtime-opencli-social-2026-08-01",
+      "current_backend": "opencli",
+      "review_milestone": "any official base, fork commit, execution protocol/capability, OpenCLI package/tree, Node closure, browser lifecycle/session behavior, command/schema, worker protocol, backend identity, error mapping, or projection change",
+      "decision_record": "docs/agent-reach-decisions/opencli-social-1.8.6-hermes.1.md"
+    },
+    {
+      "source": "facebook",
+      "operation": "search",
+      "upstream_execution": "agent_reach.execution.v1.execute(facebook:search, opencli_session.v1) -> OpenCLI 1.8.6-hermes.1 facebook search",
+      "classification": "direct_owner_fork_runtime",
+      "semantic_delta": "The owner fork owns the fixed OpenCLI command, complete artifact/session closure, lifecycle-mutation guard, typed parsing, limits, error mapping, and Facebook-native projection; Hermes supplies trusted-device authorization, worker containment, product normalization, receipts, and audit.",
+      "approval": "owner-approved-fork-runtime-opencli-social-2026-08-01",
+      "current_backend": "opencli",
+      "review_milestone": "any official base, fork commit, execution protocol/capability, OpenCLI package/tree, Node closure, browser lifecycle/session behavior, command/schema, worker protocol, backend identity, error mapping, or projection change",
+      "decision_record": "docs/agent-reach-decisions/opencli-social-1.8.6-hermes.1.md"
+    },
+    {
+      "source": "facebook",
+      "operation": "read.profile",
+      "upstream_execution": "agent_reach.execution.v1.execute(facebook:read.profile, opencli_session.v1) -> OpenCLI 1.8.6-hermes.1 facebook profile",
+      "classification": "direct_owner_fork_runtime",
+      "semantic_delta": "The owner fork owns the fixed OpenCLI command, username mapping, artifact/session closure, typed parsing, identity correlation, error mapping, and Facebook-native projection; Hermes supplies trusted-device authorization, worker containment, product normalization, receipts, and audit.",
+      "approval": "owner-approved-fork-runtime-opencli-social-2026-08-01",
+      "current_backend": "opencli",
+      "review_milestone": "any official base, fork commit, execution protocol/capability, OpenCLI package/tree, Node closure, browser lifecycle/session behavior, command/schema, worker protocol, backend identity, error mapping, or projection change",
+      "decision_record": "docs/agent-reach-decisions/opencli-social-1.8.6-hermes.1.md"
+    },
+    {
+      "source": "facebook",
+      "operation": "browse.feed",
+      "upstream_execution": "agent_reach.execution.v1.execute(facebook:browse.feed, opencli_session.v1) -> OpenCLI 1.8.6-hermes.1 facebook feed",
+      "classification": "direct_owner_fork_runtime",
+      "semantic_delta": "The owner fork owns the account-visible fixed OpenCLI command, artifact/session closure, typed parsing, limits, error mapping, and Facebook-native projection; Hermes supplies the exact account-visible grant, worker containment, product normalization, receipts, and audit.",
+      "approval": "owner-approved-fork-runtime-opencli-social-2026-08-01",
+      "current_backend": "opencli",
+      "review_milestone": "any official base, fork commit, execution protocol/capability, OpenCLI package/tree, Node closure, browser lifecycle/session behavior, command/schema, worker protocol, backend identity, error mapping, or projection change",
+      "decision_record": "docs/agent-reach-decisions/opencli-social-1.8.6-hermes.1.md"
+    },
+    {
+      "source": "facebook",
+      "operation": "browse.groups",
+      "upstream_execution": "agent_reach.execution.v1.execute(facebook:browse.groups, opencli_session.v1) -> OpenCLI 1.8.6-hermes.1 facebook groups",
+      "classification": "direct_owner_fork_runtime",
+      "semantic_delta": "The owner fork owns the account-visible fixed OpenCLI command, artifact/session closure, typed parsing, limits, error mapping, and Facebook-native projection; Hermes supplies the exact account-visible grant, worker containment, product normalization, receipts, and audit.",
+      "approval": "owner-approved-fork-runtime-opencli-social-2026-08-01",
+      "current_backend": "opencli",
+      "review_milestone": "any official base, fork commit, execution protocol/capability, OpenCLI package/tree, Node closure, browser lifecycle/session behavior, command/schema, worker protocol, backend identity, error mapping, or projection change",
+      "decision_record": "docs/agent-reach-decisions/opencli-social-1.8.6-hermes.1.md"
+    },
+    {
+      "source": "instagram",
+      "operation": "search.users",
+      "upstream_execution": "agent_reach.execution.v1.execute(instagram:search.users, opencli_session.v1) -> OpenCLI 1.8.6-hermes.1 instagram search",
+      "classification": "direct_owner_fork_runtime",
+      "semantic_delta": "The owner fork owns the fixed OpenCLI command, complete artifact/session closure, lifecycle-mutation guard, typed auth/error parsing, limits, and Instagram-native projection; Hermes supplies trusted-device authorization, worker containment, product normalization, receipts, and audit.",
+      "approval": "owner-approved-fork-runtime-opencli-social-2026-08-01",
+      "current_backend": "opencli",
+      "review_milestone": "any official base, fork commit, execution protocol/capability, OpenCLI package/tree, Node closure, browser lifecycle/session behavior, command/schema, worker protocol, backend identity, error mapping, or projection change",
+      "decision_record": "docs/agent-reach-decisions/opencli-social-1.8.6-hermes.1.md"
+    },
+    {
+      "source": "instagram",
+      "operation": "read.profile",
+      "upstream_execution": "agent_reach.execution.v1.execute(instagram:read.profile, opencli_session.v1) -> OpenCLI 1.8.6-hermes.1 instagram profile",
+      "classification": "direct_owner_fork_runtime",
+      "semantic_delta": "The owner fork owns the fixed OpenCLI command, username mapping, artifact/session closure, typed auth/error parsing, identity correlation, and Instagram-native projection; Hermes supplies trusted-device authorization, worker containment, product normalization, receipts, and audit.",
+      "approval": "owner-approved-fork-runtime-opencli-social-2026-08-01",
+      "current_backend": "opencli",
+      "review_milestone": "any official base, fork commit, execution protocol/capability, OpenCLI package/tree, Node closure, browser lifecycle/session behavior, command/schema, worker protocol, backend identity, error mapping, or projection change",
+      "decision_record": "docs/agent-reach-decisions/opencli-social-1.8.6-hermes.1.md"
+    },
+    {
+      "source": "instagram",
+      "operation": "browse.user_posts",
+      "upstream_execution": "agent_reach.execution.v1.execute(instagram:browse.user_posts, opencli_session.v1) -> OpenCLI 1.8.6-hermes.1 instagram user",
+      "classification": "direct_owner_fork_runtime",
+      "semantic_delta": "The owner fork owns the fixed OpenCLI command, username/limit mapping, artifact/session closure, typed auth/error parsing, bounds, identity correlation, and Instagram-native projection; Hermes supplies trusted-device authorization, worker containment, product normalization, receipts, and audit.",
+      "approval": "owner-approved-fork-runtime-opencli-social-2026-08-01",
+      "current_backend": "opencli",
+      "review_milestone": "any official base, fork commit, execution protocol/capability, OpenCLI package/tree, Node closure, browser lifecycle/session behavior, command/schema, worker protocol, backend identity, error mapping, or projection change",
+      "decision_record": "docs/agent-reach-decisions/opencli-social-1.8.6-hermes.1.md"
+    },
+    {
+      "source": "instagram",
+      "operation": "browse.explore",
+      "upstream_execution": "agent_reach.execution.v1.execute(instagram:browse.explore, opencli_session.v1) -> OpenCLI 1.8.6-hermes.1 instagram explore",
+      "classification": "direct_owner_fork_runtime",
+      "semantic_delta": "The owner fork owns the account-visible fixed OpenCLI command, artifact/session closure, typed auth/error parsing, limits, and Instagram-native projection; Hermes supplies the exact account-visible grant, worker containment, product normalization, receipts, and audit.",
+      "approval": "owner-approved-fork-runtime-opencli-social-2026-08-01",
+      "current_backend": "opencli",
+      "review_milestone": "any official base, fork commit, execution protocol/capability, OpenCLI package/tree, Node closure, browser lifecycle/session behavior, command/schema, worker protocol, backend identity, error mapping, or projection change",
+      "decision_record": "docs/agent-reach-decisions/opencli-social-1.8.6-hermes.1.md"
     }
   ]
 }
