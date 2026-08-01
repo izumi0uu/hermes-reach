@@ -444,8 +444,8 @@ def test_static_handshake_attests_opencli_runtime_and_guard_records() -> None:
     } == {
         "agent_reach/execution/v1/opencli_social.py": (
             "sha256",
-            "c-irjFRKQ87pkk41jARop60kbrvRK7TrCWRT3hCZAQo",
-            68_608,
+            "GNpKPH9gmWAJY37PD6X1ZunVSwsHbPj3su7TeH6uEUE",
+            68_824,
         ),
         "agent_reach/execution/v1/_opencli_no_lifecycle.mjs": (
             "sha256",
@@ -891,6 +891,25 @@ def test_worker_handshake_rejects_runtime_module_origin_drift(
             direct_url_reader=_direct_url,
             runtime_module=cast(bridge.ExecutionRuntimeModule, runtime_module),
         )
+
+
+def test_worker_handshake_rejects_unknown_runtime_without_loading_opencli() -> None:
+    installation = bridge._default_installation_reader(AGENT_REACH_DISTRIBUTION)
+    loaded_modules: list[str] = []
+
+    def module_loader(module_name: str) -> object:
+        loaded_modules.append(module_name)
+        return import_module(module_name)
+
+    with pytest.raises(AgentReachBridgeError, match="capability contract"):
+        bridge._validated_execution_api(
+            _execution_module(),
+            installation,
+            cast(bridge.ModuleLoader, module_loader),
+            runtime_module=cast(bridge.ExecutionRuntimeModule, "future_runtime"),
+        )
+
+    assert "agent_reach.execution.v1.opencli_social" not in loaded_modules
 
 
 def test_worker_handshake_rejects_bilibili_runtime_signature_drift(

@@ -23,8 +23,10 @@ DECISIONS = ROOT / "docs" / "agent-reach-reuse-decisions.json"
 OPERATION_LEDGER = ROOT / "docs" / "agent-reach-operation-ledger.json"
 PREVIOUS_AGENT_REACH_REVIEWED_HEAD = "fd93d2ec86511a4a1514b7ebd13cd996be709692"
 PREVIOUS_AGENT_REACH_INTEGRATION_TREE = "e19835071ae6560431b66d5a21e51b598d3d9c81"
-FINAL_AGENT_REACH_REVIEWED_HEAD = "a3dcdb3a6638e14ceda8cfa9a3cc7a010d80fa80"
-FINAL_AGENT_REACH_INTEGRATION_TREE = "302db7526ed84b1565fa24baf5c06ced69385d80"
+SOCIAL_AGENT_REACH_REVIEWED_HEAD = "a3dcdb3a6638e14ceda8cfa9a3cc7a010d80fa80"
+SOCIAL_AGENT_REACH_INTEGRATION_TREE = "302db7526ed84b1565fa24baf5c06ced69385d80"
+FINAL_AGENT_REACH_REVIEWED_HEAD = "c57ae5b8d78fed6ad52a1f52731db589d875f8a9"
+FINAL_AGENT_REACH_INTEGRATION_TREE = "385b9c95cb3a6372ed1b68b606abc3faed71f307"
 OPENCLI_SOCIAL_VERSION = "1.8.6-hermes.1"
 REVIEW_FIELDS = frozenset(
     {
@@ -555,12 +557,18 @@ def test_governance_docs_preserve_worker_and_recovery_tag_boundaries() -> None:
     assert FINAL_AGENT_REACH_INTEGRATION_TREE in normalized_plugin_boundary
     assert FINAL_AGENT_REACH_REVIEWED_HEAD in normalized_reuse_boundary
     assert FINAL_AGENT_REACH_INTEGRATION_TREE in normalized_reuse_boundary
+    assert SOCIAL_AGENT_REACH_REVIEWED_HEAD in normalized_plugin_boundary
+    assert SOCIAL_AGENT_REACH_INTEGRATION_TREE in normalized_plugin_boundary
+    assert SOCIAL_AGENT_REACH_REVIEWED_HEAD in normalized_reuse_boundary
+    assert SOCIAL_AGENT_REACH_INTEGRATION_TREE in normalized_reuse_boundary
     assert PREVIOUS_AGENT_REACH_REVIEWED_HEAD in normalized_plugin_boundary
     assert PREVIOUS_AGENT_REACH_INTEGRATION_TREE in normalized_plugin_boundary
     assert "hermes-reach-integration-0.1.0a3" in normalized_plugin_boundary
     assert "preserves final-integration reachability" in normalized_plugin_boundary
     assert PREVIOUS_AGENT_REACH_REVIEWED_HEAD in normalized_youtube_decision
     assert PREVIOUS_AGENT_REACH_INTEGRATION_TREE in normalized_youtube_decision
+    assert SOCIAL_AGENT_REACH_REVIEWED_HEAD in normalized_opencli_decision
+    assert SOCIAL_AGENT_REACH_INTEGRATION_TREE in normalized_opencli_decision
     assert FINAL_AGENT_REACH_REVIEWED_HEAD in normalized_opencli_decision
     assert FINAL_AGENT_REACH_INTEGRATION_TREE in normalized_opencli_decision
     assert "hermes-reach-integration-0.1.0a3" in normalized_youtube_decision

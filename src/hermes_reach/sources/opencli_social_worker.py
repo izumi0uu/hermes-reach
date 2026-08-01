@@ -1591,7 +1591,7 @@ def _reddit_post_id(value: object) -> str | None:
     parts = parsed.path.split("/")
     if len(parts) not in {6, 7} or parts[1] != "r" or parts[3] != "comments":
         return None
-    if parts[0] or parts[-1] and len(parts) == 7:
+    if parts[0] or (len(parts) == 7 and parts[-1]):
         return None
     subreddit, post_id, slug = parts[2], parts[4], parts[5]
     if (

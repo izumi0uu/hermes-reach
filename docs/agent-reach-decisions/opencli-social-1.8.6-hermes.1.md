@@ -26,19 +26,30 @@ Every row is classified `direct_owner_fork_runtime`, uses backend
 - Official Agent-Reach version: `1.5.0`
 - Official Agent-Reach audit base:
   `b4d52c46c9113cb0f653d6df4cf71ebadf4930ac`
-- Reviewed Agent-Reach PR head:
+- Original social-batch PR head:
   `a3dcdb3a6638e14ceda8cfa9a3cc7a010d80fa80`
-- Reviewed Agent-Reach tree:
+- Original social-batch tree:
   `302db7526ed84b1565fa24baf5c06ced69385d80`
-- Final rebase integration:
+- Initial social-batch rebase integration:
   `ec4a5e36434c9df9ee236dc12734843163fc17ac`
+- Reviewed hardlink-fix PR head:
+  `c57ae5b8d78fed6ad52a1f52731db589d875f8a9`
+- Reviewed hardlink-fix tree:
+  `385b9c95cb3a6372ed1b68b606abc3faed71f307`
+- Final rebase integration:
+  `281dc3352c63cdb644f02e028cc5d645c279954a`
 - Final integration tree:
-  `302db7526ed84b1565fa24baf5c06ced69385d80`
-- Rollback Agent-Reach pin:
+  `385b9c95cb3a6372ed1b68b606abc3faed71f307`
+- Pre-hardlink-fix integration:
+  `ec4a5e36434c9df9ee236dc12734843163fc17ac`
+- Social-disable rollback Agent-Reach pin:
   `9b69146588b1d162515b81db26b51643c15de8eb`
 
-The reviewed PR head and final integration have identical trees. Hermes pins
-the final commit, not a branch or tag.
+The reviewed hardlink-fix PR head and final integration have identical trees.
+Hermes pins the final commit, not a branch or tag. The fix permits multiple
+links only for the packaged lifecycle guard after RECORD/current-byte
+validation; the private guard snapshot remains single-link and user-selected
+Node/OpenCLI artifacts still reject hardlinks.
 
 The exact backend artifact is:
 

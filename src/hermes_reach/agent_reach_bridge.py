@@ -21,7 +21,7 @@ AGENT_REACH_DISTRIBUTION: Final = "agent-reach"
 AGENT_REACH_VERSION: Final = "1.5.0"
 AGENT_REACH_OFFICIAL_BASE_COMMIT: Final = "b4d52c46c9113cb0f653d6df4cf71ebadf4930ac"
 AGENT_REACH_FORK_URL: Final = "https://github.com/izumi0uu/Agent-Reach.git"
-AGENT_REACH_FORK_COMMIT: Final = "ec4a5e36434c9df9ee236dc12734843163fc17ac"
+AGENT_REACH_FORK_COMMIT: Final = "281dc3352c63cdb644f02e028cc5d645c279954a"
 AGENT_REACH_PROTOCOL_VERSION: Final = "v1"
 AGENT_REACH_FETCHED_DOCUMENT_CAPABILITY: Final = "fetched_document.v1"
 AGENT_REACH_NETWORK_ACCESS_CAPABILITY: Final = "network_access.v1"
@@ -147,8 +147,8 @@ _EXECUTION_MODULE_FILES: Final[Mapping[str, tuple[str, str, int]]] = MappingProx
         ),
         _EXECUTION_OPENCLI_SOCIAL_MODULE: (
             "agent_reach/execution/v1/opencli_social.py",
-            "c-irjFRKQ87pkk41jARop60kbrvRK7TrCWRT3hCZAQo",
-            68_608,
+            "GNpKPH9gmWAJY37PD6X1ZunVSwsHbPj3su7TeH6uEUE",
+            68_824,
         ),
         _EXECUTION_OPENCLI_GUARD_RESOURCE: (
             "agent_reach/execution/v1/_opencli_no_lifecycle.mjs",
@@ -1478,10 +1478,12 @@ def _validated_execution_api(
             runtime_module_name = _EXECUTION_EXA_MODULE
             runtime_function_name = "execute_exa"
             runtime_parameters = ("request", "context")
-        else:
+        elif runtime_module == "opencli_social":
             runtime_module_name = _EXECUTION_OPENCLI_SOCIAL_MODULE
             runtime_function_name = "execute_opencli_social"
             runtime_parameters = ("request", "context")
+        else:
+            raise AgentReachBridgeError(_INCOMPATIBLE_EXECUTION_CONTRACT)
         validated_runtime_module = _validated_execution_module(
             module_loader(runtime_module_name),
             runtime_module_name,

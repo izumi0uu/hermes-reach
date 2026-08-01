@@ -72,6 +72,8 @@ def build_vps_runtime(
             registry.register(binding)
     except Exception:
         for source, operation in OPENCLI_SOCIAL_OPERATIONS:
+            if registry.has_binding(source, operation):
+                continue
             registry.mark(
                 source,
                 operation,

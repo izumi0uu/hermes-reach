@@ -403,6 +403,21 @@ def test_worker_request_rejects_authority_and_shape_drift(
         worker._validated_request(mutation(value))
 
 
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        ("https://www.reddit.com/r/python/comments/abc123/fixture_post", "abc123"),
+        ("https://www.reddit.com/r/python/comments/abc123/fixture_post/", "abc123"),
+        ("https://www.reddit.com/r/python/comments/abc123/fixture_post/extra", None),
+    ],
+)
+def test_reddit_post_url_accepts_only_the_optional_trailing_slash(
+    url: str,
+    expected: str | None,
+) -> None:
+    assert worker._reddit_post_id(url) == expected
+
+
 def test_worker_preserves_only_closed_correlated_failure_code() -> None:
     request = _request("facebook", "search", {"query": "private query", "limit": 1})
     value = worker._execute_request(
