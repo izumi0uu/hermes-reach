@@ -134,20 +134,46 @@ def test_operation_owned_targets_and_required_options_are_enforced() -> None:
         )
 
 
-def test_deferred_operations_keep_foundation_target_behavior() -> None:
-    for target in (
-        {"url": "https://example.com/repository"},
-        {"native_id": "owner/repository"},
-        {"resource_ref": "opaque-reference"},
+def test_social_identifier_targets_are_exact_and_platform_specific() -> None:
+    subreddit = validate_read(
+        {
+            "source": "reddit",
+            "operation": "read.subreddit",
+            "target": {"native_id": "Python_3"},
+        }
+    )
+    facebook = validate_read(
+        {
+            "source": "facebook",
+            "operation": "read.profile",
+            "target": {"native_id": "open.ai-profile"},
+        }
+    )
+    instagram = validate_browse(
+        {
+            "source": "instagram",
+            "operation": "browse.user_posts",
+            "target": {"native_id": "openai.dev"},
+        }
+    )
+
+    assert subreddit.target == {"native_id": "Python_3"}
+    assert facebook.target == {"native_id": "open.ai-profile"}
+    assert instagram.target == {"native_id": "openai.dev"}
+
+    for source, operation, tool, target in (
+        ("reddit", "read.subreddit", validate_read, {"native_id": "r/python"}),
+        (
+            "reddit",
+            "read.subreddit",
+            validate_read,
+            {"url": "https://reddit.com/r/python"},
+        ),
+        ("facebook", "read.profile", validate_read, {"native_id": "@openai"}),
+        ("instagram", "browse.user_posts", validate_browse, {"resource_ref": "opaque"}),
     ):
-        call = validate_read(
-            {
-                "source": "reddit",
-                "operation": "read.subreddit",
-                "target": target,
-            }
-        )
-        assert call.target == target
+        with pytest.raises(ReachValidationError):
+            tool({"source": source, "operation": operation, "target": target})
 
 
 def test_github_and_media_targets_are_exact_and_closed() -> None:

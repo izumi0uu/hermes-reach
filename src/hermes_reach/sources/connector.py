@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Protocol, cast
+from typing import Final, Protocol, cast
 
 from ..catalog import get_operation, get_source
 from ..connector.errors import (
@@ -32,8 +32,26 @@ from ..runtime.adapters import (
 )
 from ..runtime.availability import AvailabilityRecord
 from ..runtime.policy import AuthorizedCall
+from .opencli_social_contract import (
+    OPENCLI_SOCIAL_BACKEND,
+    OPENCLI_SOCIAL_SCOPE_BY_OPERATION,
+    OPENCLI_SOCIAL_SOURCES,
+)
 
 _CONNECTOR_BACKEND = PublicBackendIdentity("reach-bounded-executor-v1", "1")
+_BACKEND_FAILURE_CLASSES: Final[dict[ConnectorErrorCode, FailureClass]] = {
+    ConnectorErrorCode.BACKEND_INVALID_INPUT: "invalid_input",
+    ConnectorErrorCode.BACKEND_NOT_FOUND: "not_found",
+    ConnectorErrorCode.BACKEND_AUTHENTICATION_REQUIRED: "authentication",
+    ConnectorErrorCode.BACKEND_AUTHORIZATION_DENIED: "authorization",
+    ConnectorErrorCode.BACKEND_UNAVAILABLE: "transient",
+    ConnectorErrorCode.BACKEND_INCOMPATIBLE: "setup_required",
+    ConnectorErrorCode.BACKEND_DEADLINE_EXCEEDED: "transient",
+    ConnectorErrorCode.BACKEND_RATE_LIMITED: "rate_limit",
+    ConnectorErrorCode.BACKEND_TRANSIENT: "transient",
+    ConnectorErrorCode.BACKEND_PERMANENT: "permanent",
+    ConnectorErrorCode.BACKEND_CONTRACT_VIOLATION: "permanent",
+}
 
 
 class _ConnectorOperationClient(Protocol):
@@ -47,17 +65,19 @@ class _ConnectorOperationAvailability(Protocol):
 
 
 class _ConnectorAdapter:
-    __slots__ = ("_client", "_operation", "_source")
+    __slots__ = ("_backend", "_client", "_operation", "_source")
 
     def __init__(
         self,
         source: str,
         operation: str,
         client: _ConnectorOperationClient,
+        backend: PublicBackendIdentity,
     ) -> None:
         self._source = source
         self._operation = operation
         self._client = client
+        self._backend = backend
 
     async def execute(self, authorized: AuthorizedCall) -> AdapterResult:
         if (
@@ -73,7 +93,7 @@ class _ConnectorAdapter:
             )
         except ConnectorError as error:
             return AdapterResult(failure_class=_failure_class(error))
-        if response.result is None or response.receipt.backend != _CONNECTOR_BACKEND:
+        if response.result is None or response.receipt.backend != self._backend:
             return AdapterResult(failure_class="permanent")
         return _adapter_result(response.result)
 
@@ -114,13 +134,14 @@ def connector_bindings(
         ):
             raise ValueError("The Connector adapter selection is invalid.")
         selected.add(key)
-        adapter = _ConnectorAdapter(source_name, operation_name, client)
+        backend = _backend_for(source_name, operation_name)
+        adapter = _ConnectorAdapter(source_name, operation_name, client, backend)
         bindings.append(
             AdapterBinding(
                 source=source_name,
                 operation=operation_name,
-                backend_id=_CONNECTOR_BACKEND.backend_id,
-                backend_version=_CONNECTOR_BACKEND.backend_version,
+                backend_id=backend.backend_id,
+                backend_version=backend.backend_version,
                 priority=10,
                 required_scope=operation.runtime.data_scope,
                 equivalence_group=f"{source_name}:{operation_name}:v1",
@@ -166,16 +187,28 @@ def _media(media: OperationResultMediaV1 | None) -> MediaMetadata | None:
 
 
 def _failure_class(error: ConnectorError) -> FailureClass:
-    category = category_for_code(ConnectorErrorCode(error.code))
+    code = ConnectorErrorCode(error.code)
+    backend_failure = _BACKEND_FAILURE_CLASSES.get(code)
+    if backend_failure is not None:
+        return backend_failure
+    category = category_for_code(code)
     if category is ConnectorErrorCategory.TRANSPORT:
         return "transient"
     if category in {ConnectorErrorCategory.SETUP, ConnectorErrorCategory.SECRET}:
-        return "authentication"
+        return "setup_required"
     if category is ConnectorErrorCategory.AUTHORITY:
         return "authorization"
     if category in {ConnectorErrorCategory.MODEL, ConnectorErrorCategory.FILE}:
         return "policy"
     return "permanent"
+
+
+def _backend_for(source: str, operation: str) -> PublicBackendIdentity:
+    if (source, operation) in OPENCLI_SOCIAL_SCOPE_BY_OPERATION:
+        return OPENCLI_SOCIAL_BACKEND
+    if source in OPENCLI_SOCIAL_SOURCES:
+        raise ValueError("The Connector adapter selection is invalid.")
+    return _CONNECTOR_BACKEND
 
 
 __all__ = ["connector_bindings"]

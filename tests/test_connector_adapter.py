@@ -32,6 +32,7 @@ from hermes_reach.tools import reach_search
 
 NOW = 1_800_000_000
 BACKEND = PublicBackendIdentity("reach-bounded-executor-v1", "1")
+OPENCLI_SOCIAL_BACKEND = PublicBackendIdentity("opencli", "1.8.6-hermes.1")
 
 
 def _id(value: int) -> str:
@@ -90,6 +91,11 @@ class _FixtureConnectorClient:
             ),
             True,
         )
+        backend = (
+            OPENCLI_SOCIAL_BACKEND
+            if call.source.name in {"reddit", "facebook", "instagram"}
+            else BACKEND
+        )
         receipt = create_signed_receipt(
             self._connector,
             message_id=_id(self._slot + 2),
@@ -98,7 +104,7 @@ class _FixtureConnectorClient:
             decision="allow",
             failure=None,
             usage=ReceiptUsage(1, 4),
-            backend=BACKEND,
+            backend=backend,
             started_at=NOW,
             ended_at=NOW + 1,
             expires_at=NOW + 120,
@@ -118,6 +124,17 @@ class _OfflineConnectorClient:
         del call, trace_id
         self.calls += 1
         raise ConnectorError(ConnectorErrorCode.CONNECTOR_OFFLINE)
+
+
+class _ErrorConnectorClient:
+    def __init__(self, code: ConnectorErrorCode) -> None:
+        self._code = code
+
+    async def execute(
+        self, call: OperationCall, *, trace_id: str
+    ) -> OperationResponseV1:
+        del call, trace_id
+        raise ConnectorError(self._code)
 
 
 def _availability(source: str, operation: str) -> AvailabilityRecord:
@@ -182,6 +199,45 @@ def test_connector_binding_owns_transient_retry() -> None:
     assert client.calls == 1
 
 
+@pytest.mark.parametrize(
+    ("code", "failure_class"),
+    (
+        (ConnectorErrorCode.BACKEND_INVALID_INPUT, "invalid_input"),
+        (ConnectorErrorCode.BACKEND_NOT_FOUND, "not_found"),
+        (ConnectorErrorCode.BACKEND_AUTHENTICATION_REQUIRED, "authentication"),
+        (ConnectorErrorCode.BACKEND_AUTHORIZATION_DENIED, "authorization"),
+        (ConnectorErrorCode.BACKEND_UNAVAILABLE, "transient"),
+        (ConnectorErrorCode.BACKEND_INCOMPATIBLE, "setup_required"),
+        (ConnectorErrorCode.BACKEND_DEADLINE_EXCEEDED, "transient"),
+        (ConnectorErrorCode.BACKEND_RATE_LIMITED, "rate_limit"),
+        (ConnectorErrorCode.BACKEND_TRANSIENT, "transient"),
+        (ConnectorErrorCode.BACKEND_PERMANENT, "permanent"),
+        (ConnectorErrorCode.BACKEND_CONTRACT_VIOLATION, "permanent"),
+    ),
+)
+def test_connector_binding_preserves_closed_backend_failure_classes(
+    code: ConnectorErrorCode, failure_class: str
+) -> None:
+    registry = AdapterRegistry()
+    for binding in connector_bindings(
+        _ErrorConnectorClient(code), _availability, (("rss", "read.feed"),)
+    ):
+        registry.register(binding)
+    call = validate_read(
+        {
+            "source": "rss",
+            "operation": "read.feed",
+            "target": {"url": "https://example.com/backend-failure"},
+        }
+    )
+
+    result = asyncio.run(RuntimeDispatcher(registry).dispatch(call, trace_id="c" * 32))
+
+    assert result is not None
+    assert result.failure_class == failure_class
+    assert len(result.attempts) == 1
+
+
 def test_connector_factory_rejects_duplicate_unknown_and_planned_operations() -> None:
     client = _FixtureConnectorClient([])
     with pytest.raises(ValueError, match="selection"):
@@ -195,8 +251,23 @@ def test_connector_factory_rejects_duplicate_unknown_and_planned_operations() ->
     assert (
         len(connector_bindings(client, _availability, (("reddit", "read.post"),))) == 1
     )
-    with pytest.raises(ValueError, match="selection"):
-        connector_bindings(client, _availability, (("reddit", "browse.hot"),))
+    social = connector_bindings(
+        client,
+        _availability,
+        (
+            ("reddit", "browse.hot"),
+            ("facebook", "browse.feed"),
+            ("instagram", "browse.explore"),
+        ),
+    )
+    assert {
+        (binding.source, binding.operation, binding.backend_id, binding.backend_version)
+        for binding in social
+    } == {
+        ("reddit", "browse.hot", "opencli", "1.8.6-hermes.1"),
+        ("facebook", "browse.feed", "opencli", "1.8.6-hermes.1"),
+        ("instagram", "browse.explore", "opencli", "1.8.6-hermes.1"),
+    }
     with pytest.raises(ValueError, match="selection"):
         connector_bindings(client, _availability, (("exa", "search.code"),))
 

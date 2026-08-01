@@ -3,7 +3,7 @@
 Status: canonical architecture, frozen on 2026-08-01 against official
 Agent-Reach `1.5.0` base
 `b4d52c46c9113cb0f653d6df4cf71ebadf4930ac` and final owner-fork integration
-`9b69146588b1d162515b81db26b51643c15de8eb`.
+`ec4a5e36434c9df9ee236dc12734843163fc17ac`.
 
 Hermes Reach is a Hermes security wrapper around an exact, owner-maintained
 [Agent-Reach fork](https://github.com/izumi0uu/Agent-Reach). That fork is based
@@ -12,26 +12,28 @@ commit above. Hermes Reach does not copy the Agent-Reach runtime or platform
 implementations into this repository.
 
 The fork adds one small, versioned execution boundary that official
-Agent-Reach 1.5.0 does not provide. Today it owns exactly 14 operations: two
-RSS, four Bilibili, three YouTube, four V2EX, and Exa `search.web`. Every other
-operation remains an exact-backend wrapper, implemented but unbound, or not
+Agent-Reach 1.5.0 does not provide. Today it owns exactly 29 operations: two
+RSS, four Bilibili, three YouTube, four V2EX, Exa `search.web`, and all 15
+catalog operations for Reddit, Facebook, and Instagram. Every other
+operation remains implemented but unbound or not
 implemented according to the closed operation ledger. The presence of the fork
 is not evidence that all 15 channels or all 63 Hermes operations are
-executable; 49 catalog rows remain outside fork execution.
+executable; 34 catalog rows remain outside fork execution.
 
 ## How the adapter is structured
 
 ```mermaid
 flowchart TD
-    Official["Official Agent-Reach 1.5.0<br/>15-channel registry and backend evidence"] --> Fork["Owner fork at exact commit<br/>execution v1: RSS 2 · Bilibili 4 · YouTube 3 · V2EX 4 · Exa Web 1"]
+    Official["Official Agent-Reach 1.5.0<br/>15-channel registry and backend evidence"] --> Fork["Owner fork at exact commit<br/>execution v1: 29 closed operations"]
     Fork --> Bridge["Compatibility bridge<br/>PEP 610 provenance and capability handshake"]
     Hermes["Hermes Agent"] --> Entry["hermes_reach.register<br/>five closed tools, CLI, restricted skill"]
     Bridge --> Entry
     Entry --> Control["Hermes security and control plane<br/>validation, grants, isolation, bounds, audit"]
-    Control --> ForkOps["14 direct owner-fork runtime calls<br/>RSS 2 · Bilibili 4 · YouTube 3 · V2EX 4 · Exa Web 1"]
-    Control --> Remote["1 explicit Connector-only wrapper<br/>Reddit read.post"]
+    Control --> ForkOps["14 default-local owner-fork calls<br/>RSS · Bilibili · YouTube · V2EX · Exa"]
+    Control --> Remote["signed Connector boundary<br/>15 exact social grants"]
+    Remote --> SocialForkOps["15 Connector-only owner-fork calls<br/>Reddit 7 · Facebook 4 · Instagram 4"]
     ForkOps --> ForkBackends["fork-owned invocation and projection<br/>feedparser · bili-cli · yt-dlp · V2EX API · Exa mcporter"]
-    Remote --> OpenCLI["fixed OpenCLI read"]
+    SocialForkOps --> OpenCLI["attested OpenCLI 1.8.6-hermes.1<br/>existing trusted-device session"]
     ForkBackends --> Results["bounded Hermes v1 results and audit metadata"]
     OpenCLI --> Results
 ```
@@ -48,11 +50,11 @@ registration:
 - Agent-Reach version is exactly `1.5.0`;
 - PEP 610 provenance names the owner fork and exact reviewed batch commit;
 - before any fork code is imported, RECORD metadata and the current on-disk
-  digest match for both parent package initializers and all nine reviewed
-  `execution.v1` files;
+  digest match for both parent package initializers and all 11 reviewed
+  `execution.v1` files, including the OpenCLI runtime and lifecycle guard;
 - the fork reports execution protocol `v1`;
-- static discovery contains exactly 14 ordered descriptors for RSS, Bilibili,
-  YouTube, V2EX, and Exa Web, with closed schemas, host capabilities, backend
+- static discovery contains exactly 29 ordered descriptors for RSS, Bilibili,
+  YouTube, V2EX, Exa Web, Reddit, Facebook, and Instagram, with closed schemas, host capabilities, backend
   identities/versions, and hard limits; and
 - the 15-channel projection still matches the Hermes source catalog.
 
@@ -64,10 +66,10 @@ registered.
 | Boundary | Owner | Responsibility |
 | --- | --- | --- |
 | Official baseline | Official Agent-Reach | 15-channel registry, backend ordering evidence, compatibility metadata, reviewed doctor inputs |
-| Fourteen public-read execution operations | Owner Agent-Reach fork | Closed `execution.v1` discovery; fixed feedparser/bili-cli/yt-dlp/V2EX API/Exa mcporter invocation; operation selection; source-native projection; error/partial classification; backend provenance |
+| Twenty-nine execution operations | Owner Agent-Reach fork | Closed `execution.v1` discovery; fixed feedparser/bili-cli/yt-dlp/V2EX API/Exa mcporter/OpenCLI invocation; operation selection; source-native projection; error/partial classification; backend provenance |
 | Hermes plugin lifecycle | Hermes Reach | Plugin entry point, five `reach_*` tools, `reach` CLI, skill registration |
 | Security and control plane | Hermes Reach | Closed validation, grants, Connector, Bitwarden isolation, typed host capabilities, worker containment, timeout/cancellation, retry, normalization, redaction, receipts, audit, rollback |
-| Remaining retrieval | Exact selected backend | Connector-only Reddit `read.post` semantics through one fixed reviewed wrapper |
+| Account-session execution | Hermes Connector plus owner fork | Exact grants and trusted-device isolation around 15 fork-owned OpenCLI operations; no Hermes platform parser or argv |
 | Product contract | Hermes Reach | The 63-operation v1 catalog, availability, normalized groups/items/errors, result bounds |
 | Routing skill | Hermes Reach safety overlay | Routes only through the five closed tools and never grants raw shell, browser, MCP, setup, or mutation authority |
 
@@ -82,7 +84,9 @@ directory. Exa Web additionally receives `McporterArtifactsV1`, which contains
 only operator-attested absolute artifact paths and identities. These
 capabilities carry no request-selected endpoint, proxy, header, Cookie,
 credential, command, backend, MCP method, or fallback, and grant no generic
-fork dispatch.
+fork dispatch. The social worker receives one `OpenCliSessionV1` containing
+only the trusted device's attested Node/OpenCLI identities and session-home
+path; this capability never crosses the signed VPS protocol or enters audit.
 
 The worker is an isolated Python process with a minimal explicit environment,
 a fixed root working directory, closed stdin/stdout framing, and no supplied
@@ -104,28 +108,30 @@ own platform extraction semantics.
 | YouTube | 3 | All three executable operations are direct owner-fork execution v1 calls to fixed `yt-dlp==2026.7.4`, with pinned EJS and Deno closure |
 | V2EX | 4 | Direct owner-fork execution v1 calls to the fixed, bounded public API contract in the default-local registry |
 | Exa Web | 1 | Direct owner-fork execution v1 contract on the default-local surface; remains `setup_required` until the complete Node/mcporter/config artifact attestation is supplied |
-| Reddit | 1 | Connector-only fixed OpenCLI `read.post`; absent from default composition |
+| Reddit | 7 | Direct owner-fork OpenCLI operations, Connector-only and absent from default composition |
+| Facebook | 4 | Direct owner-fork OpenCLI operations, Connector-only and absent from default composition |
+| Instagram | 4 | Direct owner-fork OpenCLI operations, Connector-only and absent from default composition |
 | YouTube comments | 1 | Catalog-implemented but unbound and `setup_required` |
 
 The frozen accounting is:
 
 ```text
 Hermes catalog operations                  63
-implemented                                16
-planned                                    47
-direct owner-fork runtime calls            14
-exact-backend thin wrappers                 1
-concrete executors                         15
+implemented                                30
+planned                                    33
+direct owner-fork runtime calls            29
+exact-backend thin wrappers                 0
+concrete executors                         29
 default-local bindings                     14
-Connector-only bindings                     1
+Connector-only bindings                    15
 implemented but unbound                     1
-operations outside fork execution           49
+operations outside fork execution           34
 Hermes-owned platform exceptions            0
 direct official Agent-Reach runtime calls   0
 ```
 
-The sole exact-backend wrapper is Connector-only Reddit `read.post`. The 15
-concrete executors are the 14 fork-owned operations plus that Reddit wrapper.
+All 29 concrete executors call the direct owner-fork runtime. The 15 social
+executors are Connector-only; the other 14 are default-local.
 The accounting treats Exa Web as a default-local binding surface because the
 closed executor is implemented, but the default process does not compose it
 until all seven artifact-attestation environment values are present and well
@@ -158,7 +164,7 @@ The execution fork is deliberately additive and narrow:
 - migrated invocation and source projection are removed from Hermes rather
   than maintained twice.
 
-This architecture moves 14 operation-scoped platform semantics to Agent-Reach
+This architecture moves 29 operation-scoped platform semantics to Agent-Reach
 while leaving the compromised-VPS controls in Hermes. Expanding the fork in a
 homogeneous reviewed batch is allowed only when each operation retains its own
 closed descriptor and the same ownership, safety, compatibility, and
@@ -168,11 +174,15 @@ expose a generic execution surface.
 ## Fork updates, recovery, and rollback
 
 Hermes depends on the exact fork commit, never a branch or tag. The current
-final integration is `9b69146588b1d162515b81db26b51643c15de8eb`, with tree
-`e19835071ae6560431b66d5a21e51b598d3d9c81`. It was rebase-merged from reviewed
-PR head `fd93d2ec86511a4a1514b7ebd13cd996be709692`, whose tree is identical. It has
+final integration is `ec4a5e36434c9df9ee236dc12734843163fc17ac`, with tree
+`302db7526ed84b1565fa24baf5c06ced69385d80`. It was rebase-merged from reviewed
+PR head `a3dcdb3a6638e14ceda8cfa9a3cc7a010d80fa80`, whose tree is identical. It has
 not yet received a protected recovery tag and is therefore not release-eligible.
-The previous final integration
+The previous 14-operation integration
+`9b69146588b1d162515b81db26b51643c15de8eb` was rebase-merged from reviewed
+head `fd93d2ec86511a4a1514b7ebd13cd996be709692`; both resolve to tree
+`e19835071ae6560431b66d5a21e51b598d3d9c81`. It is the immediate rollback pin
+for this social batch and also has no recovery tag. The earlier final integration
 `2a5829cf3b50bc435c647bfae4c050b1837d0235` was rebase-merged from audited
 candidate `9e744d0c33f9e6498cf66c2ea376a653000e9be4`; both resolve to tree
 `070e4507fde7e55eceaba4d29e6a459c4a972f60`, and protected immutable reference
@@ -193,7 +203,8 @@ For an upstream update:
 6. update Hermes in a separate rebase-only change pinned to that commit.
 
 Rollback of the current batch restores the previous Hermes release and exact
-dependency pin `2a5829cf3b50bc435c647bfae4c050b1837d0235`, reachable through
+dependency pin `9b69146588b1d162515b81db26b51643c15de8eb`. The older pin
+`2a5829cf3b50bc435c647bfae4c050b1837d0235` remains reachable through
 immutable reference `hermes-reach-integration-0.1.0a3`. The older pins
 `f195253d53befdb012d7aa575e732ec627ec29ac` and
 `806205fd106f4f4453624becfd773acce8418cf1` remain reachable through

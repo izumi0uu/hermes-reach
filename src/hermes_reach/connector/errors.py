@@ -17,6 +17,7 @@ class ConnectorErrorCategory(str, Enum):
     SECRET = "secret"
     MODEL = "model"
     FILE = "file"
+    BACKEND = "backend"
 
 
 class ConnectorErrorCode(str, Enum):
@@ -59,6 +60,18 @@ class ConnectorErrorCode(str, Enum):
 
     FILE_GRANT_INVALID = "file_grant_invalid"
     FILE_CHANGED = "file_changed"
+
+    BACKEND_INVALID_INPUT = "backend_invalid_input"
+    BACKEND_NOT_FOUND = "backend_not_found"
+    BACKEND_AUTHENTICATION_REQUIRED = "backend_authentication_required"
+    BACKEND_AUTHORIZATION_DENIED = "backend_authorization_denied"
+    BACKEND_UNAVAILABLE = "backend_unavailable"
+    BACKEND_INCOMPATIBLE = "backend_incompatible"
+    BACKEND_DEADLINE_EXCEEDED = "backend_deadline_exceeded"
+    BACKEND_RATE_LIMITED = "backend_rate_limited"
+    BACKEND_TRANSIENT = "backend_transient"
+    BACKEND_PERMANENT = "backend_permanent"
+    BACKEND_CONTRACT_VIOLATION = "backend_contract_violation"
 
 
 @dataclass(frozen=True, slots=True)
@@ -223,6 +236,61 @@ _DEFINITIONS: Final[dict[ConnectorErrorCode, _ErrorDefinition]] = {
         ConnectorErrorCategory.FILE,
         "The Connector-local file changed after approval.",
         "Review the file and approve a new single-file grant.",
+    ),
+    ConnectorErrorCode.BACKEND_INVALID_INPUT: _ErrorDefinition(
+        ConnectorErrorCategory.BACKEND,
+        "The reviewed backend rejected the closed operation input.",
+        "Use the documented source-operation request shape.",
+    ),
+    ConnectorErrorCode.BACKEND_NOT_FOUND: _ErrorDefinition(
+        ConnectorErrorCategory.BACKEND,
+        "The reviewed backend found no matching resource.",
+        "Check the resource identity before retrying.",
+    ),
+    ConnectorErrorCode.BACKEND_AUTHENTICATION_REQUIRED: _ErrorDefinition(
+        ConnectorErrorCategory.BACKEND,
+        "The trusted-device platform session requires authentication.",
+        "Sign in on the trusted Connector device, then retry.",
+    ),
+    ConnectorErrorCode.BACKEND_AUTHORIZATION_DENIED: _ErrorDefinition(
+        ConnectorErrorCategory.BACKEND,
+        "The trusted-device platform session cannot access this resource.",
+        "Use a resource visible to the approved platform account.",
+    ),
+    ConnectorErrorCode.BACKEND_UNAVAILABLE: _ErrorDefinition(
+        ConnectorErrorCategory.BACKEND,
+        "The reviewed backend is temporarily unavailable.",
+        "Restore the trusted-device backend and retry.",
+    ),
+    ConnectorErrorCode.BACKEND_INCOMPATIBLE: _ErrorDefinition(
+        ConnectorErrorCategory.BACKEND,
+        "The reviewed backend artifact or session is incompatible.",
+        "Restore the exact approved backend closure before retrying.",
+    ),
+    ConnectorErrorCode.BACKEND_DEADLINE_EXCEEDED: _ErrorDefinition(
+        ConnectorErrorCategory.BACKEND,
+        "The reviewed backend exceeded its bounded execution deadline.",
+        "Retry the same approved operation after the backend recovers.",
+    ),
+    ConnectorErrorCode.BACKEND_RATE_LIMITED: _ErrorDefinition(
+        ConnectorErrorCategory.BACKEND,
+        "The platform rate-limited the reviewed backend.",
+        "Wait before retrying; do not bypass the platform limit.",
+    ),
+    ConnectorErrorCode.BACKEND_TRANSIENT: _ErrorDefinition(
+        ConnectorErrorCategory.BACKEND,
+        "The reviewed backend reported a transient failure.",
+        "Retry the same approved operation within its bounded policy.",
+    ),
+    ConnectorErrorCode.BACKEND_PERMANENT: _ErrorDefinition(
+        ConnectorErrorCategory.BACKEND,
+        "The reviewed backend could not complete this operation.",
+        "Inspect the trusted-device setup before retrying.",
+    ),
+    ConnectorErrorCode.BACKEND_CONTRACT_VIOLATION: _ErrorDefinition(
+        ConnectorErrorCategory.BACKEND,
+        "The reviewed backend violated its closed result contract.",
+        "Stop using the backend until its pinned integration is reviewed.",
     ),
 }
 

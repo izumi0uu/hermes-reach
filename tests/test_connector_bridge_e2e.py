@@ -5,7 +5,7 @@ import base64
 import errno
 import hashlib
 import io
-import os
+import json
 import socket
 import stat
 import sys
@@ -58,19 +58,30 @@ from hermes_reach.connector.service import ConnectorService
 from hermes_reach.connector.store import AuthorityStore, StoreWriterLease
 from hermes_reach.connector.tls import ConnectorTLSStore
 from hermes_reach.connector.transport import PinnedWssClient
-from hermes_reach.contracts import OperationCall, validate_read
+from hermes_reach.contracts import OperationCall, validate_browse, validate_read
 from hermes_reach.runtime.adapters import AdapterRegistry
 from hermes_reach.runtime.availability import AvailabilityRecord
 from hermes_reach.runtime.dispatcher import RuntimeDispatcher
 from hermes_reach.sources.connector import connector_bindings
-from hermes_reach.sources.reddit import build_reddit_opencli_execution_composition
+from hermes_reach.sources.opencli_social import (
+    OpenCliSessionAttestation,
+    attest_opencli_social_session,
+    opencli_social_execution_composition,
+)
 
 PASSPHRASE = "bridge-e2e-passphrase"
 SCOPE = GrantScope("rss", "read.feed", "public")
 REDDIT_SCOPE = GrantScope("reddit", "read.post", "public")
+INSTAGRAM_EXPLORE_SCOPE = GrantScope("instagram", "browse.explore", "account_visible")
 BACKEND = PublicBackendIdentity("reach-bounded-executor-v1", "1")
+SOCIAL_BACKEND = PublicBackendIdentity("opencli", "1.8.6-hermes.1")
 CANARY = "BRIDGE_QUERY_CANARY"
 REDDIT_POST_ID = "abc123"
+INSTAGRAM_AUTHOR_CANARY = "explore_canary"
+INSTAGRAM_RESULT_CANARY = "EXPLORE_RESULT_CANARY"
+NODE_PATH_CANARY = "OPENCLI_NODE_PATH_CANARY"
+OPENCLI_ROOT_PATH_CANARY = "OPENCLI_ROOT_PATH_CANARY"
+SESSION_PATH_CANARY = "OPENCLI_SESSION_PATH_CANARY"
 REDDIT_OUTPUT = """\
 - type: POST
   author: alice
@@ -88,6 +99,14 @@ REDDIT_OUTPUT = """\
   url_overridden_by_dest: ""
   preview_image_url: ""
   gallery_urls: []
+"""
+INSTAGRAM_EXPLORE_OUTPUT = f"""\
+- rank: 1
+  user: {INSTAGRAM_AUTHOR_CANARY}
+  caption: {INSTAGRAM_RESULT_CANARY}
+  likes: 50
+  comments: 4
+  type: image
 """
 
 
@@ -346,7 +365,8 @@ async def _open_bridge(
     )
 
 
-def _available(_: str, __: str) -> AvailabilityRecord:
+def _available(source: str, operation: str) -> AvailabilityRecord:
+    del source, operation
     return AvailabilityRecord("available", "Fixture Connector is available.")
 
 
@@ -384,6 +404,91 @@ def _reddit_call() -> OperationCall:
                 )
             },
         }
+    )
+
+
+def _instagram_explore_call() -> OperationCall:
+    return validate_browse(
+        {
+            "source": "instagram",
+            "operation": "browse.explore",
+            "options": {"limit": 1},
+        }
+    )
+
+
+def _opencli_social_fixture(
+    tmp_path: Path,
+    *,
+    expected_argv: tuple[str, ...],
+    output: str,
+) -> OpenCliSessionAttestation:
+    node = tmp_path / NODE_PATH_CANARY
+    node.write_text(
+        f"#!{sys.executable}\n"
+        "import sys\n"
+        "if not sys.argv[1].endswith(\n"
+        "    '/node_modules/@jackwener/opencli/dist/src/main.js'\n"
+        "):\n"
+        "    raise SystemExit(6)\n"
+        f"if tuple(sys.argv[2:]) != {expected_argv!r}:\n"
+        "    raise SystemExit(7)\n"
+        f"sys.stdout.write({output!r})\n",
+        encoding="utf-8",
+    )
+    node.chmod(0o700)
+    root = tmp_path / OPENCLI_ROOT_PATH_CANARY
+    package_root = root / "node_modules" / "@jackwener" / "opencli"
+    cli = package_root / "dist" / "src" / "main.js"
+    cli.parent.mkdir(parents=True)
+    cli.write_bytes(b"export {};\n")
+    (package_root / "package.json").write_text(
+        json.dumps(
+            {
+                "name": "@jackwener/opencli",
+                "version": "1.8.6-hermes.1",
+                "bin": {"opencli": "dist/src/main.js"},
+            },
+            separators=(",", ":"),
+        ),
+        encoding="utf-8",
+    )
+    for path in root.rglob("*"):
+        path.chmod(0o700 if path.is_dir() else 0o600)
+    root.chmod(0o700)
+    session_home = tmp_path / SESSION_PATH_CANARY
+    session_home.mkdir(mode=0o700)
+    return attest_opencli_social_session(node, root, cli, session_home)
+
+
+def _private_attestation_markers(
+    attestation: OpenCliSessionAttestation,
+) -> tuple[bytes, ...]:
+    return tuple(
+        value.encode()
+        for value in (
+            str(attestation.node_executable),
+            attestation.node_sha256,
+            str(attestation.opencli_root),
+            str(attestation.opencli_cli),
+            attestation.opencli_tree_sha256,
+            str(attestation.session_home),
+            attestation.node_executable.name,
+            attestation.opencli_root.name,
+            attestation.session_home.name,
+        )
+    ) + (
+        bytes.fromhex(attestation.node_sha256),
+        bytes.fromhex(attestation.opencli_tree_sha256),
+    )
+
+
+def _persisted_state_bytes(harness: _BridgeHarness) -> bytes:
+    return b"".join(
+        path.read_bytes()
+        for state_directory in (harness.trusted_state, harness.vps_state)
+        for path in state_directory.rglob("*")
+        if path.is_file()
     )
 
 
@@ -436,51 +541,33 @@ def test_real_wss_bridge_executes_and_verifies_one_exact_operation(
     asyncio.run(exercise())
 
 
-def test_production_reddit_composition_and_vps_runtime_cross_real_wss(
+def test_production_social_composition_and_vps_runtime_cross_real_wss(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _require_loopback_bind()
-    executable = tmp_path / "opencli"
-    expected_argv = (
-        "reddit",
-        "read",
-        REDDIT_POST_ID,
-        "--sort",
-        "best",
-        "--limit",
-        "3",
-        "--depth",
-        "2",
-        "--replies",
-        "2",
-        "--max-length",
-        "800",
-        "-f",
-        "yaml",
+    attestation = _opencli_social_fixture(
+        tmp_path,
+        expected_argv=(
+            "reddit",
+            "read",
+            REDDIT_POST_ID,
+            "--sort",
+            "best",
+            "--limit",
+            "3",
+            "--depth",
+            "2",
+            "--replies",
+            "2",
+            "--max-length",
+            "800",
+            "--format",
+            "yaml",
+        ),
+        output=REDDIT_OUTPUT,
     )
-    executable.write_text(
-        f"#!{sys.executable}\n"
-        "import sys\n"
-        f"if tuple(sys.argv[1:]) != {expected_argv!r}:\n"
-        "    raise SystemExit(7)\n"
-        f"sys.stdout.write({REDDIT_OUTPUT!r})\n",
-        encoding="utf-8",
-    )
-    executable.chmod(0o700)
-    executable_path = str(executable.resolve()).encode()
-    executable_hash = hashlib.sha256(executable.read_bytes())
-    executable_digest = executable_hash.digest()
-    executable_digest_hex = executable_hash.hexdigest().encode()
-    composition = build_reddit_opencli_execution_composition(
-        executable,
-        environment={
-            "HOME": str(tmp_path),
-            "PATH": os.environ["PATH"],
-            "LANG": "C.UTF-8",
-            "HTTPS_PROXY": "http://proxy-canary",
-            "AWS_SECRET_ACCESS_KEY": "credential-canary",
-        },
-    )
+    private_markers = _private_attestation_markers(attestation)
+    composition = opencli_social_execution_composition(attestation)
 
     async def exercise() -> None:
         harness = await _open_bridge(
@@ -500,34 +587,130 @@ def test_production_reddit_composition_and_vps_runtime_cross_real_wss(
 
             assert result is not None
             assert [(item.kind, item.text) for item in result.items] == [
-                ("content", "Fixture Reddit post"),
-                ("reply", "Fixture Reddit reply"),
+                ("content", "Fixture Reddit post | score: 12 | media: self"),
+                ("reply", "Fixture Reddit reply | score: 3"),
             ]
             assert result.items[0].native_id == REDDIT_POST_ID
-            assert result.selected_backend_id == BACKEND.backend_id
-            assert harness.store.inspect_grants()[0].used_count == 1
+            assert result.selected_backend_id == SOCIAL_BACKEND.backend_id
+            grant = harness.store.inspect_grants()[0]
+            assert grant.used_count == 1
+            assert [
+                (scope.source, scope.operation, scope.data_scope)
+                for scope in grant.scopes
+            ] == [("reddit", "read.post", "public")]
             records = harness.receipt_ledger.records()
             assert len(records) == 1
-            assert records[0].receipt.trace_id == "f" * 32
-            assert records[0].receipt.result_count == 2
+            receipt = records[0].receipt
+            assert receipt.trace_id == "f" * 32
+            assert (receipt.source, receipt.operation) == ("reddit", "read.post")
+            assert receipt.backend == SOCIAL_BACKEND
+            assert receipt.result_count == 2
             snapshot = harness.snapshot_store.load()
             assert snapshot is not None
             assert snapshot.state == "authenticated"
             assert snapshot.scopes == (("reddit", "read.post"),)
             after = runtime.operation_availability("reddit", "read.post")
             assert after.state == "available"
-            assert after.backend_id == BACKEND.backend_id
-            stored = b"".join(
-                path.read_bytes()
-                for state_directory in (harness.trusted_state, harness.vps_state)
-                for path in state_directory.rglob("*")
-                if path.is_file()
-            )
-            assert executable_path not in stored
-            assert executable_digest not in stored
-            assert executable_digest_hex not in stored
+            assert after.backend_id == SOCIAL_BACKEND.backend_id
+            stored = _persisted_state_bytes(harness)
+            assert all(value not in stored for value in private_markers)
             assert REDDIT_POST_ID.encode() not in stored
             assert b"Fixture Reddit post" not in stored
+        finally:
+            await harness.service.close()
+            harness.lease.close()
+
+    asyncio.run(exercise())
+
+
+def test_account_visible_instagram_explore_crosses_real_wss_without_persistence(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _require_loopback_bind()
+    attestation = _opencli_social_fixture(
+        tmp_path,
+        expected_argv=(
+            "instagram",
+            "explore",
+            "--limit",
+            "1",
+            "--format",
+            "yaml",
+        ),
+        output=INSTAGRAM_EXPLORE_OUTPUT,
+    )
+    private_markers = _private_attestation_markers(attestation)
+    composition = opencli_social_execution_composition(attestation)
+    assert (
+        composition.required_scope("instagram", "browse.explore")
+        == INSTAGRAM_EXPLORE_SCOPE
+    )
+
+    async def exercise() -> None:
+        harness = await _open_bridge(
+            tmp_path,
+            None,
+            scope=INSTAGRAM_EXPLORE_SCOPE,
+            execution_composition=composition,
+            persist_vps_profile=True,
+        )
+        monkeypatch.setattr(VpsKeyStore, "_ensure_platform", lambda self: None)
+        runtime = build_vps_runtime(harness.vps_state)
+        try:
+            before = runtime.operation_availability("instagram", "browse.explore")
+            assert before.state == "degraded"
+
+            call = _instagram_explore_call()
+            assert call.operation.runtime.data_scope == "account_visible"
+            result = await runtime.dispatch(
+                call,
+                effective_scope="account_visible",
+                trace_id="a" * 32,
+            )
+
+            assert result is not None
+            assert [(item.kind, item.text) for item in result.items] == [
+                (
+                    "entry",
+                    (
+                        f"{INSTAGRAM_RESULT_CANARY} | reactions: 50 | "
+                        "comments: 4 | media: image"
+                    ),
+                )
+            ]
+            assert result.items[0].native_id == "1"
+            assert result.items[0].author == INSTAGRAM_AUTHOR_CANARY
+            assert result.items[0].published_at is None
+            assert result.selected_backend_id == SOCIAL_BACKEND.backend_id
+
+            grant = harness.store.inspect_grants()[0]
+            assert grant.used_count == 1
+            assert [
+                (scope.source, scope.operation, scope.data_scope)
+                for scope in grant.scopes
+            ] == [("instagram", "browse.explore", "account_visible")]
+            records = harness.receipt_ledger.records()
+            assert len(records) == 1
+            receipt = records[0].receipt
+            assert receipt.trace_id == "a" * 32
+            assert (receipt.source, receipt.operation) == (
+                "instagram",
+                "browse.explore",
+            )
+            assert receipt.backend == SOCIAL_BACKEND
+            assert receipt.result_count == 1
+            snapshot = harness.snapshot_store.load()
+            assert snapshot is not None
+            assert snapshot.state == "authenticated"
+            assert snapshot.scopes == (("instagram", "browse.explore"),)
+            after = runtime.operation_availability("instagram", "browse.explore")
+            assert after.state == "available"
+            assert after.backend_id == SOCIAL_BACKEND.backend_id
+
+            stored = _persisted_state_bytes(harness)
+            assert all(value not in stored for value in private_markers)
+            assert INSTAGRAM_RESULT_CANARY.encode() not in stored
+            assert INSTAGRAM_AUTHOR_CANARY.encode() not in stored
         finally:
             await harness.service.close()
             harness.lease.close()

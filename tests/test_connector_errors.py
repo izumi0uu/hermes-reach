@@ -80,6 +80,19 @@ EXPECTED_CODES = {
     },
     ConnectorErrorCategory.MODEL: {"model_policy_denied"},
     ConnectorErrorCategory.FILE: {"file_grant_invalid", "file_changed"},
+    ConnectorErrorCategory.BACKEND: {
+        "backend_invalid_input",
+        "backend_not_found",
+        "backend_authentication_required",
+        "backend_authorization_denied",
+        "backend_unavailable",
+        "backend_incompatible",
+        "backend_deadline_exceeded",
+        "backend_rate_limited",
+        "backend_transient",
+        "backend_permanent",
+        "backend_contract_violation",
+    },
 }
 
 
@@ -187,5 +200,5 @@ def test_connector_dependencies_are_direct_and_bounded() -> None:
     assert "hermes-agent>=0.19.0,<0.20.0" in dependencies
     assert (
         "agent-reach @ git+https://github.com/izumi0uu/Agent-Reach.git@"
-        "9b69146588b1d162515b81db26b51643c15de8eb"
+        "ec4a5e36434c9df9ee236dc12734843163fc17ac"
     ) in dependencies

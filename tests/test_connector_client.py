@@ -953,6 +953,85 @@ def test_accepted_remediable_failure_blocks_exact_operation_until_snapshot_ttl(
 
 
 @pytest.mark.parametrize(
+    ("code", "snapshot_state", "availability_state"),
+    (
+        (ConnectorErrorCode.BACKEND_INVALID_INPUT, "authenticated", "available"),
+        (ConnectorErrorCode.BACKEND_NOT_FOUND, "authenticated", "available"),
+        (ConnectorErrorCode.BACKEND_UNAVAILABLE, "disconnected", "degraded"),
+        (ConnectorErrorCode.BACKEND_DEADLINE_EXCEEDED, "disconnected", "degraded"),
+        (ConnectorErrorCode.BACKEND_RATE_LIMITED, "disconnected", "degraded"),
+        (ConnectorErrorCode.BACKEND_TRANSIENT, "disconnected", "degraded"),
+        (
+            ConnectorErrorCode.BACKEND_AUTHENTICATION_REQUIRED,
+            "unavailable",
+            "unavailable",
+        ),
+        (ConnectorErrorCode.BACKEND_INCOMPATIBLE, "unavailable", "unavailable"),
+        (
+            ConnectorErrorCode.BACKEND_CONTRACT_VIOLATION,
+            "unavailable",
+            "unavailable",
+        ),
+    ),
+)
+def test_backend_failure_snapshot_distinguishes_request_and_capability_state(
+    tmp_path: Path,
+    code: ConnectorErrorCode,
+    snapshot_state: str,
+    availability_state: str,
+) -> None:
+    profile, vps, connector, profile_store, _, _ = _paired_fixture(tmp_path)
+    snapshots = ConnectorSnapshotStore(tmp_path / "vps")
+    client = ConnectorClient(
+        profile,
+        vps,
+        _AcceptedFailureTransport(
+            connector,
+            _IdFactory(955),
+            ReceiptFailure("backend", code),
+        ),
+        ReceiptEvidenceLedger(
+            tmp_path / "vps" / "receipts.jsonl",
+            connector.public_identity,
+            role="vps",
+        ),
+        snapshots,
+        wall_clock=lambda: NOW + 2,
+        monotonic_clock=lambda: 20.0,
+        id_factory=_IdFactory(970),
+    )
+    call = validate_read(
+        {
+            "source": "web",
+            "operation": "read.url",
+            "target": {"url": "https://example.com/backend-state"},
+        }
+    )
+
+    with pytest.raises(ConnectorError) as caught:
+        asyncio.run(client.execute(call, trace_id=TRACE_ID))
+
+    _assert_code(caught, code.value)
+    snapshot = snapshots.load()
+    assert snapshot is not None
+    assert snapshot.state == snapshot_state
+    if snapshot_state == "authenticated":
+        assert snapshot.cause_code is None
+    else:
+        assert snapshot.cause_code is code
+    availability = ConnectorAvailabilityResolver(
+        profile_store, snapshots, clock=lambda: NOW + 3
+    ).resolve("web", "read.url")
+    assert availability.state == availability_state
+    if availability_state == "available":
+        assert availability.cause_code is None
+    elif availability_state == "degraded":
+        assert availability.cause_code == ConnectorErrorCode.CONNECTOR_OFFLINE.value
+    else:
+        assert availability.cause_code == code.value
+
+
+@pytest.mark.parametrize(
     "code",
     (
         ConnectorErrorCode.CONNECTOR_TLS_FAILED,

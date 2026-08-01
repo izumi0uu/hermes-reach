@@ -2,7 +2,7 @@
 
 Status: frozen on 2026-08-01 against official Agent-Reach `1.5.0` base
 `b4d52c46c9113cb0f653d6df4cf71ebadf4930ac` and final owner-fork integration
-`9b69146588b1d162515b81db26b51643c15de8eb`.
+`ec4a5e36434c9df9ee236dc12734843163fc17ac`.
 
 This document is the merge gate for source execution work. The canonical
 plugin architecture and terminology are defined in
@@ -16,14 +16,13 @@ plugin architecture and terminology are defined in
 Hermes
   -> Hermes Reach plugin lifecycle and security/control plane
   -> owner-fork structured execution, for an exact reviewed operation
-     OR an exact Agent-Reach-selected backend through a fixed thin wrapper
   -> platform
 ```
 
 Official Agent-Reach owns the reviewed 15-channel baseline and backend-routing
 evidence. The owner fork adds a narrow `execution.v1` boundary and currently
-owns exactly two RSS, four Bilibili, three YouTube, four V2EX, and one Exa Web
-operation. Hermes Reach owns
+owns exactly two RSS, four Bilibili, three YouTube, four V2EX, one Exa Web,
+seven Reddit, four Facebook, and four Instagram operations. Hermes Reach owns
 protocol admission, authorization, host capabilities, safe invocation,
 isolation, normalization, bounds, redaction, receipts, availability, audit,
 and rollback.
@@ -31,7 +30,7 @@ and rollback.
 Official Agent-Reach 1.5.0 does not expose a unified operation execution API,
 so direct official runtime calls remain zero. That fact does not authorize a
 Hermes platform runtime. The reviewed owner fork is additive and operation
-scoped; its 14 calls do not imply execution support for the other 49 Hermes
+scoped; its 29 calls do not imply execution support for the other 34 Hermes
 catalog rows.
 
 The following work stays fully inside Hermes Reach and is not platform drift:
@@ -74,9 +73,9 @@ official 1.5.0 supplies the 15-channel registry and backend routes instead.
 | GitHub | 8 not implemented | `gh` CLI | Planned/unavailable; former anonymous REST exception disabled |
 | Twitter/X | 6 not implemented | `twitter-cli`, OpenCLI, `bird` | Planned/unavailable |
 | YouTube | 3 direct owner-fork runtime calls, 1 implemented but unbound, 1 not implemented | fork `execution.v1` over `network_access.v1` and `private_workspace.v1`; `yt-dlp`; transcription pipeline | Search, read-video, and subtitles use fork-owned fixed yt-dlp execution; comments remain setup-required; transcription planned |
-| Reddit | 1 exact backend thin wrapper, 6 not implemented | OpenCLI, then `rdt-cli` | Fixed OpenCLI `read.post` is Connector-only; other operations planned |
-| Facebook | 4 not implemented | OpenCLI | Planned/unavailable |
-| Instagram | 4 not implemented | OpenCLI | Planned/unavailable |
+| Reddit | 7 direct owner-fork runtime calls | fork `execution.v1` over `opencli_session.v1`; OpenCLI | Connector-only; fork owns all commands, parsing, bounds, and projection |
+| Facebook | 4 direct owner-fork runtime calls | fork `execution.v1` over `opencli_session.v1`; OpenCLI | Connector-only with exact public/account-visible grants |
+| Instagram | 4 direct owner-fork runtime calls | fork `execution.v1` over `opencli_session.v1`; typed OpenCLI owner artifact | Connector-only with exact public/account-visible grants |
 | Bilibili | 4 direct owner-fork runtime calls, 2 not implemented | fork `execution.v1` over `network_access.v1`; `bili-cli`, OpenCLI, transcription pipeline | Four public operations use fork-owned fixed bili-cli execution; subtitles/transcription planned |
 | Xiaohongshu | 5 not implemented | OpenCLI, MCP, `xhs-cli` | Planned/unavailable |
 | LinkedIn | 4 not implemented | scraper MCP, Jina fallback | Planned/unavailable |
@@ -92,20 +91,20 @@ The frozen accounting is:
 | Accounting class | Count |
 | --- | ---: |
 | Hermes catalog operations | 63 |
-| Catalog implemented | 16 |
-| Catalog planned | 47 |
-| Direct owner-fork runtime calls | 14 |
-| Exact-backend thin wrappers | 1 |
-| Concrete executors | 15 |
+| Catalog implemented | 30 |
+| Catalog planned | 33 |
+| Direct owner-fork runtime calls | 29 |
+| Exact-backend thin wrappers | 0 |
+| Concrete executors | 29 |
 | Default-local bindings | 14 |
-| Connector-only concrete bindings | 1 |
+| Connector-only concrete bindings | 15 |
 | Implemented but unbound contracts | 1 |
-| Operations outside fork execution | 49 |
+| Operations outside fork execution | 34 |
 | Hermes-native equivalents | 0 |
 | Reach reimplementations | 0 |
 | Direct official Agent-Reach runtime calls | 0 |
 
-The fifteen concrete executors are:
+The twenty-nine concrete executors are:
 
 | Binding surface | Source | Classification | Operations |
 | --- | --- | --- | --- |
@@ -114,9 +113,11 @@ The fifteen concrete executors are:
 | Default-local | YouTube | Direct owner-fork runtime | `search.videos`, `read.video`, `read.subtitles` |
 | Default-local | V2EX | Direct owner-fork runtime | `browse.hot`, `browse.node_topics`, `read.topic`, `read.user` |
 | Default-local | Exa | Direct owner-fork runtime | `search.web` (conditionally composed after complete artifact attestation) |
-| Connector-only | Reddit | Exact backend thin wrapper | `read.post` |
+| Connector-only | Reddit | Direct owner-fork runtime | `search.posts`, `read.post`, `browse.subreddit`, `browse.hot`, `browse.popular`, `browse.all`, `read.subreddit` |
+| Connector-only | Facebook | Direct owner-fork runtime | `search`, `read.profile`, `browse.feed`, `browse.groups` |
+| Connector-only | Instagram | Direct owner-fork runtime | `search.users`, `read.profile`, `browse.user_posts`, `browse.explore` |
 
-`youtube:read.comments` is catalog-implemented but is not one of those fifteen:
+`youtube:read.comments` is catalog-implemented but is not one of those twenty-nine:
 it has no binding or backend attempt and remains `setup_required`. Its public
 v1 `(limit,page)` contract cannot be represented by yt-dlp's bounded comment
 prefix without Hermes inventing pagination semantics.
@@ -210,13 +211,17 @@ pinned `tokensNum` contract is incompatible with the live deprecated method's
 `numResults` schema. See
 [Exa mcporter 1.5.0](agent-reach-decisions/exa-mcporter-1.5.0.md).
 
-### Reddit Connector exact backend
+### OpenCLI social owner-fork runtime
 
-`reddit:read.post` uses the exact OpenCLI-first route selected by Agent-Reach.
-It is never a default-local binding. Explicit trusted-device executable
-attestation, an exact Connector executor, paired VPS state, and a live exact
-grant are all required. The request cannot choose argv, executable, browser
-profile, credential, or fallback.
+All 15 Reddit, Facebook, and Instagram catalog operations call closed
+`execution.v1` descriptors with `opencli_session.v1`. They are never
+default-local bindings. The trusted Connector attests exact Node and OpenCLI
+closure identities, retains the browser session, requires an exact signed
+`public` or `account_visible` grant, and invokes one fixed isolated worker. The
+fork alone owns command selection, the no-lifecycle-mutation guard, YAML/error
+parsing, platform bounds, correlation, and projection. Hermes contains no
+social OpenCLI argv or platform parser. See
+[OpenCLI social 1.8.6-hermes.1](agent-reach-decisions/opencli-social-1.8.6-hermes.1.md).
 
 ## Why the earlier drift happened
 
@@ -239,8 +244,8 @@ owner fork raised structured reuse from zero to six operations, and moving
 YouTube `read.video` raised it to seven. This homogeneous public-platform batch
 then migrated the two remaining YouTube operations, reactivated four V2EX
 operations without restoring Hermes parsing, and added the exact Exa Web route.
-The result is 14 direct owner-fork operations and one exact-backend wrapper,
-with zero Hermes-native or reimplementation paths among 15 concrete executors.
+The result is 29 direct owner-fork operations and zero exact-backend wrappers,
+with zero Hermes-native or reimplementation paths among 29 concrete executors.
 The remaining Hermes code is plugin lifecycle, the v1 product contract,
 security controls, host capabilities, normalization, Connector, secrets,
 receipts, and audit, not a copied platform runtime.
@@ -261,11 +266,15 @@ receipts, and audit, not a copied platform runtime.
    `f195253d53befdb012d7aa575e732ec627ec29ac`, and keep
    `hermes-reach-integration-0.1.0a3` as the protected immutable reference for
    the previous integration `2a5829cf3b50bc435c647bfae4c050b1837d0235`.
-   Final integration `9b69146588b1d162515b81db26b51643c15de8eb`, with tree
-   `e19835071ae6560431b66d5a21e51b598d3d9c81`, was rebase-merged from reviewed
-   head `fd93d2ec86511a4a1514b7ebd13cd996be709692` with an identical tree. It has
+   Final integration `ec4a5e36434c9df9ee236dc12734843163fc17ac`, with tree
+   `302db7526ed84b1565fa24baf5c06ced69385d80`, was rebase-merged from reviewed
+   head `a3dcdb3a6638e14ceda8cfa9a3cc7a010d80fa80` with an identical tree. It has
    no recovery tag yet and remains release-ineligible until one is protected.
-   Hermes never depends on either tag or any future tag; the exact commit pin
+   The immediate rollback pin `9b69146588b1d162515b81db26b51643c15de8eb`
+   was rebase-merged from reviewed head
+   `fd93d2ec86511a4a1514b7ebd13cd996be709692`; both have tree
+   `e19835071ae6560431b66d5a21e51b598d3d9c81`. Hermes never depends on either
+   tag or any future tag; the exact commit pin
    is authoritative.
 6. Migrated platform invocation and projection must be removed from Hermes so
    there is one platform-semantics owner.
@@ -281,16 +290,16 @@ receipts, and audit, not a copied platform runtime.
 The complete machine-readable classifications live in
 [agent-reach-operation-ledger.json](agent-reach-operation-ledger.json). The
 smaller [agent-reach-reuse-decisions.json](agent-reach-reuse-decisions.json)
-contains 24 detailed P0/P1/P2 reviews: ten not-implemented decisions and all
-14 direct owner-fork decisions. The Connector-only Reddit wrapper and
-implemented-but-unbound YouTube comments contract remain in the complete
-ledger and their dedicated tests.
+contains 39 detailed P0/P1/P2 reviews: ten not-implemented decisions and all
+29 direct owner-fork decisions. The implemented-but-unbound YouTube comments
+contract remains in the complete ledger and its dedicated tests.
 
 Rollback of the current batch restores the previous Hermes release and exact
-pin `2a5829cf3b50bc435c647bfae4c050b1837d0235`, whose immutable recovery
-reference is `hermes-reach-integration-0.1.0a3`. It restores YouTube search and
-subtitles to their exact wrappers and returns V2EX and Exa to their prior
-disabled state. The older pins
+pin `9b69146588b1d162515b81db26b51643c15de8eb`. It removes the 15 social
+descriptors and Connector bindings while retaining the preceding 14-operation
+public-platform integration. The older pin
+`2a5829cf3b50bc435c647bfae4c050b1837d0235`, whose immutable recovery
+reference is `hermes-reach-integration-0.1.0a3`, and the older pins
 `f195253d53befdb012d7aa575e732ec627ec29ac` and
 `806205fd106f4f4453624becfd773acce8418cf1` remain reachable through
 `hermes-reach-integration-0.1.0a2` and

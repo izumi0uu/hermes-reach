@@ -874,11 +874,23 @@ def _grant_error(
     if now < claims.not_before:
         return ConnectorErrorCode.GRANT_REQUIRED
     if not any(
-        scope.source == source and scope.operation == operation
+        scope.source == source
+        and scope.operation == operation
+        and scope.data_scope == _operation_data_scope(source, operation)
         for scope in claims.scopes
     ):
         return ConnectorErrorCode.GRANT_SCOPE_DENIED
     return None
+
+
+def _operation_data_scope(source: str, operation: str) -> str:
+    source_spec = get_source(source)
+    operation_spec = (
+        get_operation(source_spec, operation) if source_spec is not None else None
+    )
+    if operation_spec is None:
+        raise ConnectorError(ConnectorErrorCode.CONNECTOR_STATE_INVALID)
+    return operation_spec.runtime.data_scope
 
 
 def _snapshot(
@@ -968,6 +980,32 @@ def _snapshot_from_receipt(
             observed_at,
             "disconnected",
             ConnectorErrorCode.REQUEST_REPLAYED,
+            source=receipt.source,
+            operation=receipt.operation,
+        )
+    if failure.cause_code in {
+        ConnectorErrorCode.BACKEND_INVALID_INPUT,
+        ConnectorErrorCode.BACKEND_NOT_FOUND,
+    }:
+        return _snapshot(
+            profile,
+            observed_at,
+            "authenticated",
+            None,
+            source=receipt.source,
+            operation=receipt.operation,
+        )
+    if failure.cause_code in {
+        ConnectorErrorCode.BACKEND_UNAVAILABLE,
+        ConnectorErrorCode.BACKEND_DEADLINE_EXCEEDED,
+        ConnectorErrorCode.BACKEND_RATE_LIMITED,
+        ConnectorErrorCode.BACKEND_TRANSIENT,
+    }:
+        return _snapshot(
+            profile,
+            observed_at,
+            "disconnected",
+            failure.cause_code,
             source=receipt.source,
             operation=receipt.operation,
         )

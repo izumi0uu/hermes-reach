@@ -102,10 +102,10 @@ def test_catalog_marks_only_reviewed_backend_paths_implemented() -> None:
         if operation.implementation_state == "implemented"
     }
     assert len(operations) == 63
-    assert len(implemented) == 16
+    assert len(implemented) == 30
     assert (
         sum(operation.implementation_state == "planned" for operation in operations)
-        == 47
+        == 33
     )
     assert implemented == {
         ("youtube", "search.videos"),
@@ -113,6 +113,20 @@ def test_catalog_marks_only_reviewed_backend_paths_implemented() -> None:
         ("youtube", "read.subtitles"),
         ("youtube", "read.comments"),
         ("reddit", "read.post"),
+        ("reddit", "search.posts"),
+        ("reddit", "browse.subreddit"),
+        ("reddit", "browse.hot"),
+        ("reddit", "browse.popular"),
+        ("reddit", "browse.all"),
+        ("reddit", "read.subreddit"),
+        ("facebook", "search"),
+        ("facebook", "read.profile"),
+        ("facebook", "browse.feed"),
+        ("facebook", "browse.groups"),
+        ("instagram", "search.users"),
+        ("instagram", "read.profile"),
+        ("instagram", "browse.user_posts"),
+        ("instagram", "browse.explore"),
         ("bilibili", "search.videos"),
         ("bilibili", "read.video"),
         ("bilibili", "browse.hot"),
@@ -206,7 +220,13 @@ def test_catalog_runtime_defaults_and_account_visible_overrides_are_explicit() -
         ("twitter", "browse.home"),
         ("facebook", "browse.feed"),
         ("facebook", "browse.groups"),
+        ("instagram", "browse.explore"),
     }
+    opencli_social = (
+        {("reddit", operation) for operation in EXPECTED_OPERATIONS["reddit"]}
+        | {("facebook", operation) for operation in EXPECTED_OPERATIONS["facebook"]}
+        | {("instagram", operation) for operation in EXPECTED_OPERATIONS["instagram"]}
+    )
 
     for operation in operations:
         expected_scope = (
@@ -217,8 +237,14 @@ def test_catalog_runtime_defaults_and_account_visible_overrides_are_explicit() -
         assert operation.runtime.data_scope == expected_scope
         assert operation.runtime.maximum_items == 20
         assert operation.runtime.maximum_characters == 16_000
-        assert operation.runtime.attempt_timeout_seconds == 15
-        assert operation.runtime.total_timeout_seconds == 30
+        expected_timeout = (
+            20 if (operation.source, operation.name) in opencli_social else 15
+        )
+        expected_total_timeout = (
+            20 if (operation.source, operation.name) in opencli_social else 30
+        )
+        assert operation.runtime.attempt_timeout_seconds == expected_timeout
+        assert operation.runtime.total_timeout_seconds == expected_total_timeout
         assert operation.runtime.resource_ref_eligible is False
         assert operation.runtime.continuation_eligible is False
 

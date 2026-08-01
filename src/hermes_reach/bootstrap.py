@@ -22,10 +22,10 @@ from .sources.exa_artifacts import (
     ExaArtifactAttestation,
     exa_artifacts_from_environment,
 )
+from .sources.opencli_social_contract import OPENCLI_SOCIAL_OPERATIONS
 from .sources.registry import build_alpha1_registry, build_alpha1_runtime
 
 VPS_STATE_DIRECTORY_ENVIRONMENT: Final = "HERMES_REACH_VPS_STATE_DIRECTORY"
-_REDDIT_OPERATION: Final = ("reddit", "read.post")
 _VPS_RECEIPT_LEDGER: Final = "receipts.jsonl"
 
 
@@ -35,7 +35,7 @@ def build_vps_runtime(
     exa_artifacts: ExaArtifactAttestation | None = None,
     exa_artifacts_invalid: bool = False,
 ) -> RuntimeDispatcher:
-    """Compose Alpha-1 plus the one exact Connector adapter from local state."""
+    """Compose Alpha-1 plus the exact social Connector adapters from local state."""
 
     registry = build_alpha1_registry(
         exa_artifacts=exa_artifacts,
@@ -64,15 +64,20 @@ def build_vps_runtime(
             evidence,
             snapshot_store,
         )
-        for binding in connector_bindings(client, availability, (_REDDIT_OPERATION,)):
+        for binding in connector_bindings(
+            client,
+            availability,
+            OPENCLI_SOCIAL_OPERATIONS,
+        ):
             registry.register(binding)
     except Exception:
-        registry.mark(
-            _REDDIT_OPERATION[0],
-            _REDDIT_OPERATION[1],
-            "unavailable",
-            "The configured Connector state could not be verified.",
-        )
+        for source, operation in OPENCLI_SOCIAL_OPERATIONS:
+            registry.mark(
+                source,
+                operation,
+                "unavailable",
+                "The configured Connector state could not be verified.",
+            )
     return RuntimeDispatcher(registry)
 
 
@@ -118,6 +123,7 @@ DEFAULT_RUNTIME = build_alpha1_runtime()
 
 __all__ = [
     "DEFAULT_RUNTIME",
+    "OPENCLI_SOCIAL_OPERATIONS",
     "VPS_STATE_DIRECTORY_ENVIRONMENT",
     "build_vps_runtime",
     "runtime_from_environment",

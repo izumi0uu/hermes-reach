@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import os
 import sys
 import time
 from pathlib import Path
@@ -43,10 +42,12 @@ from .contracts import (
 )
 from .runtime.dispatcher import RuntimeDispatcher
 from .runtime.release import check_release_pins
-from .sources.reddit import (
-    attest_opencli_executable,
-    reddit_opencli_execution_composition,
+from .sources.opencli_social import (
+    attest_opencli_social_session,
+    opencli_social_execution_composition,
+    opencli_social_scopes,
 )
+from .sources.opencli_social_contract import OPENCLI_SOCIAL_BACKEND
 from .status import doctor_data, sources_data, status_data, unavailable_command_data
 
 _RUNTIME: RuntimeDispatcher = DEFAULT_RUNTIME
@@ -210,8 +211,17 @@ def connector_command(
             port = getattr(args, "port", None)
             if type(bind_host) is not str or type(port) is not int:
                 raise ConnectorError(ConnectorErrorCode.CONNECTOR_STATE_INVALID)
-            reddit_opencli = getattr(args, "reddit_opencli", None)
-            if reddit_opencli is None:
+            social_node = getattr(args, "opencli_social_node", None)
+            social_root = getattr(args, "opencli_social_root", None)
+            social_cli = getattr(args, "opencli_social_cli", None)
+            social_session_home = getattr(args, "opencli_social_session_home", None)
+            social_inputs = (
+                social_node,
+                social_root,
+                social_cli,
+                social_session_home,
+            )
+            if all(value is None for value in social_inputs):
                 mutations.serve(
                     state_directory,
                     reader=reader,
@@ -219,14 +229,32 @@ def connector_command(
                     port=port,
                 )
                 return
-            if not isinstance(reddit_opencli, Path):
+            if (
+                not isinstance(social_node, Path)
+                or not isinstance(social_root, Path)
+                or not isinstance(social_cli, Path)
+                or not isinstance(social_session_home, Path)
+            ):
                 raise ConnectorError(ConnectorErrorCode.CONNECTOR_STATE_INVALID)
-            attestation = attest_opencli_executable(reddit_opencli)
+            attestation = attest_opencli_social_session(
+                social_node,
+                social_root,
+                social_cli,
+                social_session_home,
+            )
+            scopes = opencli_social_scopes()
+            rendered_scopes = "".join(
+                f"scope: {scope.source}:{scope.operation}:{scope.data_scope}\n"
+                for scope in scopes
+            )
             reader._write(
                 "Enable trusted-device Connector executor:\n"
-                "scope: reddit:read.post:public\n"
-                f"OpenCLI path: {attestation.canonical_path}\n"
-                f"OpenCLI SHA-256: {attestation.sha256}\n"
+                f"backend: {OPENCLI_SOCIAL_BACKEND.backend_id}/"
+                f"{OPENCLI_SOCIAL_BACKEND.backend_version}\n"
+                f"Node SHA-256: {attestation.node_sha256}\n"
+                f"OpenCLI tree SHA-256: {attestation.opencli_tree_sha256}\n"
+                f"scopes: {len(scopes)}\n"
+                f"{rendered_scopes}"
             )
             if not reader._confirm("Type enable to continue: ", "enable"):
                 raise ConnectorError(ConnectorErrorCode.INTERACTIVE_UNLOCK_REQUIRED)
@@ -235,9 +263,7 @@ def connector_command(
                 reader=reader,
                 bind_host=bind_host,
                 port=port,
-                execution_composition=reddit_opencli_execution_composition(
-                    attestation, environment=os.environ
-                ),
+                execution_composition=opencli_social_execution_composition(attestation),
             )
             return
         raise ConnectorError(ConnectorErrorCode.CONNECTOR_STATE_INVALID)

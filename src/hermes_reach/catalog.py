@@ -18,6 +18,8 @@ StringFormat = Literal[
     "github_repository",
     "github_resource",
     "reddit_post_url",
+    "subreddit_identifier",
+    "social_username",
     "youtube_video_url",
     "bilibili_video_url",
 ]
@@ -139,6 +141,12 @@ BILIBILI_VIDEO_TARGET: Final = TargetSpec(
 REDDIT_POST_TARGET: Final = TargetSpec(
     "url", maximum=320, string_format="reddit_post_url"
 )
+SUBREDDIT_TARGET: Final = TargetSpec(
+    "native_id", maximum=21, string_format="subreddit_identifier"
+)
+SOCIAL_USERNAME_TARGET: Final = TargetSpec(
+    "native_id", maximum=64, string_format="social_username"
+)
 
 
 def _operation(
@@ -153,6 +161,8 @@ def _operation(
     continuation_eligible: bool = False,
     *,
     targets: tuple[TargetSpec, ...] | None = None,
+    attempt_timeout_seconds: int = 15,
+    total_timeout_seconds: int = 30,
     implementation_state: ImplementationState = "planned",
     unavailable_reason: str = "No adapter is implemented for this operation yet.",
 ) -> OperationSpec:
@@ -167,6 +177,8 @@ def _operation(
         targets=operation_targets,
         runtime=OperationRuntimeSpec(
             data_scope=data_scope,
+            attempt_timeout_seconds=attempt_timeout_seconds,
+            total_timeout_seconds=total_timeout_seconds,
             resource_ref_eligible=resource_ref_eligible,
             continuation_eligible=continuation_eligible,
         ),
@@ -375,7 +387,15 @@ SOURCE_CATALOG: Final[tuple[SourceSpec, ...]] = (
         "account_session",
         (
             _operation(
-                "reddit", "search.posts", "search", 2, "account_session", (LIMIT,)
+                "reddit",
+                "search.posts",
+                "search",
+                2,
+                "account_session",
+                (LIMIT,),
+                attempt_timeout_seconds=20,
+                total_timeout_seconds=20,
+                implementation_state="implemented",
             ),
             _operation(
                 "reddit",
@@ -384,21 +404,66 @@ SOURCE_CATALOG: Final[tuple[SourceSpec, ...]] = (
                 2,
                 "account_session",
                 targets=(REDDIT_POST_TARGET,),
+                attempt_timeout_seconds=20,
+                total_timeout_seconds=20,
                 implementation_state="implemented",
             ),
             _operation(
-                "reddit", "browse.subreddit", "browse", 2, "account_session", (LIMIT,)
+                "reddit",
+                "browse.subreddit",
+                "browse",
+                2,
+                "account_session",
+                (LIMIT,),
+                targets=(SUBREDDIT_TARGET,),
+                attempt_timeout_seconds=20,
+                total_timeout_seconds=20,
+                implementation_state="implemented",
             ),
             _operation(
-                "reddit", "browse.hot", "browse", 2, "account_session", (LIMIT,)
+                "reddit",
+                "browse.hot",
+                "browse",
+                2,
+                "account_session",
+                (LIMIT,),
+                attempt_timeout_seconds=20,
+                total_timeout_seconds=20,
+                implementation_state="implemented",
             ),
             _operation(
-                "reddit", "browse.popular", "browse", 2, "account_session", (LIMIT,)
+                "reddit",
+                "browse.popular",
+                "browse",
+                2,
+                "account_session",
+                (LIMIT,),
+                attempt_timeout_seconds=20,
+                total_timeout_seconds=20,
+                implementation_state="implemented",
             ),
             _operation(
-                "reddit", "browse.all", "browse", 2, "account_session", (LIMIT,)
+                "reddit",
+                "browse.all",
+                "browse",
+                2,
+                "account_session",
+                (LIMIT,),
+                attempt_timeout_seconds=20,
+                total_timeout_seconds=20,
+                implementation_state="implemented",
             ),
-            _operation("reddit", "read.subreddit", "read", 2, "account_session"),
+            _operation(
+                "reddit",
+                "read.subreddit",
+                "read",
+                2,
+                "account_session",
+                targets=(SUBREDDIT_TARGET,),
+                attempt_timeout_seconds=20,
+                total_timeout_seconds=20,
+                implementation_state="implemented",
+            ),
         ),
     ),
     _source(
@@ -407,8 +472,28 @@ SOURCE_CATALOG: Final[tuple[SourceSpec, ...]] = (
         3,
         "account_session",
         (
-            _operation("facebook", "search", "search", 3, "account_session", (LIMIT,)),
-            _operation("facebook", "read.profile", "read", 3, "account_session"),
+            _operation(
+                "facebook",
+                "search",
+                "search",
+                3,
+                "account_session",
+                (LIMIT,),
+                attempt_timeout_seconds=20,
+                total_timeout_seconds=20,
+                implementation_state="implemented",
+            ),
+            _operation(
+                "facebook",
+                "read.profile",
+                "read",
+                3,
+                "account_session",
+                targets=(SOCIAL_USERNAME_TARGET,),
+                attempt_timeout_seconds=20,
+                total_timeout_seconds=20,
+                implementation_state="implemented",
+            ),
             _operation(
                 "facebook",
                 "browse.feed",
@@ -417,6 +502,9 @@ SOURCE_CATALOG: Final[tuple[SourceSpec, ...]] = (
                 "account_session",
                 (LIMIT,),
                 "account_visible",
+                attempt_timeout_seconds=20,
+                total_timeout_seconds=20,
+                implementation_state="implemented",
             ),
             _operation(
                 "facebook",
@@ -426,6 +514,9 @@ SOURCE_CATALOG: Final[tuple[SourceSpec, ...]] = (
                 "account_session",
                 (LIMIT,),
                 "account_visible",
+                attempt_timeout_seconds=20,
+                total_timeout_seconds=20,
+                implementation_state="implemented",
             ),
         ),
     ),
@@ -436,9 +527,27 @@ SOURCE_CATALOG: Final[tuple[SourceSpec, ...]] = (
         "account_session",
         (
             _operation(
-                "instagram", "search.users", "search", 3, "account_session", (LIMIT,)
+                "instagram",
+                "search.users",
+                "search",
+                3,
+                "account_session",
+                (LIMIT,),
+                attempt_timeout_seconds=20,
+                total_timeout_seconds=20,
+                implementation_state="implemented",
             ),
-            _operation("instagram", "read.profile", "read", 3, "account_session"),
+            _operation(
+                "instagram",
+                "read.profile",
+                "read",
+                3,
+                "account_session",
+                targets=(SOCIAL_USERNAME_TARGET,),
+                attempt_timeout_seconds=20,
+                total_timeout_seconds=20,
+                implementation_state="implemented",
+            ),
             _operation(
                 "instagram",
                 "browse.user_posts",
@@ -446,9 +555,22 @@ SOURCE_CATALOG: Final[tuple[SourceSpec, ...]] = (
                 3,
                 "account_session",
                 (LIMIT,),
+                targets=(SOCIAL_USERNAME_TARGET,),
+                attempt_timeout_seconds=20,
+                total_timeout_seconds=20,
+                implementation_state="implemented",
             ),
             _operation(
-                "instagram", "browse.explore", "browse", 3, "account_session", (LIMIT,)
+                "instagram",
+                "browse.explore",
+                "browse",
+                3,
+                "account_session",
+                (LIMIT,),
+                "account_visible",
+                attempt_timeout_seconds=20,
+                total_timeout_seconds=20,
+                implementation_state="implemented",
             ),
         ),
     ),

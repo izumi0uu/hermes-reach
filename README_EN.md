@@ -8,21 +8,23 @@ It pins an [owner fork](https://github.com/izumi0uu/Agent-Reach) based on a
 reviewed official [Agent-Reach](https://github.com/Panniantong/Agent-Reach)
 baseline. The official baseline supplies channel, backend-routing, and
 compatibility evidence; the fork's structured execution v1 currently carries
-two RSS, four Bilibili, three YouTube, four V2EX, and one Exa Web operation.
-Hermes Reach then exposes search, read, browse, transcribe, and status operations through a
+two RSS, four Bilibili, three YouTube, four V2EX, one Exa Web, seven Reddit,
+four Facebook, and four Instagram operations. Hermes Reach then exposes
+search, read, browse, transcribe, and status operations through a
 [Hermes Agent](https://github.com/NousResearch/hermes-agent) plugin.
 
 > [!IMPORTANT]
-> The project is **pre-alpha**. There are 14 direct owner-fork operations: RSS
-> 2, Bilibili 4, YouTube 3, V2EX 4, and Exa Web 1. The first 13 are locally
-> available by default. Exa Web has a default-local binding surface but is
-> composed only after the operator supplies the complete Node/mcporter/config
+> The project is **pre-alpha**. There are 29 direct owner-fork operations: RSS
+> 2, Bilibili 4, YouTube 3, V2EX 4, Exa Web 1, and 15 OpenCLI social
+> operations. The first 13 are locally available by default. Exa Web has a
+> default-local binding surface but is composed only after the operator
+> supplies the complete Node/mcporter/config
 > artifact attestation; otherwise it remains `setup_required`. The remote
-> Connector can explicitly activate the sole exact-backend thin wrapper,
-> Reddit `read.post`, at both ends, while default Connector composition remains
-> empty. Web, GitHub, Exa code, and other unaudited operations remain planned
-> and unavailable. The fork does not make the other 49 catalog operations
-> executable.
+> Connector can explicitly activate 15 fork-owned Reddit, Facebook, and
+> Instagram OpenCLI operations through two-sided configuration, while default
+> Connector composition remains empty. Web, GitHub, Exa code, and other
+> unaudited operations remain planned and unavailable. The fork does not make
+> the other 34 catalog operations executable.
 
 ## The problem Hermes Reach solves
 
@@ -52,7 +54,17 @@ Hermes Reach assumes that an attacker may fully compromise the VPS. Its security
 
 The Connector runs on your computer or another trusted device. Passwords, cookies, browser sessions, and Bitwarden tokens remain there. The VPS receives only expiring, usage-limited, revocable grants.
 
-The codebase contains identity, live authorization, pinned TLS, original-terminal unlock, VPS pairing, local availability snapshots, isolated Bitwarden resolution, and protected-request/result envelopes. `reddit:read.post` is the first exact binding that can be activated explicitly: it extracts a post ID from a canonical Reddit URL and invokes one fixed OpenCLI read command. The trusted device must attest the executable through `--reddit-opencli`, and the VPS must explicitly point to paired local state containing the exact `reddit:read.post:public` grant. Either missing gate fails closed, and a default installation never discovers or runs OpenCLI.
+The codebase contains identity, live authorization, pinned TLS,
+original-terminal unlock, VPS pairing, local availability snapshots, isolated
+Bitwarden resolution, and protected-request/result envelopes. It can now
+explicitly activate 15 exact Reddit, Facebook, and Instagram bindings.
+Agent-Reach owns every platform command, YAML/error parse, and source-native
+projection; Hermes transports a closed request, validates the result, and
+creates the receipt. The trusted device must attest Node, the complete OpenCLI
+`1.8.6-hermes.1` closure, and the local session home. The VPS must hold an
+exact `public` or `account_visible` grant for each operation. Either missing
+gate fails closed. A default installation never discovers or runs OpenCLI and
+never copies cookies or a browser session to the VPS.
 
 Before deployment, read the [Connector security and operations guide](docs/connector-security.md) for the network, grant, key-recovery, audit, and rollback boundaries. This activation path remains pre-alpha and does not authorize a generic command, credential, or platform capability.
 
@@ -88,9 +100,11 @@ The default installation registers five tools, but `reach_status` remains author
 | Locally available | YouTube | Search, video reads, and subtitles all use owner-fork execution v1 with fixed `yt-dlp==2026.7.4` plus the pinned EJS/Deno closure |
 | Locally available | V2EX | Browse hot/node topics and read topics/replies/users through owner-fork execution v1 with a fixed public API and bounded transport |
 | Local artifact setup required | Exa | `search.web` only; the executor is implemented and is composed after a complete well-formed Node/mcporter/config path-and-digest declaration, then revalidates actual artifacts at execution |
-| Explicitly configurable | Reddit | `read.post` only; requires activation on both the trusted device and VPS and remains unavailable by default |
+| Explicitly configurable | Reddit | Seven catalog operations execute through the owner-fork OpenCLI runtime on the trusted Connector and remain unavailable by default |
+| Explicitly configurable | Facebook | Four catalog operations; Feed and Groups require exact `account_visible` grants and remain unavailable by default |
+| Explicitly configurable | Instagram | Four catalog operations; Explore requires an exact `account_visible` grant and remains unavailable by default |
 | Implemented, unbound | YouTube | `read.comments` remains `setup_required` and performs no backend call |
-| Planned, unavailable | Web, GitHub, Exa `search.code`, Twitter/X, Xiaohongshu, Facebook, Instagram, LinkedIn, Xueqiu, Xiaoyuzhou, and all other Reddit operations | Await an official callable or a safe exact Agent-Reach-selected backend |
+| Planned, unavailable | Web, GitHub, Exa `search.code`, Twitter/X, Xiaohongshu, LinkedIn, Xueqiu, and Xiaoyuzhou | Await an official callable or a safe exact Agent-Reach-selected backend |
 
 The five tools have narrow responsibilities:
 
@@ -277,9 +291,10 @@ isolated worker revalidates actual files, digests, versions, and the dependency
 tree on first execution. Hermes excludes the query from receipts and audit,
 but Exa receives it and may retain it. `exa:search.code` remains unavailable.
 
-### Enable Reddit `read.post`
+### Enable Reddit, Facebook, and Instagram
 
-Initialize state on the trusted device, then start the only permitted OpenCLI executor in the foreground:
+Initialize state on the trusted device, then start the complete OpenCLI social
+executor in the foreground:
 
 ```bash
 uv run hermes reach connector init \
@@ -290,10 +305,21 @@ uv run hermes reach connector serve \
   --state-directory /absolute/connector-state \
   --bind 100.64.0.10 \
   --port 8765 \
-  --reddit-opencli /absolute/path/to/opencli
+  --opencli-social-node /absolute/path/to/node \
+  --opencli-social-root /absolute/opencli-production-prefix \
+  --opencli-social-cli /absolute/opencli-production-prefix/node_modules/@jackwener/opencli/dist/src/main.js \
+  --opencli-social-session-home /absolute/trusted-session-home
 ```
 
-`serve` displays the canonical path, SHA-256, and exact scope on the original terminal and accepts only the literal confirmation `enable`. After confirmation, enter `unlock` at the `Connector>` prompt on that same original terminal and supply the Connector passphrase; the listener starts only after this unlock succeeds. Keep the foreground process running, then initialize and pair the VPS:
+All four `--opencli-social-*` arguments must be present or all four must be
+absent. `serve` displays the Node SHA-256, complete OpenCLI tree SHA-256, and
+the exact `opencli/1.8.6-hermes.1` backend identity plus all 15 scopes on the
+original terminal, and accepts only the literal confirmation `enable`. After
+confirmation, enter `unlock` at the `Connector>` prompt on that same original
+terminal and supply the Connector passphrase; the
+listener starts only after this unlock succeeds. Keep the foreground process
+running, then initialize the VPS and pair only the exact scopes it needs. This
+example grants one public read and one account-visible read:
 
 ```bash
 uv run hermes reach connector init \
@@ -304,7 +330,8 @@ uv run hermes reach connector pair \
   --state-directory /absolute/vps-state \
   --connector wss://100.64.0.10:8765 \
   --device-label hermes-vps \
-  --scope reddit:read.post:public
+  --scope reddit:read.post:public \
+  --scope instagram:browse.explore:account_visible
 ```
 
 While `pair` waits, enter `pending` at the trusted device's `Connector>` prompt. After comparing both displays, enter `approve <pairing-id>` and type the literal `approve` at its confirmation prompt. Once pairing completes, `lock` stops the trusted listener; leave it unlocked to execute requests.
@@ -315,7 +342,18 @@ Finally, start the Hermes process on the VPS with the same absolute state direct
 HERMES_REACH_VPS_STATE_DIRECTORY=/absolute/vps-state hermes ...
 ```
 
-This environment value is only a pointer to owner-only local paired state. It is not a secret and cannot widen the grant. Pairing or local state changes require a Hermes restart; server-side revocation takes effect on the next request. A valid grant normally reports `degraded` until the first signed success changes it to `available`. If the VPS recently received signed `backend_unbound`, the local failure snapshot can take up to about 60 seconds after the trusted binding is repaired to return to retryable `degraded`. See the [Connector security and operations guide](docs/connector-security.md) for the full procedure.
+This environment value is only a pointer to owner-only local paired state. It
+is not a secret and cannot widen the grant. Pairing or local state changes
+require a Hermes restart; server-side revocation takes effect on the next
+request. A valid grant normally reports `degraded` until the first signed
+success changes it to `available`. Within one signed invocation, only typed
+transient, unavailable, or deadline results permit at most one internal retry.
+Both attempts share the original 20-second deadline and do not consume the
+grant twice. If the VPS recently received signed `backend_unbound`, the local
+failure snapshot can take up to about 60 seconds after the trusted binding is
+repaired to return to retryable `degraded`. See the
+[Connector security and operations guide](docs/connector-security.md) for the
+full procedure.
 
 ## How the system works
 
@@ -323,22 +361,22 @@ Hermes Reach integrates the exact pinned Agent-Reach owner fork through
 `hermes_reach.register`. The official baseline supplies the 15-channel
 registry, backend-routing evidence, compatibility metadata, and restricted
 doctor. Fork execution v1 currently owns two RSS, four Bilibili, three YouTube,
-four V2EX, and one Exa Web operation. Hermes Reach supplies the five closed
-tools, security policy, host capabilities, Connector, normalization, and audit.
-The only remaining executable exact-backend thin wrapper is Connector-only
-Reddit `read.post`.
+four V2EX, one Exa Web, and 15 OpenCLI social operations. Hermes Reach supplies
+the five closed tools, security policy, host capabilities, Connector,
+normalization, and audit. All current platform execution is owned by the exact
+fork rather than a Hermes platform runtime.
 
 ```mermaid
 flowchart TD
     Hermes["Hermes Agent"] --> Plugin["Hermes Reach<br/>five reach_* tools"]
-    Upstream["Official Agent-Reach 1.5.0 baseline<br/>15 channels · backend evidence"] --> Fork["Owner fork at exact commit<br/>execution v1: RSS 2 · Bilibili 4 · YouTube 3 · V2EX 4 · Exa Web 1"]
+    Upstream["Official Agent-Reach 1.5.0 baseline<br/>15-channel catalog · backend evidence"] --> Fork["Owner fork at exact commit<br/>execution v1: 29 closed operations"]
     Fork --> Bridge["Provenance and capability bridge"]
     Bridge --> Plugin
     Plugin --> Guard["Hermes security and control plane<br/>validation · grants · isolation · bounds · audit"]
-    Guard --> ForkOps["14 direct owner-fork calls<br/>RSS 2 · Bilibili 4 · YouTube 3 · V2EX 4 · Exa Web 1"]
-    Guard --> Connector["1 explicit Connector binding<br/>Reddit read.post"]
+    Guard --> ForkOps["14 default-local owner-fork calls<br/>RSS · Bilibili · YouTube · V2EX · Exa"]
+    Guard --> Connector["15 explicit Connector bindings<br/>Reddit 7 · Facebook 4 · Instagram 4"]
     ForkOps --> ForkBackends["Fork-owned invocation and projection<br/>feedparser · bili-cli · yt-dlp · V2EX API · Exa mcporter"]
-    Connector --> OpenCLI["Fixed OpenCLI read"]
+    Connector --> OpenCLI["Fork-owned OpenCLI 1.8.6-hermes.1 runtime"]
     ForkBackends --> Results["Bounded Hermes v1 results and audit metadata"]
     OpenCLI --> Results
 ```
@@ -347,28 +385,28 @@ flowchart TD
 
 The 15-channel registry, backend metadata, and official compatibility baseline
 come from official Agent-Reach. Owner-fork execution v1 directly runs two RSS,
-four Bilibili, three YouTube, four V2EX, and one Exa Web operation. The Hermes
-product catalog has 63 read-only operations: 16 are marked implemented and 47
-are planned. Fifteen have concrete executors: 14 owner-fork runtime calls and
-one Connector-only Reddit exact-backend wrapper. Fourteen binding surfaces are
-default-local and one is Connector-only. Exa Web's executor is implemented but
-is not composed without complete artifact evidence, so its normal state is
+four Bilibili, three YouTube, four V2EX, one Exa Web, and 15 OpenCLI social
+operations. The Hermes product catalog has 63 read-only operations: 30 are
+marked implemented and 33 are planned. Twenty-nine have concrete executors,
+all through the owner-fork runtime. Fourteen binding surfaces are default-local
+and 15 are Connector-only. Exa Web's executor is implemented but is not
+composed without complete artifact evidence, so its normal state is
 `setup_required`. One additional contract, `youtube:read.comments`, is
 implemented but unbound and is not counted as a concrete executor.
 
 Official Agent-Reach 1.5.0 has no unified structured operation execution API,
 so the number of direct official runtime calls remains zero. The reviewed owner
-fork adds only operation-scoped execution and currently owns exactly 14
-fork calls; it is not a general 15-channel runtime. The 13 former Hermes
+fork adds only operation-scoped execution and currently owns exactly 29 closed
+calls; it is not a general 15-channel runtime. The 13 former Hermes
 platform implementations for Web, GitHub, and V2EX remain disabled; V2EX is
 available again only through the new fork descriptors. Hermes-native and
 reimplementation exceptions are both zero.
 
 Hermes Reach owns protocol, authorization, host capabilities, safe invocation,
 normalization, bounds, redaction, receipts, and audit. Invocation and
-source-native projection for all 14 direct operations belong to the exact
-owner fork. Reddit `read.post` still wraps the exact OpenCLI route selected by
-Agent-Reach. See
+source-native projection for all 29 direct operations belong to the exact
+owner fork. The OpenCLI commands and parsing for all 15 social operations also
+exist only in that fork. See
 [Agent-Reach as a Hermes plugin](docs/agent-reach-plugin-boundary.md) for the
 canonical architecture and the
 [Agent-Reach reuse boundary](docs/agent-reach-reuse-boundary.md) for the
@@ -376,20 +414,29 @@ operation matrix and reactivation gates.
 
 The project pins Agent-Reach `1.5.0`: the reviewed official base is
 `b4d52c46c9113cb0f653d6df4cf71ebadf4930ac`, the final owner-fork integration
-is `9b69146588b1d162515b81db26b51643c15de8eb`, and the execution
+is `ec4a5e36434c9df9ee236dc12734843163fc17ac`, and the execution
 protocol is `v1`. The complete 63-row state lives in the
-[operation ledger](docs/agent-reach-operation-ledger.json); the 14 descriptors
-do not claim execution support for the other 49 rows. The final integration
-tree is `e19835071ae6560431b66d5a21e51b598d3d9c81`, exactly matching the reviewed
-PR head `fd93d2ec86511a4a1514b7ebd13cd996be709692` tree. It has been rebase-merged
+[operation ledger](docs/agent-reach-operation-ledger.json); the 29 descriptors
+do not claim execution support for the other 34 rows. The final integration
+tree is `302db7526ed84b1565fa24baf5c06ced69385d80`, exactly matching reviewed PR
+head `a3dcdb3a6638e14ceda8cfa9a3cc7a010d80fa80`'s tree. It has been rebase-merged
 but has not received a new recovery tag, so it is not yet release-eligible.
 Immediate rollback restores exact pin
-`2a5829cf3b50bc435c647bfae4c050b1837d0235`, reachable through
-`hermes-reach-integration-0.1.0a3`. The tag is only a recovery reference, not a dependency selector; the exact commit remains authoritative.
+`9b69146588b1d162515b81db26b51643c15de8eb`, preserving the previous 14
+owner-fork operations and disabling this batch's 15 social bindings. Recovery
+tags are historical references only, not dependency selectors; the exact
+commit remains authoritative.
 
 ### Connector path when explicitly composed
 
-An exact binding can execute a reviewed source backend on the trusted device. The current Reddit slice follows Agent-Reach routing evidence but permits only a fixed OpenCLI post-read argv; the VPS cannot select commands, credentials, providers, browser sessions, or local paths. The default composition supplies no binding; it is added only when `--reddit-opencli` and paired VPS state are both present. Every additional source must still pass its own security design and tests.
+An exact binding can execute a reviewed source backend on the trusted device.
+The current 15 social operations call the Agent-Reach fork's OpenCLI runtime
+directly; Hermes no longer owns platform argv or a YAML parser. The VPS cannot
+select commands, credentials, execution backends, browser sessions, local
+paths, or scopes. The default composition supplies none of these bindings.
+They are composed only when all four `--opencli-social-*` arguments, the
+literal `enable` confirmation, and exact grants in paired VPS state are all
+present.
 
 ```mermaid
 flowchart TD
@@ -399,8 +446,8 @@ flowchart TD
     Service --> Grant["Live authorization<br/>scope · expiry · usage · revocation"]
     Grant --> Binding["Exact source-operation binding"]
     Session["Existing trusted-device browser session"] --> Binding
-    Secrets["Bitwarden SecretProvider<br/>isolated control; unused by Reddit"] -.-> Service
-    Binding --> Backend["Reviewed backend<br/>Reddit read.post uses fixed OpenCLI argv"]
+    Secrets["Bitwarden SecretProvider<br/>isolated control; unused by the social path"] -.-> Service
+    Binding --> Backend["Agent-Reach closed runtime<br/>OpenCLI 1.8.6-hermes.1"]
     Backend --> Platform["Target platform"]
     Backend -->|"normalized result and signed receipt"| Client
 ```
@@ -415,13 +462,13 @@ The roadmap describes development order, not release dates. Incomplete capabilit
 | Complete | Secure pairing and client foundation | ConnectorClient, pinned identity and grants, local availability snapshots, signed requests and receipts |
 | Complete | Isolate credentials and freeze the execution protocol | Bitwarden SecretProvider, protected-request and normalized-result envelopes |
 | Complete | Exact remote execution bridge | Explicit Connector adapters, authorized-operation delivery, receipts, and retries; default composition remains empty |
-| Complete | First source executor | Fixed OpenCLI read, closed YAML mapping, and WSS receipt test for Reddit `read.post`; unbound by default |
-| Complete | Explicit two-sided production composition | Attest and confirm OpenCLI on the trusted device; build the sole Reddit adapter from owner-only paired VPS state |
-| Complete | Fourteen closed owner-fork operations | RSS 2, Bilibili 4, YouTube 3, V2EX 4, and Exa Web 1; only Reddit `read.post` remains a Connector-only thin wrapper, and YouTube comments remains unbound |
+| Complete | First Connector executor | The early Reddit `read.post` wrapper proved the WSS, grant, and receipt boundary and has now been replaced by the fork-owned social runtime |
+| Complete | Explicit two-sided production composition | Attest Node, OpenCLI, and session capability and confirm on the trusted device; build exact social adapters from owner-only paired VPS state |
+| Complete | Twenty-nine closed owner-fork operations | RSS 2, Bilibili 4, YouTube 3, V2EX 4, Exa Web 1, Reddit 7, Facebook 4, and Instagram 4; YouTube comments remains unbound |
 | Complete | Freeze strict plugin boundary | Close all 13 Hermes Web/GitHub/V2EX platform exceptions; reactivate V2EX only through new fork descriptors while Web/GitHub remain unavailable |
 | Complete | Verify the real plugin lifecycle | Prove default-disabled install, enable, disable, and package-manager uninstall in a clean Hermes 0.19 environment |
 | Complete | Complete public-platform batch delivery | Rebase-integrate the fork, prove the final tree equals the reviewed tree, pin the final SHA, and rerun every pin-sensitive gate |
-| Now | Review the next homogeneous three-platform batch | Select narrow owner-fork contracts or exact Agent-Reach backends for planned operations; build no Hermes platform runtime and expose no generic fork dispatch |
+| Now | Harden the OpenCLI social batch | Complete the trusted-device worker, 15 exact grants, typed failures, audit, installed-artifact checks, and real Hermes lifecycle validation |
 | Then | Establish a public pre-release channel | First protect an immutable recovery tag for the final fork commit, then install one exact sdist offline, lifecycle-test the exact wheel, and checksum and attest both before least-privilege publication |
 | Later | Support authenticated platforms and production operations | Twitter/X and similar sources, one-step grants, audit export, alerts, upgrades, and rollback |
 

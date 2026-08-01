@@ -7,19 +7,20 @@ Hermes Reach 让 Hermes 通过一组统一的只读工具读取网页和公开�
 它固定引入基于官方 [Agent-Reach](https://github.com/Panniantong/Agent-Reach)
 审查基线的 [owner fork](https://github.com/izumi0uu/Agent-Reach)。官方基线提供
 channel、backend 路由与兼容性证据；fork 的结构化 execution v1 当前直接执行
-2 条 RSS、4 条 Bilibili、3 条 YouTube、4 条 V2EX，以及 Exa Web 搜索 1 条
-operation。Hermes Reach 再通过
+2 条 RSS、4 条 Bilibili、3 条 YouTube、4 条 V2EX、Exa Web 搜索 1 条，以及
+Reddit 7 条、Facebook 4 条、Instagram 4 条 operation。Hermes Reach 再通过
 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 插件提供搜索、读取、
 浏览、转写和状态查询。
 
 > [!IMPORTANT]
-> 项目目前处于 **Pre-Alpha**。当前有 14 条直接 owner-fork operation：RSS 2、
-> Bilibili 4、YouTube 3、V2EX 4、Exa Web 1。前 13 条默认本地可用；Exa Web
+> 项目目前处于 **Pre-Alpha**。当前有 29 条直接 owner-fork operation：RSS 2、
+> Bilibili 4、YouTube 3、V2EX 4、Exa Web 1，以及 15 条 OpenCLI social
+> operation。前 13 条默认本地可用；Exa Web
 > 已有默认本地绑定面，但只有在操作员提供完整 Node/mcporter/config artifact
 > 证明后才会组成，否则保持 `setup_required`。远程 Connector 可以通过双端显式
-> 配置启用唯一的 Reddit `read.post` OpenCLI 薄包装，默认 Connector 构成仍为空。
+> 配置启用 15 条 fork-owned Reddit/Facebook/Instagram OpenCLI operation，默认 Connector 构成仍为空。
 > Web、GitHub、Exa code 和其他未审计操作保持规划/不可用；fork 并不使其余
-> 49 条目录 operation 自动可执行。
+> 34 条目录 operation 自动可执行。
 
 ## 它解决什么问题
 
@@ -49,7 +50,7 @@ Hermes Reach 假设 VPS 可能被完全攻破。安全设计的目标是限制�
 
 Connector 运行在你的电脑或其他可信设备上。密码、Cookie、浏览器会话和 Bitwarden 启动令牌留在该设备，VPS 只能使用有期限、有次数限制且可撤销的授权。
 
-Connector 的身份、在线授权、固定 TLS、原终端解锁、VPS 配对、本地可用性快照、隔离 Bitwarden 取密和请求/结果 envelope 已有基础实现。`reddit:read.post` 是第一个可显式激活的精确绑定：它只从规范 Reddit URL 提取帖子 ID，再执行固定的 OpenCLI 读取命令。可信设备必须通过 `--reddit-opencli` 确认可执行文件身份，VPS 也必须显式指向已配对且包含精确 `reddit:read.post:public` grant 的本地状态。任一侧缺失都会失败关闭；默认安装不会查找或运行 OpenCLI。
+Connector 的身份、在线授权、固定 TLS、原终端解锁、VPS 配对、本地可用性快照、隔离 Bitwarden 取密和请求/结果 envelope 已有基础实现。当前可显式激活 15 条 Reddit、Facebook 和 Instagram 精确绑定。平台命令、YAML/error 解析和原生投影全部由 Agent-Reach fork 持有；Hermes 只传递封闭 request、验证结果并生成回执。可信设备必须明确证明 Node、完整 OpenCLI `1.8.6-hermes.1` 闭包和本地 session home，VPS 也必须持有每条 operation 的精确 `public` 或 `account_visible` grant。任一侧缺失都会失败关闭；默认安装不会查找或运行 OpenCLI，也不会复制 Cookie 或浏览器 session 到 VPS。
 
 部署前需要理解的网络、授权、密钥恢复、审计和回滚边界见 [Connector 安全与运维指南](docs/connector-security.md)。当前激活路径仍是 Pre-Alpha，不是对其他平台、命令或凭据能力的通用授权。
 
@@ -85,9 +86,11 @@ VPS 会看到它获准处理的查询和结果。如果 VPS 在授权有效期�
 | 本地可用 | YouTube | 搜索、视频读取和字幕全部使用 owner-fork execution v1；backend 固定为 `yt-dlp==2026.7.4`，并固定 EJS/Deno 闭包 |
 | 本地可用 | V2EX | 通过 owner-fork execution v1 浏览热门/节点主题、读取主题/回复和用户；fork 固定公共 API 及有界传输 |
 | 需本地 artifact 配置 | Exa | 仅 `search.web`；闭包已实现，提供完整格式有效的 Node/mcporter/config 路径与摘要声明时组成，执行时再核验实际 artifact |
-| 可显式配置 | Reddit | 仅 `read.post`；需要可信设备和 VPS 双端显式激活，默认仍不可用 |
+| 可显式配置 | Reddit | 7 条目录 operation；通过 owner-fork OpenCLI runtime 在可信 Connector 执行，默认不可用 |
+| 可显式配置 | Facebook | 4 条目录 operation；Feed/Groups 需要精确 `account_visible` grant，默认不可用 |
+| 可显式配置 | Instagram | 4 条目录 operation；Explore 需要精确 `account_visible` grant，默认不可用 |
 | 已实现、未绑定 | YouTube | `read.comments` 保持 `setup_required`，没有 backend 调用 |
-| 规划/不可用 | Web、GitHub、Exa `search.code`、Twitter/X、小红书、Facebook、Instagram、LinkedIn、雪球、小宇宙，以及 Reddit 其余操作 | 等待官方 callable 或 Agent-Reach 精确选定 backend 的安全审核 |
+| 规划/不可用 | Web、GitHub、Exa `search.code`、Twitter/X、小红书、LinkedIn、雪球和小宇宙 | 等待官方 callable 或 Agent-Reach 精确选定 backend 的安全审核 |
 
 五个工具的职责如下：
 
@@ -255,9 +258,9 @@ export HERMES_REACH_EXA_CONFIG_SHA256=<64-lowercase-hex>
 摘要、版本和依赖树会在第一次执行的隔离 worker 中重新核验。查询不会进入
 Hermes 回执或审计，但会发送给 Exa，Exa 可能保留它。`exa:search.code` 仍不可用。
 
-### 启用 Reddit `read.post`
+### 启用 Reddit、Facebook 和 Instagram
 
-先在可信设备初始化状态，并以前台进程启动唯一允许的 OpenCLI executor：
+先在可信设备初始化状态，并以前台进程启动完整的 OpenCLI social executor：
 
 ```bash
 uv run hermes reach connector init \
@@ -268,10 +271,13 @@ uv run hermes reach connector serve \
   --state-directory /absolute/connector-state \
   --bind 100.64.0.10 \
   --port 8765 \
-  --reddit-opencli /absolute/path/to/opencli
+  --opencli-social-node /absolute/path/to/node \
+  --opencli-social-root /absolute/opencli-production-prefix \
+  --opencli-social-cli /absolute/opencli-production-prefix/node_modules/@jackwener/opencli/dist/src/main.js \
+  --opencli-social-session-home /absolute/trusted-session-home
 ```
 
-`serve` 会在原终端显示规范路径、SHA-256 和精确 scope，且只接受字面量 `enable`。确认后，在同一个原终端的 `Connector>` 提示符输入 `unlock` 并提供 Connector 密码；监听器只会在解锁成功后启动。保持该前台进程运行，然后在 VPS 初始化并配对：
+四个 `--opencli-social-*` 参数必须全部提供或全部省略。`serve` 会在原终端显示 Node SHA-256、完整 OpenCLI tree SHA-256 和 15 条精确 scope，且只接受字面量 `enable`。确认后，在同一个原终端的 `Connector>` 提示符输入 `unlock` 并提供 Connector 密码；监听器只会在解锁成功后启动。保持该前台进程运行，然后在 VPS 初始化并按需配对精确 scope。下面示例只授予一个公开读取和一个账号可见读取：
 
 ```bash
 uv run hermes reach connector init \
@@ -282,7 +288,8 @@ uv run hermes reach connector pair \
   --state-directory /absolute/vps-state \
   --connector wss://100.64.0.10:8765 \
   --device-label hermes-vps \
-  --scope reddit:read.post:public
+  --scope reddit:read.post:public \
+  --scope instagram:browse.explore:account_visible
 ```
 
 `pair` 等待期间，在可信设备的 `Connector>` 提示符输入 `pending`，核对两端显示后输入 `approve <pairing-id>`，并在确认提示中输入字面量 `approve`。配对完成后可在可信设备再次输入 `lock` 停止监听，或保持解锁以执行请求。
@@ -293,29 +300,28 @@ uv run hermes reach connector pair \
 HERMES_REACH_VPS_STATE_DIRECTORY=/absolute/vps-state hermes ...
 ```
 
-这个环境变量只是 owner-only 本地配对状态的指针，不是密钥，也不会扩大 grant。配对或本地状态变化后必须重启 Hermes；服务端撤销则在下一次请求立即生效。有效 grant 在首次签名成功前通常显示 `degraded`，成功后变为 `available`。如果此前收到过签名的 `backend_unbound`，修复可信端绑定后，本地失败快照最多约 60 秒才会回到可重试的 `degraded`。完整运维说明见 [Connector 安全与运维指南](docs/connector-security.md)。
+这个环境变量只是 owner-only 本地配对状态的指针，不是密钥，也不会扩大 grant。配对或本地状态变化后必须重启 Hermes；服务端撤销则在下一次请求立即生效。有效 grant 在首次签名成功前通常显示 `degraded`，成功后变为 `available`。同一签名 invocation 内只有 typed transient/unavailable/deadline 结果允许最多一次内部重试，两次 attempt 共用原始 20 秒 deadline，不会再次消耗 grant。如果此前收到过签名的 `backend_unbound`，修复可信端绑定后，本地失败快照最多约 60 秒才会回到可重试的 `degraded`。完整运维说明见 [Connector 安全与运维指南](docs/connector-security.md)。
 
 ## 系统如何工作
 
 Hermes Reach 通过 `hermes_reach.register` 集成精确固定的 Agent-Reach owner
 fork。官方基线提供 15-channel registry、backend 路由证据、兼容性元数据和受限
 doctor；fork 的 execution v1 当前拥有 2 条 RSS、4 条 Bilibili、3 条 YouTube、
-4 条 V2EX 与 1 条 Exa Web operation。
+4 条 V2EX、1 条 Exa Web 与 15 条 OpenCLI social operation。
 Hermes Reach 提供五个封闭工具、安全策略、host capability、Connector、规范化
-和审计。唯一仍在执行的精确 backend 薄包装是 Connector-only Reddit
-`read.post`。
+和审计。当前没有 Hermes-owned platform runtime 或精确 backend 薄包装。
 
 ```mermaid
 flowchart TD
     Hermes["Hermes Agent"] --> Plugin["Hermes Reach<br/>5 个 reach_* 工具"]
-    Upstream["官方 Agent-Reach 1.5.0 基线<br/>15-channel 目录 · backend 证据"] --> Fork["owner fork 精确 commit<br/>execution v1: RSS 2 · Bilibili 4 · YouTube 3 · V2EX 4 · Exa Web 1"]
+    Upstream["官方 Agent-Reach 1.5.0 基线<br/>15-channel 目录 · backend 证据"] --> Fork["owner fork 精确 commit<br/>execution v1: 29 条封闭 operation"]
     Fork --> Bridge["来源与 capability 兼容性桥"]
     Bridge --> Plugin
     Plugin --> Guard["Hermes 安全与控制平面<br/>校验 · 授权 · 隔离 · 限制 · 审计"]
-    Guard --> ForkOps["14 条直接 owner-fork 调用<br/>RSS 2 · Bilibili 4 · YouTube 3 · V2EX 4 · Exa Web 1"]
-    Guard --> Connector["1 条显式 Connector 绑定<br/>Reddit read.post"]
+    Guard --> ForkOps["14 条默认本地 owner-fork 调用<br/>RSS · Bilibili · YouTube · V2EX · Exa"]
+    Guard --> Connector["15 条显式 Connector 绑定<br/>Reddit 7 · Facebook 4 · Instagram 4"]
     ForkOps --> ForkBackends["fork 拥有调用与投影<br/>feedparser · bili-cli · yt-dlp · V2EX API · Exa mcporter"]
-    Connector --> OpenCLI["固定 OpenCLI 读取"]
+    Connector --> OpenCLI["fork-owned OpenCLI 1.8.6-hermes.1 runtime"]
     ForkBackends --> Results["有界 Hermes v1 结果与审计元数据"]
     OpenCLI --> Results
 ```
@@ -324,42 +330,41 @@ flowchart TD
 
 15-channel registry、backend 元数据和官方兼容性基线来自官方 Agent-Reach。
 owner fork 的 execution v1 直接执行 2 条 RSS、4 条 Bilibili、3 条 YouTube、
-4 条 V2EX 与 1 条 Exa Web operation。当前 Hermes 产品目录有 63 个只读
-operation：16 个标记已实现、47 个规划中；15 个有 concrete executor，其中
-14 个是 owner-fork runtime，1 个是 Connector-only Reddit exact-backend wrapper。
-14 个 binding surface 是默认本地，1 个是 Connector-only。Exa Web 的 executor
+4 条 V2EX、1 条 Exa Web 与 15 条 OpenCLI social operation。当前 Hermes 产品目录有 63 个只读
+operation：30 个标记已实现、33 个规划中；29 个有 concrete executor，全部
+是 owner-fork runtime。14 个 binding surface 是默认本地，15 个是 Connector-only。Exa Web 的 executor
 虽已实现，但缺少完整 artifact 证明时不会组成并保持 `setup_required`。另有
 1 个 `youtube:read.comments` 已实现但未绑定，因此不计入 concrete executor。
 
 官方 Agent-Reach 1.5.0 没有统一、结构化的 operation execution API，所以直接
 调用官方 runtime 的数量仍是 0。经过审查的 owner fork 只补充
-operation-scoped 执行边界，目前恰好是 14 条封闭调用；它不是 15-channel 通用
+operation-scoped 执行边界，目前恰好是 29 条封闭调用；它不是 15-channel 通用
 runtime。Web、GitHub、V2EX 的 13 条旧 Hermes 平台实现仍全部关闭，其中 V2EX
 只通过新的 fork descriptor 重新启用；当前 Hermes-native 和重复实现例外均为 0。
 
 Hermes Reach 只拥有协议、授权、host capability、安全调用、规范化、限制、脱敏、
-回执和审计；14 条直接 operation 的 backend 调用和平台投影属于精确 owner
-fork。Reddit `read.post` 仍只固定包装 Agent-Reach 精确选择的 OpenCLI backend。
+回执和审计；29 条直接 operation 的 backend 调用和平台投影属于精确 owner
+fork。15 条 social operation 的 OpenCLI 命令与解析同样只存在于 fork。
 完整架构见 [Agent-Reach 插件边界](docs/agent-reach-plugin-boundary.md)，
 操作矩阵和重新启用条件见
 [Agent-Reach 复用边界](docs/agent-reach-reuse-boundary.md)。
 
 项目固定使用 Agent-Reach `1.5.0`：官方审查基线是
 `b4d52c46c9113cb0f653d6df4cf71ebadf4930ac`，最终 owner-fork integration
-是 `9b69146588b1d162515b81db26b51643c15de8eb`，execution protocol 是 `v1`。
+是 `ec4a5e36434c9df9ee236dc12734843163fc17ac`，execution protocol 是 `v1`。
 完整的 63 行状态以
-[operation ledger](docs/agent-reach-operation-ledger.json) 为准；14 个 descriptor
-不能代表其他 49 行可执行。最终 integration tree 是
-`e19835071ae6560431b66d5a21e51b598d3d9c81`，与被审查的 PR head
-`fd93d2ec86511a4a1514b7ebd13cd996be709692` 的 tree 完全一致。它已经 rebase
+[operation ledger](docs/agent-reach-operation-ledger.json) 为准；29 个 descriptor
+不能代表其他 34 行可执行。最终 integration tree 是
+`302db7526ed84b1565fa24baf5c06ced69385d80`，与被审查的 PR head
+`a3dcdb3a6638e14ceda8cfa9a3cc7a010d80fa80` 的 tree 完全一致。它已经 rebase
 合并，但尚未创建新的 recovery tag，因此当前仍不可发布。
-立即回滚会恢复精确 pin `2a5829cf3b50bc435c647bfae4c050b1837d0235`，该 pin
-可通过 `hermes-reach-integration-0.1.0a3` 到达。该 tag 只用于恢复定位，不是依赖
-选择器，精确 commit 始终是权威 pin。
+立即回滚会恢复精确 pin `9b69146588b1d162515b81db26b51643c15de8eb`，保留此前
+14 条 owner-fork operation 并关闭本批 15 条 social binding。恢复 tag 只用于
+历史定位，不是依赖选择器，精确 commit 始终是权威 pin。
 
 ### 显式组成时的 Connector 路径
 
-精确绑定可以在可信设备中执行经过审查的来源后端。当前 Reddit 切片按照 Agent-Reach 的路由证据调用 OpenCLI，但只允许固定的帖子读取 argv；VPS 不能选择命令、凭据、执行后端、浏览器会话或本地路径。默认构成不提供该绑定；只有 `--reddit-opencli` 与已配对 VPS 状态同时存在时才组成它。每个新增来源仍必须单独通过安全设计和测试。
+精确绑定可以在可信设备中执行经过审查的来源后端。当前 15 条 social operation 直接调用 Agent-Reach fork 的 OpenCLI runtime；Hermes 不再持有任何平台 argv 或 YAML parser。VPS 不能选择命令、凭据、执行后端、浏览器会话、本地路径或 scope。默认构成不提供这些绑定；只有四个 `--opencli-social-*` 参数、字面量 `enable` 确认与已配对 VPS 精确 grant 同时存在时才组成它们。
 
 ```mermaid
 flowchart TD
@@ -369,8 +374,8 @@ flowchart TD
     Service --> Grant["在线授权<br/>范围 · 期限 · 次数 · 撤销"]
     Grant --> Binding["精确来源操作绑定"]
     Session["可信设备已有浏览器会话"] --> Binding
-    Secrets["Bitwarden SecretProvider<br/>隔离能力；Reddit 路径不使用"] -.-> Service
-    Binding --> Backend["已审查平台后端<br/>Reddit read.post 使用固定 OpenCLI argv"]
+    Secrets["Bitwarden SecretProvider<br/>隔离能力；social 路径不使用"] -.-> Service
+    Binding --> Backend["Agent-Reach closed runtime<br/>OpenCLI 1.8.6-hermes.1"]
     Backend --> Platform["目标平台"]
     Backend -->|"规范化结果与签名回执"| Client
 ```
@@ -385,13 +390,13 @@ Roadmap 表示开发顺序，不承诺发布日期。未完成的能力会保持
 | 已完成 | 安全配对与客户端基础 | ConnectorClient、固定身份与授权、本地可用性快照、签名请求和回执 |
 | 已完成 | 隔离凭据并冻结执行协议 | Bitwarden SecretProvider、受保护请求与规范化结果 envelope |
 | 已完成 | 精确远程执行桥 | 显式 Connector 适配器、已授权操作交付、回执与重试；默认构成仍为空 |
-| 已完成 | 首个来源 executor | Reddit `read.post` 的固定 OpenCLI 读取、封闭 YAML 映射和 WSS 回执测试；默认未绑定 |
-| 已完成 | 双端显式生产组成 | 可信设备证明 OpenCLI 并确认启用；VPS 从 owner-only 配对状态组成唯一 Reddit adapter |
-| 已完成 | 14 条封闭 owner-fork execution | RSS 2、Bilibili 4、YouTube 3、V2EX 4、Exa Web 1；仅 Reddit `read.post` 保留为 Connector-only 薄包装，YouTube comments 保持未绑定 |
+| 已完成 | 首个 Connector executor | 早期 Reddit `read.post` wrapper 验证了 WSS、grant 和回执边界，现已由 fork-owned social runtime 替代 |
+| 已完成 | 双端显式生产组成 | 可信设备证明 Node/OpenCLI/session 能力并确认启用；VPS 从 owner-only 配对状态组成精确 social adapter |
+| 已完成 | 29 条封闭 owner-fork execution | RSS 2、Bilibili 4、YouTube 3、V2EX 4、Exa Web 1、Reddit 7、Facebook 4、Instagram 4；YouTube comments 保持未绑定 |
 | 已完成 | 冻结严格插件边界 | 关闭 Web/GitHub/V2EX 共 13 条 Hermes 平台例外；V2EX 只通过新的 fork descriptor 重新启用，Web/GitHub 仍不可用 |
 | 已完成 | 验证真实插件生命周期 | 在全新 Hermes 0.19 环境验证默认关闭、启用、停用和包管理器卸载 |
 | 已完成 | 完成公共平台批次交付 | rebase 集成 fork、证明最终 tree 等于被审查 tree、固定最终 SHA，并重跑所有 pin-sensitive gate |
-| 现在 | 审核下一组三平台结构化执行证据 | 对规划 operation 以同质批次选择窄化 owner-fork contract 或 Agent-Reach 精确 backend；不建立 Hermes 平台 runtime，也不开放通用 fork dispatch |
+| 现在 | 固化 OpenCLI social 批次 | 完成可信设备 worker、15 条 exact grant、typed failure、审计、安装 artifact 与真实 Hermes 生命周期验证 |
 | 随后 | 建立公开 Pre-release 通道 | 先为最终 fork commit 建立受保护的 immutable recovery tag，再离线安装同一 exact sdist、对同一 exact wheel 跑完整生命周期，然后摘要并验证两者的 GitHub provenance，以最小权限发布 |
 | 后续 | 支持认证平台和生产运维 | Twitter/X 等平台、一键授权、审计导出、告警、升级与回滚 |
 

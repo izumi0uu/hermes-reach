@@ -10,11 +10,11 @@
 > Bilibili 4, YouTube 3, V2EX 4, and Exa Web 1). The first 13 are composed and
 > available without artifact setup; Exa Web is composed only after a complete
 > operator-supplied Node/mcporter/config attestation. The
-> only Connector production composition
-> path is the explicit two-sided activation of Reddit `read.post` through one
-> attested OpenCLI executable. Treat the controls below as approval for that
-> exact pre-alpha slice only, not for arbitrary commands or production
-> credentials.
+> only Connector production composition path is the explicit two-sided
+> activation of 15 fork-owned Reddit, Facebook, and Instagram operations
+> through one attested Node/OpenCLI/session capability. Treat the controls
+> below as approval for that exact pre-alpha batch only, not for arbitrary
+> commands or production credentials.
 
 ## Supported topology
 
@@ -52,33 +52,42 @@ environment. Do not put it in Reach configuration or copy it to the VPS. The
 runtime does not install or update `bws`, use stale values, or use plaintext or
 encrypted Bitwarden caches.
 
-## Reddit OpenCLI executor boundary
+## OpenCLI social executor boundary
 
-`reddit:read.post` is the only account-session operation with an implemented
-source executor. It is disabled by default. The trusted device must explicitly
-enable its exact executor and the Hermes process on the VPS must explicitly load
-the matching paired state before it can become available.
+Seven Reddit, four Facebook, and four Instagram operations have implemented
+source executors. All 15 are disabled by default. The trusted device must
+explicitly enable the complete exact composition, and Hermes on the VPS must
+load matching paired state with a grant for each operation it may use.
 
-The VPS may send only a canonical HTTPS Reddit post URL. The trusted executor
-derives the post ID and invokes the operator-selected absolute OpenCLI binary
-with one fixed `reddit read` argument vector. It does not accept a command,
-provider, executable path, browser profile, session identifier, local path,
-process environment, or fallback from the request. Nearby OpenCLI write
-commands such as reply, save, subscribe, and vote are outside the binding.
+The VPS may select only a catalog source-operation and its closed query,
+identifier, URL, or limit fields. It cannot submit command, argv, backend,
+executable, install root, browser profile, session home, credential, local
+path, process environment, scope, or fallback fields. The Agent-Reach fork
+owns every OpenCLI command, strict YAML/error parser, platform row validator,
+bound, correlation rule, and source-native projection. Hermes contains no
+OpenCLI platform command table or social result parser.
 
-OpenCLI uses the trusted device's existing local browser session. This path has
-no Bitwarden `SecretExecutionPlan`, and the executor rejects any non-empty
-secret environment. The process receives only allowlisted local `HOME`, `PATH`,
-locale, timezone, and temporary-directory fields; stderr is discarded and
-stdout is size-bounded before a closed safe-YAML parser maps it to normalized
-post and reply items. Parser drift, process failure, timeout, and cancellation
-fail closed without returning provider output.
+OpenCLI uses the trusted device's existing local Chrome/OpenCLI session. The
+Connector neither exports that session nor copies cookies, passwords, browser
+storage, or account material to the VPS or Bitwarden. The execution path has no
+Bitwarden `SecretExecutionPlan` and rejects any non-empty secret environment.
+The only local capability fields are the exact absolute Node executable and
+digest, dedicated OpenCLI production-prefix root and CLI path plus tree digest,
+and absolute trusted session home.
+
+Before every backend call, the Agent-Reach runtime revalidates and privately
+snapshots Node, the complete OpenCLI dependency tree, and its packaged
+no-lifecycle-mutation guard. It invokes only those copied bytes. The guard
+allows an already-ready compatible daemon but blocks OpenCLI from starting,
+restarting, stopping, signaling, or replacing a daemon. A stopped, stale,
+logged-out, challenged, rate-limited, or incompatible session fails closed
+without changing trusted-device browser state.
 
 Package import, `reach_status`, doctor, and default Hermes plugin startup do not
-find OpenCLI, inspect a browser, start a daemon, or register this executor. An
+find OpenCLI, inspect a browser, start a daemon, or register these executors. An
 explicit composition decision is therefore also the rollback point: removing
-the binding restores signed `backend_unbound` behavior without changing browser
-or Bitwarden state.
+the bindings restores signed `backend_unbound` behavior without changing the
+browser session, Connector authority, or Bitwarden state.
 
 This unbound Connector default does not make the local execution surface empty.
 It contains two direct owner-fork RSS bindings, four direct owner-fork
@@ -87,9 +96,9 @@ direct owner-fork V2EX bindings, and one direct owner-fork Exa Web contract.
 The first 13 are composed without artifact setup. Exa Web is composed only
 after its complete seven-field artifact attestation is present; otherwise it
 reports `setup_required`. `youtube:read.comments` is implemented but unbound
-and also reports `setup_required`. The Connector contributes only the
-fifteenth concrete executor, `reddit:read.post`, after both explicit activation
-gates pass; it does not replace or proxy the 14 local operations.
+and also reports `setup_required`. The Connector contributes 15 additional
+direct owner-fork executors after both explicit activation gates pass; it does
+not replace or proxy the 14 local operations.
 
 The RSS fork path is credential-free and local. Hermes gives it only an
 already-fetched bounded document through `fetched_document.v1`; it receives no
@@ -125,35 +134,37 @@ uv run hermes reach connector init \
   --state-directory /absolute/connector-state
 ```
 
-Start the foreground service with one explicit private or loopback address and
-the canonical OpenCLI executable candidate:
+Start the foreground service with one explicit private or loopback address,
+the exact Node/OpenCLI closure, and the existing trusted session home:
 
 ```bash
 uv run hermes reach connector serve \
   --state-directory /absolute/connector-state \
   --bind 100.64.0.10 \
   --port 8765 \
-  --reddit-opencli /absolute/path/to/opencli
+  --opencli-social-node /absolute/path/to/node \
+  --opencli-social-root /absolute/opencli-production-prefix \
+  --opencli-social-cli /absolute/opencli-production-prefix/node_modules/@jackwener/opencli/dist/src/main.js \
+  --opencli-social-session-home /absolute/trusted-session-home
 ```
 
-Before state unlock or listener construction, the original terminal (TTY) displays
-`reddit:read.post:public`, the resolved path, and its SHA-256. Type exactly
-`enable` to continue. The executable must resolve to a bounded regular file,
-be owned by the current user or root, be executable, have one hard link, and
-not be group- or world-writable. Its metadata and digest are rechecked
-immediately before every spawn. The current implementation does not use
-`fexecve`; replacement in the small interval between recheck and path-based
-spawn remains a trusted-device time-of-check-to-time-of-use (TOCTOU)
-limitation. For script executables, the
-shebang interpreter and the allowlisted `PATH` are also outside the attested
-file digest and must be controlled by the trusted-device operator.
+All four OpenCLI social arguments must be present or absent. Before state
+unlock or listener construction, the original terminal (TTY) displays the
+backend identity, Node SHA-256, complete OpenCLI tree SHA-256, and all 15 exact
+source-operation scopes. Type exactly `enable` to continue. Paths must be
+canonical, absolute, current-user owned, non-symlinked, and not group- or
+world-writable. Node must be a bounded executable regular file; the CLI must be
+the fixed package entry point inside the dedicated root. Agent-Reach performs
+the authoritative current-byte/tree revalidation and private snapshot again
+inside every attempt.
 
 The service now waits at its original-terminal `Connector>` prompt in the
 locked state. Enter `unlock` and supply the Connector passphrase on that same
 terminal. The WSS listener is constructed only after this unlock succeeds.
 
 Keep the foreground service running. On the VPS, initialize its owner-only
-identity state once and pair it with exactly the public Reddit post-read scope:
+identity state once and pair it with the exact subset of social scopes this VPS
+may use. This example grants the complete batch:
 
 ```bash
 uv run hermes reach connector init \
@@ -164,7 +175,21 @@ uv run hermes reach connector pair \
   --state-directory /absolute/vps-state \
   --connector wss://100.64.0.10:8765 \
   --device-label hermes-vps \
-  --scope reddit:read.post:public
+  --scope reddit:search.posts:public \
+  --scope reddit:read.post:public \
+  --scope reddit:browse.subreddit:public \
+  --scope reddit:browse.hot:public \
+  --scope reddit:browse.popular:public \
+  --scope reddit:browse.all:public \
+  --scope reddit:read.subreddit:public \
+  --scope facebook:search:public \
+  --scope facebook:read.profile:public \
+  --scope facebook:browse.feed:account_visible \
+  --scope facebook:browse.groups:account_visible \
+  --scope instagram:search.users:public \
+  --scope instagram:read.profile:public \
+  --scope instagram:browse.user_posts:public \
+  --scope instagram:browse.explore:account_visible
 ```
 
 While the VPS `pair` command waits, enter `pending` at the trusted device's
@@ -184,13 +209,13 @@ HERMES_REACH_VPS_STATE_DIRECTORY=/absolute/vps-state hermes ...
 owner-only local state. It is not a credential, is never sent in an operation,
 and cannot add a scope absent from the signed grant. If it is absent, plugin
 registration performs no Connector file or network work. If it is invalid,
-only `reddit:read.post` is unavailable; all 13 artifact-independent local
+only the 15 Connector-only social operations are unavailable; all 13 artifact-independent local
 owner-fork bindings continue to load. Exa Web is independently available or
 `setup_required` according to its complete artifact attestation. Web and GitHub
 remain planned/unavailable independently of Connector state. Pairing, local
 state, or Exa artifact declarations require restarting Hermes because the
 runtime is composed once at plugin registration. Connector startup never
-persists the OpenCLI path or digest.
+persists the Node/OpenCLI/session paths or digests.
 
 ## Foreground lifecycle and availability
 
@@ -213,6 +238,18 @@ restart. A recent signed `backend_unbound` response is intentionally cached as
 `unavailable` to avoid repeatedly spending grant uses. After the trusted-device
 binding is repaired, that snapshot expires in at most about 60 seconds and the
 operation returns to retryable `degraded`.
+
+The social executor may make one internal retry for a typed transient,
+backend-unavailable, or deadline result. Both attempts remain inside the same
+signed Connector invocation, one claimed grant use, and the original absolute
+20-second budget. Hermes on the VPS does not sign a second request for this
+retry. Authentication, authorization, rate-limit, invalid input, not found,
+incompatibility, permanent, and contract failures are not resubmitted.
+
+Accepted failures retain the attempted `opencli/1.8.6-hermes.1` identity and a
+closed cause code in the signed receipt and evidence ledger. Query, username,
+target, result data, backend stderr, and trusted-device paths are never receipt,
+snapshot, or audit fields.
 
 There is no Hermes Reach telemetry. Audit export occurs only when an operator
 explicitly composes an operator-owned sink; no exporter, client, or scheduler

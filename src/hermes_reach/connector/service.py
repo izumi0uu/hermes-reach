@@ -901,9 +901,7 @@ class ConnectorService:
             expires_at=ended_at + MAX_RECEIPT_TTL_SECONDS,
             failure_code=failure_code,
             backend=(
-                prepared.backend
-                if decision.accepted and failure_code is None and prepared is not None
-                else None
+                prepared.backend if decision.accepted and prepared is not None else None
             ),
             result=result,
         )
