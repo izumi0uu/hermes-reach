@@ -1,8 +1,8 @@
 # Agent-Reach reuse boundary
 
-Status: frozen on 2026-08-01 against official Agent-Reach `1.5.0` base
+Status: frozen on 2026-08-02 against official Agent-Reach `1.5.0` base
 `b4d52c46c9113cb0f653d6df4cf71ebadf4930ac` and final owner-fork integration
-`ec4a5e36434c9df9ee236dc12734843163fc17ac`.
+`281dc3352c63cdb644f02e028cc5d645c279954a`.
 
 This document is the merge gate for source execution work. The canonical
 plugin architecture and terminology are defined in
@@ -266,11 +266,16 @@ receipts, and audit, not a copied platform runtime.
    `f195253d53befdb012d7aa575e732ec627ec29ac`, and keep
    `hermes-reach-integration-0.1.0a3` as the protected immutable reference for
    the previous integration `2a5829cf3b50bc435c647bfae4c050b1837d0235`.
-   Final integration `ec4a5e36434c9df9ee236dc12734843163fc17ac`, with tree
-   `302db7526ed84b1565fa24baf5c06ced69385d80`, was rebase-merged from reviewed
-   head `a3dcdb3a6638e14ceda8cfa9a3cc7a010d80fa80` with an identical tree. It has
+   Final integration `281dc3352c63cdb644f02e028cc5d645c279954a`, with tree
+   `385b9c95cb3a6372ed1b68b606abc3faed71f307`, was rebase-merged from reviewed
+   hardlink-fix head `c57ae5b8d78fed6ad52a1f52731db589d875f8a9` with an identical tree. It has
    no recovery tag yet and remains release-ineligible until one is protected.
-   The immediate rollback pin `9b69146588b1d162515b81db26b51643c15de8eb`
+   The previous 29-operation integration
+   `ec4a5e36434c9df9ee236dc12734843163fc17ac`, tree
+   `302db7526ed84b1565fa24baf5c06ced69385d80`, was rebase-merged from reviewed
+   head `a3dcdb3a6638e14ceda8cfa9a3cc7a010d80fa80`; it remains provenance only
+   because it is incompatible with uv hardlink installs. The social-disable
+   rollback pin `9b69146588b1d162515b81db26b51643c15de8eb`
    was rebase-merged from reviewed head
    `fd93d2ec86511a4a1514b7ebd13cd996be709692`; both have tree
    `e19835071ae6560431b66d5a21e51b598d3d9c81`. Hermes never depends on either

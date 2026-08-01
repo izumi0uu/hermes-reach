@@ -856,7 +856,7 @@ def test_connector_client_records_signed_replay_after_ambiguous_response_loss(
         VpsProfileStore(tmp_path / "vps"), snapshots, clock=lambda: NOW + 3
     ).resolve("web", "read.url")
     assert replay_availability.state == "degraded"
-    assert replay_availability.cause_code == ConnectorErrorCode.CONNECTOR_OFFLINE.value
+    assert replay_availability.cause_code == ConnectorErrorCode.REQUEST_REPLAYED.value
 
     recovered = asyncio.run(client.execute(call, trace_id="2" * 32))
 
@@ -966,7 +966,13 @@ def test_accepted_remediable_failure_blocks_exact_operation_until_snapshot_ttl(
             "unavailable",
             "unavailable",
         ),
+        (
+            ConnectorErrorCode.BACKEND_AUTHORIZATION_DENIED,
+            "unavailable",
+            "unavailable",
+        ),
         (ConnectorErrorCode.BACKEND_INCOMPATIBLE, "unavailable", "unavailable"),
+        (ConnectorErrorCode.BACKEND_PERMANENT, "unavailable", "unavailable"),
         (
             ConnectorErrorCode.BACKEND_CONTRACT_VIOLATION,
             "unavailable",
@@ -1026,7 +1032,7 @@ def test_backend_failure_snapshot_distinguishes_request_and_capability_state(
     if availability_state == "available":
         assert availability.cause_code is None
     elif availability_state == "degraded":
-        assert availability.cause_code == ConnectorErrorCode.CONNECTOR_OFFLINE.value
+        assert availability.cause_code == code.value
     else:
         assert availability.cause_code == code.value
 

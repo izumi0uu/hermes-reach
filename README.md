@@ -351,16 +351,17 @@ fork。15 条 social operation 的 OpenCLI 命令与解析同样只存在于 for
 
 项目固定使用 Agent-Reach `1.5.0`：官方审查基线是
 `b4d52c46c9113cb0f653d6df4cf71ebadf4930ac`，最终 owner-fork integration
-是 `ec4a5e36434c9df9ee236dc12734843163fc17ac`，execution protocol 是 `v1`。
+是 `281dc3352c63cdb644f02e028cc5d645c279954a`，execution protocol 是 `v1`。
 完整的 63 行状态以
 [operation ledger](docs/agent-reach-operation-ledger.json) 为准；29 个 descriptor
 不能代表其他 34 行可执行。最终 integration tree 是
-`302db7526ed84b1565fa24baf5c06ced69385d80`，与被审查的 PR head
-`a3dcdb3a6638e14ceda8cfa9a3cc7a010d80fa80` 的 tree 完全一致。它已经 rebase
-合并，但尚未创建新的 recovery tag，因此当前仍不可发布。
-立即回滚会恢复精确 pin `9b69146588b1d162515b81db26b51643c15de8eb`，保留此前
-14 条 owner-fork operation 并关闭本批 15 条 social binding。恢复 tag 只用于
-历史定位，不是依赖选择器，精确 commit 始终是权威 pin。
+`385b9c95cb3a6372ed1b68b606abc3faed71f307`，与被审查的 hardlink 修复 PR
+head `c57ae5b8d78fed6ad52a1f52731db589d875f8a9` 的 tree 完全一致。它已经
+rebase 合并，但尚未创建新的 recovery tag，因此当前仍不可发布。上一集成
+`ec4a5e36434c9df9ee236dc12734843163fc17ac` 保留全部 29 条 operation，但不兼容
+uv hardlink 安装；回滚到 `9b69146588b1d162515b81db26b51643c15de8eb`
+会关闭本批 15 条 social binding。恢复 tag 只用于历史定位，不是依赖选择器，
+精确 commit 始终是权威 pin。
 
 ### 显式组成时的 Connector 路径
 

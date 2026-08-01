@@ -20,19 +20,24 @@ The current final integration and rollback references are:
 
 | Purpose | Recovery reference | Exact dependency commit |
 | --- | --- | --- |
-| Current 29-operation public-platform integration | pending; not release-eligible until a protected immutable recovery tag exists | `ec4a5e36434c9df9ee236dc12734843163fc17ac` |
+| Current 29-operation public-platform integration | pending; not release-eligible until a protected immutable recovery tag exists | `281dc3352c63cdb644f02e028cc5d645c279954a` |
+| Historical: pre-hardlink-fix 29-operation integration | pending; incompatible with uv hardlink installs | `ec4a5e36434c9df9ee236dc12734843163fc17ac` |
 | Rollback: 14-operation public-platform integration | pending; no immutable recovery tag was created by the social batch | `9b69146588b1d162515b81db26b51643c15de8eb` |
 | Rollback: integrated YouTube read-video runtime | `hermes-reach-integration-0.1.0a3` | `2a5829cf3b50bc435c647bfae4c050b1837d0235` |
 | Rollback: RSS + Bilibili execution v1, YouTube exact wrappers | `hermes-reach-integration-0.1.0a2` | `f195253d53befdb012d7aa575e732ec627ec29ac` |
 | Earlier rollback: RSS execution v1 / Hermes Bilibili wrapper | `hermes-reach-integration-0.1.0a1` | `806205fd106f4f4453624becfd773acce8418cf1` |
 
-The final integration `ec4a5e36434c9df9ee236dc12734843163fc17ac`
-resolves to tree `302db7526ed84b1565fa24baf5c06ced69385d80`. It was rebase-merged
-from reviewed PR head `a3dcdb3a6638e14ceda8cfa9a3cc7a010d80fa80`, whose tree is
+The final integration `281dc3352c63cdb644f02e028cc5d645c279954a`
+resolves to tree `385b9c95cb3a6372ed1b68b606abc3faed71f307`. It was rebase-merged
+from reviewed hardlink-fix PR head `c57ae5b8d78fed6ad52a1f52731db589d875f8a9`, whose tree is
 byte-equivalent. Hermes pins the final SHA and repeats every pin-sensitive gate.
 A package release remains forbidden until the final integration receives one
 protected immutable recovery tag and all release gates pass.
-The prior integration `9b69146588b1d162515b81db26b51643c15de8eb`, tree
+The prior 29-operation integration `ec4a5e36434c9df9ee236dc12734843163fc17ac`,
+tree `302db7526ed84b1565fa24baf5c06ced69385d80`, remains provenance for the
+social batch but is not a release-compatible rollback under uv hardlink
+installation. The earlier integration
+`9b69146588b1d162515b81db26b51643c15de8eb`, tree
 `e19835071ae6560431b66d5a21e51b598d3d9c81`, remains the exact social-batch
 rollback pin; it is historical evidence, not an active dependency selector.
 The previous integration `2a5829cf3b50bc435c647bfae4c050b1837d0235`
@@ -67,7 +72,7 @@ controls:
 
 The workflow cannot configure or prove these repository settings. A tag push
 without them is an operator error, even if the YAML gate passes.
-Final integration `ec4a5e36434c9df9ee236dc12734843163fc17ac` currently lacks the immutable
+Final integration `281dc3352c63cdb644f02e028cc5d645c279954a` currently lacks the immutable
 integration-tag prerequisite and must not be published as-is.
 
 ## Local dry run

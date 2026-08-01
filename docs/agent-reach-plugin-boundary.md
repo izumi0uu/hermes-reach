@@ -1,9 +1,9 @@
 # Agent-Reach as a Hermes plugin
 
-Status: canonical architecture, frozen on 2026-08-01 against official
+Status: canonical architecture, frozen on 2026-08-02 against official
 Agent-Reach `1.5.0` base
 `b4d52c46c9113cb0f653d6df4cf71ebadf4930ac` and final owner-fork integration
-`ec4a5e36434c9df9ee236dc12734843163fc17ac`.
+`281dc3352c63cdb644f02e028cc5d645c279954a`.
 
 Hermes Reach is a Hermes security wrapper around an exact, owner-maintained
 [Agent-Reach fork](https://github.com/izumi0uu/Agent-Reach). That fork is based
@@ -174,15 +174,19 @@ expose a generic execution surface.
 ## Fork updates, recovery, and rollback
 
 Hermes depends on the exact fork commit, never a branch or tag. The current
-final integration is `ec4a5e36434c9df9ee236dc12734843163fc17ac`, with tree
-`302db7526ed84b1565fa24baf5c06ced69385d80`. It was rebase-merged from reviewed
-PR head `a3dcdb3a6638e14ceda8cfa9a3cc7a010d80fa80`, whose tree is identical. It has
+final integration is `281dc3352c63cdb644f02e028cc5d645c279954a`, with tree
+`385b9c95cb3a6372ed1b68b606abc3faed71f307`. It was rebase-merged from reviewed
+hardlink-fix PR head `c57ae5b8d78fed6ad52a1f52731db589d875f8a9`, whose tree is identical. It has
 not yet received a protected recovery tag and is therefore not release-eligible.
-The previous 14-operation integration
+The previous 29-operation integration
+`ec4a5e36434c9df9ee236dc12734843163fc17ac` was rebase-merged from reviewed
+head `a3dcdb3a6638e14ceda8cfa9a3cc7a010d80fa80`; both resolve to tree
+`302db7526ed84b1565fa24baf5c06ced69385d80`. It is retained as provenance but
+is incompatible with uv hardlink installs. The earlier 14-operation integration
 `9b69146588b1d162515b81db26b51643c15de8eb` was rebase-merged from reviewed
 head `fd93d2ec86511a4a1514b7ebd13cd996be709692`; both resolve to tree
-`e19835071ae6560431b66d5a21e51b598d3d9c81`. It is the immediate rollback pin
-for this social batch and also has no recovery tag. The earlier final integration
+`e19835071ae6560431b66d5a21e51b598d3d9c81`. It is the fail-closed social-batch
+rollback pin and also has no recovery tag. The earlier final integration
 `2a5829cf3b50bc435c647bfae4c050b1837d0235` was rebase-merged from audited
 candidate `9e744d0c33f9e6498cf66c2ea376a653000e9be4`; both resolve to tree
 `070e4507fde7e55eceaba4d29e6a459c4a972f60`, and protected immutable reference

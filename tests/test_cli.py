@@ -419,9 +419,12 @@ def test_connector_serve_social_activation_attests_before_exact_tty_enable(
     monkeypatch.setattr(cli, "TtyPassphraseReader", lambda: denied)
     connector_command(args, mutation_service=mutation)  # type: ignore[arg-type]
 
+    denied_output = "".join(denied.output)
     assert events == ["attest", "confirm"]
     assert mutation.compositions == []
     assert denied.prompts == [("Type enable to continue: ", "enable")]
+    assert "interactive_unlock_required" in denied_output
+    assert all(str(path) not in denied_output for _, path in _SOCIAL_FLAG_PATHS)
     assert denied.closed
 
     events.clear()

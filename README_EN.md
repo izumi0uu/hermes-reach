@@ -414,18 +414,19 @@ operation matrix and reactivation gates.
 
 The project pins Agent-Reach `1.5.0`: the reviewed official base is
 `b4d52c46c9113cb0f653d6df4cf71ebadf4930ac`, the final owner-fork integration
-is `ec4a5e36434c9df9ee236dc12734843163fc17ac`, and the execution
+is `281dc3352c63cdb644f02e028cc5d645c279954a`, and the execution
 protocol is `v1`. The complete 63-row state lives in the
 [operation ledger](docs/agent-reach-operation-ledger.json); the 29 descriptors
 do not claim execution support for the other 34 rows. The final integration
-tree is `302db7526ed84b1565fa24baf5c06ced69385d80`, exactly matching reviewed PR
-head `a3dcdb3a6638e14ceda8cfa9a3cc7a010d80fa80`'s tree. It has been rebase-merged
-but has not received a new recovery tag, so it is not yet release-eligible.
-Immediate rollback restores exact pin
-`9b69146588b1d162515b81db26b51643c15de8eb`, preserving the previous 14
-owner-fork operations and disabling this batch's 15 social bindings. Recovery
-tags are historical references only, not dependency selectors; the exact
-commit remains authoritative.
+tree is `385b9c95cb3a6372ed1b68b606abc3faed71f307`, exactly matching reviewed
+hardlink-fix PR head `c57ae5b8d78fed6ad52a1f52731db589d875f8a9`'s tree. It has been
+rebase-merged but has not received a new recovery tag, so it is not yet
+release-eligible. The previous integration
+`ec4a5e36434c9df9ee236dc12734843163fc17ac` retains all 29 operations but is
+incompatible with uv hardlink installs; rolling back to
+`9b69146588b1d162515b81db26b51643c15de8eb` disables this batch's 15 social
+bindings. Recovery tags are historical references only, not dependency
+selectors; the exact commit remains authoritative.
 
 ### Connector path when explicitly composed
 

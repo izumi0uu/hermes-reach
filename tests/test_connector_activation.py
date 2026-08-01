@@ -34,6 +34,7 @@ from hermes_reach.connector.protocol import (
 )
 from hermes_reach.connector.tls import ConnectorTLSStore, verify_connector_ca_der
 from hermes_reach.connector.transport import PairingExchange, WssEndpoint
+from hermes_reach.runtime.adapters import AdapterBinding, AdapterRegistry
 from hermes_reach.runtime.dispatcher import RuntimeDispatcher
 from hermes_reach.sources.exa_artifacts import (
     EXA_CONFIG_PATH_ENVIRONMENT,
@@ -392,6 +393,51 @@ def test_verified_complete_social_grant_builds_all_fifteen_degraded_adapters(
     states = _social_states(runtime)
     assert len(states) == 15
     assert set(states.values()) == {("degraded", "connector_offline")}
+    assert not (state_directory / "receipts.jsonl").exists()
+    assert not (state_directory / "vps-connector-snapshot.json").exists()
+
+
+def test_partial_social_registration_failure_preserves_completed_bindings(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    state_directory = _paired_state(
+        tmp_path,
+        tuple(
+            sorted(
+                OPENCLI_SOCIAL_SCOPES,
+                key=lambda scope: (scope.source, scope.operation),
+            )
+        ),
+    )
+    original_register = AdapterRegistry.register
+    social_registrations = 0
+
+    def fail_second_social_registration(
+        registry: AdapterRegistry, binding: AdapterBinding
+    ) -> None:
+        nonlocal social_registrations
+        if (binding.source, binding.operation) in OPENCLI_SOCIAL_OPERATIONS:
+            social_registrations += 1
+            if social_registrations == 2:
+                raise RuntimeError("forced partial social registration failure")
+        original_register(registry, binding)
+
+    monkeypatch.setattr(connector_identity.sys, "platform", "linux")
+    monkeypatch.setattr(AdapterRegistry, "register", fail_second_social_registration)
+
+    runtime = build_vps_runtime(state_directory)
+
+    first_social = OPENCLI_SOCIAL_OPERATIONS[0]
+    remaining_social = OPENCLI_SOCIAL_OPERATIONS[1:]
+    first_availability = runtime.operation_availability(*first_social)
+    assert social_registrations == 2
+    assert runtime.operation_availability("rss", "read.feed").state == "available"
+    assert first_availability.state == "degraded"
+    assert first_availability.cause_code == "connector_offline"
+    assert {
+        runtime.operation_availability(*operation).state
+        for operation in remaining_social
+    } == {"unavailable"}
     assert not (state_directory / "receipts.jsonl").exists()
     assert not (state_directory / "vps-connector-snapshot.json").exists()
 

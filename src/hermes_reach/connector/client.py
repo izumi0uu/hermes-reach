@@ -572,10 +572,11 @@ class ConnectorAvailabilityResolver:
                 snapshot_at=snapshot.observed_at,
             )
         if snapshot.state == "disconnected":
+            cause = snapshot.cause_code or ConnectorErrorCode.CONNECTOR_OFFLINE
             return AvailabilityRecord(
                 "degraded",
                 "The Connector is offline or its snapshot is stale.",
-                cause_code=ConnectorErrorCode.CONNECTOR_OFFLINE.value,
+                cause_code=cause.value,
                 snapshot_at=snapshot.observed_at,
             )
         if snapshot.state == "unavailable":

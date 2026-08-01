@@ -12,7 +12,7 @@ license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Booker" }]
 dependencies = [
-  "agent-reach @ git+https://github.com/izumi0uu/Agent-Reach.git@ec4a5e36434c9df9ee236dc12734843163fc17ac",
+  "agent-reach @ git+https://github.com/izumi0uu/Agent-Reach.git@281dc3352c63cdb644f02e028cc5d645c279954a",
   "bilibili-cli==0.6.2",
   "cryptography>=46.0.7,<47",
   "deno==2.8.3",
