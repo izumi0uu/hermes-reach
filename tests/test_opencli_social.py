@@ -5,7 +5,6 @@ import base64
 import hashlib
 import json
 import os
-import sys
 import time
 from collections.abc import Mapping
 from dataclasses import fields
@@ -45,6 +44,10 @@ from hermes_reach.sources.opencli_social_worker import (
     WorkerResponse,
     WorkerSource,
 )
+from tests.support.opencli_social import (
+    build_opencli_artifact_closure,
+    python_node_stub,
+)
 
 NOW = 1_800_000_000
 POST_URL = "https://www.reddit.com/r/python/comments/abc123/fixture_post"
@@ -69,28 +72,7 @@ def _attestation() -> OpenCliSessionAttestation:
 
 
 def _attestable_closure(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
-    node = tmp_path / "node"
-    node.write_bytes(b"#!/bin/sh\nexit 0\n")
-    node.chmod(0o700)
-    root = tmp_path / "opencli"
-    package_root = root / "node_modules" / "@jackwener" / "opencli"
-    cli = package_root / "dist" / "src" / "main.js"
-    cli.parent.mkdir(parents=True)
-    cli.write_bytes(b"export {};\n")
-    package = {
-        "name": "@jackwener/opencli",
-        "version": "1.8.6-hermes.1",
-        "bin": {"opencli": "dist/src/main.js"},
-    }
-    (package_root / "package.json").write_text(
-        json.dumps(package, separators=(",", ":")), encoding="utf-8"
-    )
-    for path in root.rglob("*"):
-        path.chmod(0o700 if path.is_dir() else 0o600)
-    root.chmod(0o700)
-    session_home = tmp_path / "session"
-    session_home.mkdir(mode=0o700)
-    return node, root, cli, session_home
+    return build_opencli_artifact_closure(tmp_path).paths()
 
 
 def _search(source: str, operation: str) -> OperationCall:
@@ -316,14 +298,7 @@ def test_real_isolated_worker_executes_the_attested_closure_through_the_pinned_f
         "--format",
         "yaml",
     )
-    node.write_text(
-        f"#!{sys.executable}\n"
-        "import sys\n"
-        f"if tuple(sys.argv[2:]) != {expected_argv!r}:\n"
-        "    raise SystemExit(7)\n"
-        f"sys.stdout.write({output!r})\n",
-        encoding="utf-8",
-    )
+    node.write_bytes(python_node_stub(expected_argv, f"sys.stdout.write({output!r})\n"))
     node.chmod(0o700)
     attestation = attest_opencli_social_session(node, root, cli, session_home)
     call = _read("reddit", "read.post", {"url": POST_URL})
@@ -354,24 +329,42 @@ def test_isolated_worker_reaps_separate_node_session_on_termination(
     node, root, cli, session_home = _attestable_closure(tmp_path)
     pid_path = tmp_path / "node.pid"
     stop_path = tmp_path / "node.stop"
-    node.write_text(
-        f"#!{sys.executable}\n"
-        "import json\n"
-        "import os\n"
-        "import time\n"
-        "from pathlib import Path\n"
-        f"pid_path = Path({str(pid_path)!r})\n"
-        "pending_path = pid_path.with_suffix('.pending')\n"
-        "pending_path.write_text(json.dumps({\n"
-        "    'pid': os.getpid(),\n"
-        "    'ppid': os.getppid(),\n"
-        "    'pgid': os.getpgid(0),\n"
-        "    'sid': os.getsid(0),\n"
-        "}), encoding='ascii')\n"
-        "pending_path.replace(pid_path)\n"
-        f"while not Path({str(stop_path)!r}).exists():\n"
-        "    time.sleep(0.05)\n",
-        encoding="utf-8",
+    expected_argv = (
+        "reddit",
+        "read",
+        "abc123",
+        "--sort",
+        "best",
+        "--limit",
+        "3",
+        "--depth",
+        "2",
+        "--replies",
+        "2",
+        "--max-length",
+        "800",
+        "--format",
+        "yaml",
+    )
+    node.write_bytes(
+        python_node_stub(
+            expected_argv,
+            "import json\n"
+            "import os\n"
+            "import time\n"
+            "from pathlib import Path\n"
+            f"pid_path = Path({str(pid_path)!r})\n"
+            "pending_path = pid_path.with_suffix('.pending')\n"
+            "pending_path.write_text(json.dumps({\n"
+            "    'pid': os.getpid(),\n"
+            "    'ppid': os.getppid(),\n"
+            "    'pgid': os.getpgid(0),\n"
+            "    'sid': os.getsid(0),\n"
+            "}), encoding='ascii')\n"
+            "pending_path.replace(pid_path)\n"
+            f"while not Path({str(stop_path)!r}).exists():\n"
+            "    time.sleep(0.05)\n",
+        )
     )
     node.chmod(0o700)
     attestation = attest_opencli_social_session(node, root, cli, session_home)

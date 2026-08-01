@@ -5,10 +5,8 @@ import base64
 import errno
 import hashlib
 import io
-import json
 import socket
 import stat
-import sys
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -67,6 +65,10 @@ from hermes_reach.sources.opencli_social import (
     OpenCliSessionAttestation,
     attest_opencli_social_session,
     opencli_social_execution_composition,
+)
+from tests.support.opencli_social import (
+    build_opencli_artifact_closure,
+    python_node_stub,
 )
 
 PASSPHRASE = "bridge-e2e-passphrase"
@@ -423,42 +425,17 @@ def _opencli_social_fixture(
     expected_argv: tuple[str, ...],
     output: str,
 ) -> OpenCliSessionAttestation:
-    node = tmp_path / NODE_PATH_CANARY
-    node.write_text(
-        f"#!{sys.executable}\n"
-        "import sys\n"
-        "if not sys.argv[1].endswith(\n"
-        "    '/node_modules/@jackwener/opencli/dist/src/main.js'\n"
-        "):\n"
-        "    raise SystemExit(6)\n"
-        f"if tuple(sys.argv[2:]) != {expected_argv!r}:\n"
-        "    raise SystemExit(7)\n"
-        f"sys.stdout.write({output!r})\n",
-        encoding="utf-8",
+    closure = build_opencli_artifact_closure(
+        tmp_path,
+        node_name=NODE_PATH_CANARY,
+        root_name=OPENCLI_ROOT_PATH_CANARY,
+        session_name=SESSION_PATH_CANARY,
     )
-    node.chmod(0o700)
-    root = tmp_path / OPENCLI_ROOT_PATH_CANARY
-    package_root = root / "node_modules" / "@jackwener" / "opencli"
-    cli = package_root / "dist" / "src" / "main.js"
-    cli.parent.mkdir(parents=True)
-    cli.write_bytes(b"export {};\n")
-    (package_root / "package.json").write_text(
-        json.dumps(
-            {
-                "name": "@jackwener/opencli",
-                "version": "1.8.6-hermes.1",
-                "bin": {"opencli": "dist/src/main.js"},
-            },
-            separators=(",", ":"),
-        ),
-        encoding="utf-8",
+    closure.node.write_bytes(
+        python_node_stub(expected_argv, f"sys.stdout.write({output!r})\n")
     )
-    for path in root.rglob("*"):
-        path.chmod(0o700 if path.is_dir() else 0o600)
-    root.chmod(0o700)
-    session_home = tmp_path / SESSION_PATH_CANARY
-    session_home.mkdir(mode=0o700)
-    return attest_opencli_social_session(node, root, cli, session_home)
+    closure.node.chmod(0o700)
+    return attest_opencli_social_session(*closure.paths())
 
 
 def _private_attestation_markers(
