@@ -470,8 +470,8 @@ def test_static_handshake_attests_opencli_runtime_and_guard_records() -> None:
     } == {
         "agent_reach/execution/v1/opencli_social.py": (
             "sha256",
-            "uXvlrPLp-foRHNmfd3DRJZOP88_RF2ZTNOGTa99YUhs",
-            76_010,
+            "Bgft8BysFi3-Pv21hdG45i5XKnU7ucDQLNPRJ10kzhM",
+            76_023,
         ),
         "agent_reach/execution/v1/_opencli_no_lifecycle.mjs": (
             "sha256",
@@ -480,8 +480,8 @@ def test_static_handshake_attests_opencli_runtime_and_guard_records() -> None:
         ),
         "agent_reach/execution/v1/xueqiu.py": (
             "sha256",
-            "f2Kv-gT3YpRIqybPANceHebf1a9zguBUxuveAEJdFFc",
-            26_512,
+            "tnxJ8tHS1WzCKTUI9BO3pc6uoyOt_E8cdRIthONd3Cg",
+            26_575,
         ),
     }
 

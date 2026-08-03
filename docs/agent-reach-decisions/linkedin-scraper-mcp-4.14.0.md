@@ -19,10 +19,12 @@ They are not execution authority.
   `7bc42839d3dd290e4af93b24e0b03b738cff0ffa`
 - Rejected pre-freeze Agent-Reach candidate tree:
   `382557e0bec76819f0633f31895580a0f549b6bd`
-- Accepted non-LinkedIn Agent-Reach candidate commit:
-  `ee200e7160c4b093a2ba0fcee9f2a6842aefe20d`
-- Accepted non-LinkedIn Agent-Reach candidate tree:
-  `56883c0872bed94050660b16d1ade2e46f73fef9`
+- Final reviewed non-LinkedIn Agent-Reach PR head:
+  `e91e3efa045e75f08d4e7fdd9749fe26d4f774c5`
+- Reviewed and final non-LinkedIn Agent-Reach integration tree:
+  `e86ee839621360b991d985ad9d4cb18e36f86351`
+- Final rebase-merged non-LinkedIn Agent-Reach integration commit:
+  `75cd48c6274e7f4740530d97877ec048708d5334`
 - LinkedIn source release: `stickerdaniel/linkedin-mcp-server` `v4.14.0`
 - LinkedIn source commit:
   `7edbd32231afa6d40fabad207329591ad5a4feb0`
@@ -38,8 +40,10 @@ They are not execution authority.
 The rejected candidate contains 35 descriptors, including the two LinkedIn
 descriptors. It is not the accepted 33-descriptor boundary and must not be
 merged, tagged, pinned for release, or described as an activatable candidate.
-The accepted candidate removes both descriptors and every LinkedIn execution
+The final integration excludes both descriptors and every LinkedIn execution
 module, capability export, runtime handshake, and packaged runtime file.
+Owner-fork PR #6's final reviewed head and its rebase integration on
+`hermes/execution-v1` have the identical tree recorded above.
 
 ## Stop Condition
 

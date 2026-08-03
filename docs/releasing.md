@@ -16,12 +16,12 @@ deletion so old installs and rollback remain reachable. The tag is only a
 recovery reference and never the dependency selector; the commit in wheel
 metadata remains authoritative.
 
-The current candidate and rollback references are:
+The current integration and rollback references are:
 
 | Purpose | Recovery reference | Exact dependency commit |
 | --- | --- | --- |
-| Accepted 33-operation candidate and current integration pin | none; owner-fork PR #6 is open, unmerged, untagged, and non-publishable | `ee200e7160c4b093a2ba0fcee9f2a6842aefe20d` |
-| Rejected pre-freeze 35-operation parent | none; retained only as LinkedIn rejection evidence | `7bc42839d3dd290e4af93b24e0b03b738cff0ffa` |
+| Final 33-operation rebase integration and current pin | none; owner-fork PR #6 is merged into `hermes/execution-v1`, but the branch remains untagged and non-publishable | `75cd48c6274e7f4740530d97877ec048708d5334` |
+| Rejected pre-freeze 35-operation state | none; retained only as LinkedIn rejection evidence | `7bc42839d3dd290e4af93b24e0b03b738cff0ffa` |
 | Rollback: 29-operation public/social integration | pending; no immutable recovery tag exists | `281dc3352c63cdb644f02e028cc5d645c279954a` |
 | Historical: pre-hardlink-fix 29-operation integration | pending; incompatible with uv hardlink installs | `ec4a5e36434c9df9ee236dc12734843163fc17ac` |
 | Rollback: 14-operation public-platform integration | pending; no immutable recovery tag was created by the social batch | `9b69146588b1d162515b81db26b51643c15de8eb` |
@@ -29,19 +29,20 @@ The current candidate and rollback references are:
 | Rollback: RSS + Bilibili execution v1, YouTube exact wrappers | `hermes-reach-integration-0.1.0a2` | `f195253d53befdb012d7aa575e732ec627ec29ac` |
 | Earlier rollback: RSS execution v1 / Hermes Bilibili wrapper | `hermes-reach-integration-0.1.0a1` | `806205fd106f4f4453624becfd773acce8418cf1` |
 
-The accepted candidate `ee200e7160c4b093a2ba0fcee9f2a6842aefe20d`
-resolves to tree `56883c0872bed94050660b16d1ade2e46f73fef9` and is the current
-33-descriptor head of owner-fork PR #6. Hermes pins this exact commit. PR #6
-remains open, unmerged, untagged, and without a recovery tag, so the candidate
-must not be published. After a rebase merge, the final integration must have
-the reviewed tree or receive a fresh full review; Hermes must then update the
-exact pin and repeat every pin-sensitive gate.
+Owner-fork PR #6's final reviewed head
+`e91e3efa045e75f08d4e7fdd9749fe26d4f774c5` resolves to tree
+`e86ee839621360b991d985ad9d4cb18e36f86351`. It was rebase-merged with tree
+equivalence into `hermes/execution-v1` as final 33-descriptor integration
+`75cd48c6274e7f4740530d97877ec048708d5334`, which Hermes pins exactly. The
+integration branch remains untagged and lacks an immutable recovery tag, so it
+must not be published until recovery-tag protection and final Hermes
+provenance, RECORD, runtime, and pin-sensitive verification are complete.
 
-The candidate's parent `7bc42839d3dd290e4af93b24e0b03b738cff0ffa`
+The rejected pre-freeze commit `7bc42839d3dd290e4af93b24e0b03b738cff0ffa`
 resolves to tree `382557e0bec76819f0633f31895580a0f549b6bd`. It contains the two
 rejected LinkedIn descriptors and is retained only as pre-freeze evidence, not
-as routing, dependency, merge, tag, or release authority. The accepted
-candidate's rollback is the prior final integration
+as routing, dependency, merge, tag, or release authority. Rollback restores the
+prior final integration
 `281dc3352c63cdb644f02e028cc5d645c279954a`, which resolves to tree
 `385b9c95cb3a6372ed1b68b606abc3faed71f307`. That integration was rebase-merged
 from reviewed hardlink-fix PR head `c57ae5b8d78fed6ad52a1f52731db589d875f8a9`, whose tree is
@@ -87,10 +88,13 @@ controls:
 
 The workflow cannot configure or prove these repository settings. A tag push
 without them is an operator error, even if the YAML gate passes.
-Accepted candidate `ee200e7160c4b093a2ba0fcee9f2a6842aefe20d`, tree
-`56883c0872bed94050660b16d1ade2e46f73fef9`, is reviewed but still unmerged,
-untagged, and lacks the immutable integration-tag prerequisite. It must not be
-published as-is. Its rejected pre-freeze parent remains evidence only.
+Final integration `75cd48c6274e7f4740530d97877ec048708d5334`, tree
+`e86ee839621360b991d985ad9d4cb18e36f86351`, is the tree-equivalent rebase
+integration of owner-fork PR #6's final reviewed head
+`e91e3efa045e75f08d4e7fdd9749fe26d4f774c5` into `hermes/execution-v1`. The
+branch remains untagged and lacks the immutable recovery-tag prerequisite.
+It must not be published until that protection and final Hermes verification
+are complete. The rejected pre-freeze state remains evidence only.
 
 ## Local dry run
 

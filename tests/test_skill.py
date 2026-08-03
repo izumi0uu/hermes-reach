@@ -97,8 +97,8 @@ def test_safe_skill_contains_no_upstream_execution_escape_hatches() -> None:
     for fragment in forbidden_fragments:
         assert fragment not in text
     assert "b4d52c46c9113cb0f653d6df4cf71ebadf4930ac" in text
-    assert "ee200e7160c4b093a2ba0fcee9f2a6842aefe20d" in text
-    assert "56883c0872bed94050660b16d1ade2e46f73fef9" in text
+    assert "75cd48c6274e7f4740530d97877ec048708d5334" in text
+    assert "e86ee839621360b991d985ad9d4cb18e36f86351" in text
     assert "7bc42839d3dd290e4af93b24e0b03b738cff0ffa" in text
     assert "f195253d53befdb012d7aa575e732ec627ec29ac" not in text
     assert "rss:read.feed" in text

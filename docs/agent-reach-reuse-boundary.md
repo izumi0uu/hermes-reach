@@ -1,14 +1,17 @@
 # Agent-Reach reuse boundary
 
 Status: runtime reviewed on 2026-08-02 against official Agent-Reach `1.5.0`
-base `b4d52c46c9113cb0f653d6df4cf71ebadf4930ac`. The accepted owner-fork
-candidate is `ee200e7160c4b093a2ba0fcee9f2a6842aefe20d`, tree
-`56883c0872bed94050660b16d1ade2e46f73fef9`, with exactly 33 descriptors. It
-is the exact dependency pin and current head of owner-fork PR #6, but remains
-unmerged, untagged, and not publishable. Its parent
+base `b4d52c46c9113cb0f653d6df4cf71ebadf4930ac`. Owner-fork PR #6's final reviewed
+head `e91e3efa045e75f08d4e7fdd9749fe26d4f774c5`, tree
+`e86ee839621360b991d985ad9d4cb18e36f86351`, was rebase-merged with tree
+equivalence into `hermes/execution-v1` as final integration
+`75cd48c6274e7f4740530d97877ec048708d5334`. It contains exactly 33 descriptors
+and is the exact dependency pin. The integration branch remains untagged and
+is not publishable until immutable recovery-tag protection and final Hermes
+verification are complete. The rejected pre-freeze candidate, commit
 `7bc42839d3dd290e4af93b24e0b03b738cff0ffa`, tree
-`382557e0bec76819f0633f31895580a0f549b6bd`, is the rejected pre-freeze
-candidate because it contains two unsafe LinkedIn descriptors.
+`382557e0bec76819f0633f31895580a0f549b6bd`, is retained only as rejection
+evidence because it contains two unsafe LinkedIn descriptors.
 
 This document is the merge gate for source execution work. The canonical
 plugin architecture and terminology are defined in
@@ -296,13 +299,15 @@ receipts, and audit, not a copied platform runtime.
    `f195253d53befdb012d7aa575e732ec627ec29ac`, and keep
    `hermes-reach-integration-0.1.0a3` as the protected immutable reference for
    the previous integration `2a5829cf3b50bc435c647bfae4c050b1837d0235`.
-   The accepted 33-descriptor candidate
-   `ee200e7160c4b093a2ba0fcee9f2a6842aefe20d`, with tree
-   `56883c0872bed94050660b16d1ade2e46f73fef9`, is the current head of
-   owner-fork PR #6 and the exact dependency pin. The PR is still unmerged and
-   untagged, so publication remains blocked until rebase integration,
-   final-tree equivalence, final-pin review, and recovery-tag protection.
-   Pre-freeze parent `7bc42839d3dd290e4af93b24e0b03b738cff0ffa`, with tree
+   The final 33-descriptor integration
+   `75cd48c6274e7f4740530d97877ec048708d5334`, with tree
+   `e86ee839621360b991d985ad9d4cb18e36f86351`, is the exact dependency pin.
+   It is the tree-equivalent rebase integration of owner-fork PR #6's final
+   reviewed head `e91e3efa045e75f08d4e7fdd9749fe26d4f774c5` into
+   `hermes/execution-v1`. The integration branch remains untagged, so publication
+   remains blocked until immutable recovery-tag protection and final Hermes
+   verification are complete.
+   Rejected pre-freeze commit `7bc42839d3dd290e4af93b24e0b03b738cff0ffa`, with tree
    `382557e0bec76819f0633f31895580a0f549b6bd`, contains the rejected
    35-descriptor state and remains rejection evidence only. Rollback integration
    `281dc3352c63cdb644f02e028cc5d645c279954a`, with tree

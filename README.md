@@ -21,11 +21,14 @@ Reddit 7 条、Facebook 4 条、Instagram 4 条、Twitter 搜索 1 条、小红�
 > 证明后才会组成，否则保持 `setup_required`。远程 Connector 可以显式配置
 > 18 条 fork-owned operation，默认 Connector 构成仍为空。Web、GitHub、LinkedIn
 > 和其他未审计操作保持规划/不可用；fork 并不使其余 30 条目录 operation 自动可执行。
-> PR #6 当前的 33-descriptor 审查候选是
-> `ee200e7160c4b093a2ba0fcee9f2a6842aefe20d`（tree
-> `56883c0872bed94050660b16d1ade2e46f73fef9`）。它已被当前分支精确固定，
-> 但仍未合并、未打 tag 且不可发布；其 35-descriptor 父提交仅保留为
-> LinkedIn 拒绝证据。
+> owner-fork PR #6 的最终审查 head
+> `e91e3efa045e75f08d4e7fdd9749fe26d4f774c5`（tree
+> `e86ee839621360b991d985ad9d4cb18e36f86351`）已通过 tree 等价的 rebase 合并
+> 进入 `hermes/execution-v1`，生成最终 33-descriptor integration commit
+> `75cd48c6274e7f4740530d97877ec048708d5334`。Hermes 已精确固定该 integration
+> commit。integration branch 仍未打 tag；在 immutable recovery tag 获得
+> 防移动/删除保护且最终 Hermes 验证完成前不得发布。被拒绝的 35-descriptor
+> pre-freeze state 仅保留为 LinkedIn 拒绝证据。
 
 ## 它解决什么问题
 
@@ -380,10 +383,13 @@ fork。OpenCLI 命令和雪球 HTTP 语义只存在于 fork；LinkedIn 没有可
 `b4d52c46c9113cb0f653d6df4cf71ebadf4930ac`，execution protocol 是 `v1`。
 完整的 63 行状态以
 [operation ledger](docs/agent-reach-operation-ledger.json) 为准；33 个 descriptor
-不能代表其他 30 行可执行。当前精确 owner-fork 候选 pin 是
-`ee200e7160c4b093a2ba0fcee9f2a6842aefe20d`（tree
-`56883c0872bed94050660b16d1ade2e46f73fef9`）；它是 PR #6 当前已审查的
-33-descriptor head，但仍未合并、未打 tag 且不可发布。其 pre-freeze 父提交
+不能代表其他 30 行可执行。当前精确 owner-fork integration pin 是
+`75cd48c6274e7f4740530d97877ec048708d5334`（tree
+`e86ee839621360b991d985ad9d4cb18e36f86351`）；它是 PR #6 最终审查 head
+`e91e3efa045e75f08d4e7fdd9749fe26d4f774c5` 通过 tree 等价的 rebase 合并进入
+`hermes/execution-v1` 后的最终 33-descriptor commit。integration branch 仍未
+打 tag；在 immutable recovery tag 获得防移动/删除保护且最终 Hermes 验证完成前
+不得发布。被拒绝的 pre-freeze commit
 `7bc42839d3dd290e4af93b24e0b03b738cff0ffa`（tree
 `382557e0bec76819f0633f31895580a0f549b6bd`）包含已拒绝的 LinkedIn descriptor，
 仅作历史证据。回滚到
@@ -430,7 +436,7 @@ Roadmap 表示开发顺序，不承诺发布日期。未完成的能力会保持
 | 已完成 | 冻结严格插件边界 | 关闭 Web/GitHub/V2EX 共 13 条 Hermes 平台例外；V2EX 只通过新的 fork descriptor 重新启用，Web/GitHub 仍不可用 |
 | 已完成 | 验证真实插件生命周期 | 在全新 Hermes 0.19 环境验证默认关闭、启用、停用和包管理器卸载 |
 | 已完成 | 完成公共平台批次交付 | rebase 集成 fork、证明最终 tree 等于被审查 tree、固定最终 SHA，并重跑所有 pin-sensitive gate |
-| 现在 | 收口四条搜索接入 | Twitter、小红书、雪球和 Exa Code 已构成并固定 33-descriptor 候选；LinkedIn people/jobs 保持规划/不可用，下一个门禁是 PR #6 rebase 合并后的 tree 等价证明与最终 pin 复核 |
+| 现在 | 完成最终 Hermes 验证 | PR #6 已通过 rebase 合并到 `hermes/execution-v1`，Hermes 已固定最终 33-descriptor commit；LinkedIn people/jobs 保持规划/不可用，剩余门禁是 immutable recovery-tag 保护和最终 pin-sensitive Hermes 验证 |
 | 随后 | 建立公开 Pre-release 通道 | 先为最终 fork commit 建立受保护的 immutable recovery tag，再离线安装同一 exact sdist、对同一 exact wheel 跑完整生命周期，然后摘要并验证两者的 GitHub provenance，以最小权限发布 |
 | 后续 | 扩展剩余认证操作和生产运维 | Twitter/X 尚未接入的读取操作、现有搜索路径加固、一键授权、审计导出、告警、升级与回滚 |
 
