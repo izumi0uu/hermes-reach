@@ -444,7 +444,7 @@
       "upstream_execution": "agent_reach.execution.v1.execute(twitter:search.posts, opencli_session.v1) -> OpenCLI 1.8.6-hermes.1 twitter search",
       "classification": "direct_owner_fork_runtime",
       "semantic_delta": "The owner fork owns the fixed OpenCLI command, complete native row validation, post-ID and x.com URL correlation, canonical projection, and typed error mapping; Hermes supplies trusted-device authorization, worker isolation, independent closed-result validation, normalization, receipts, and audit.",
-      "approval": "owner-approved-fork-runtime-non-github-search-batch-2026-08-02",
+      "approval": "owner-approved-fork-runtime-reviewed-search-capabilities-2026-08-02",
       "current_backend": "opencli",
       "review_milestone": "any official base, fork commit, execution protocol/capability, OpenCLI package/tree, Twitter command/schema, identity correlation, worker protocol, backend identity, error mapping, or projection change",
       "decision_record": "docs/agent-reach-decisions/opencli-social-1.8.6-hermes.1.md"
@@ -455,7 +455,7 @@
       "upstream_execution": "agent_reach.execution.v1.execute(xiaohongshu:search.notes, opencli_session.v1) -> OpenCLI 1.8.6-hermes.1 xiaohongshu search",
       "classification": "direct_owner_fork_runtime",
       "semantic_delta": "The owner fork owns the fixed OpenCLI command, native note validation, note-ID correlation, canonical URL rebuilding without session-bearing parameters, projection, and typed error mapping; Hermes supplies trusted-device authorization, worker isolation, independent closed-result validation, normalization, receipts, and audit.",
-      "approval": "owner-approved-fork-runtime-non-github-search-batch-2026-08-02",
+      "approval": "owner-approved-fork-runtime-reviewed-search-capabilities-2026-08-02",
       "current_backend": "opencli",
       "review_milestone": "any official base, fork commit, execution protocol/capability, OpenCLI package/tree, Xiaohongshu command/schema, token sanitation, worker protocol, backend identity, error mapping, or projection change",
       "decision_record": "docs/agent-reach-decisions/opencli-social-1.8.6-hermes.1.md"
@@ -488,7 +488,7 @@
       "upstream_execution": "agent_reach.execution.v1.execute(xueqiu:search.stocks, xueqiu_session.v1) -> fixed Xueqiu stock-search HTTPS contract",
       "classification": "direct_owner_fork_runtime",
       "semantic_delta": "The owner fork owns the fixed origin/request, Cookie header use, DNS-pinned bounded transport, response validation, stock identity, projection, and error mapping; Hermes authorizes one opaque SecretProvider capability, injects one mutable attempt-local Cookie on the trusted Connector, validates the closed result, and owns receipts and audit.",
-      "approval": "owner-approved-fork-runtime-non-github-search-batch-2026-08-02",
+      "approval": "owner-approved-fork-runtime-reviewed-search-capabilities-2026-08-02",
       "current_backend": "xueqiu-api",
       "review_milestone": "any official base, fork commit, Xueqiu endpoint/schema/identity, Cookie capability, SecretProvider boundary, transport policy, worker protocol, backend identity, error mapping, or projection change",
       "decision_record": "docs/agent-reach-decisions/xueqiu-api-1.5.0-search-v1.md"
