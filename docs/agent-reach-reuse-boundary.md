@@ -15,6 +15,9 @@ The rejected pre-freeze candidate, commit
 `382557e0bec76819f0633f31895580a0f549b6bd`, is retained only as rejection
 evidence because it contains two unsafe LinkedIn descriptors.
 
+Current recovery mapping: `hermes-reach-integration-0.1.0a4` ->
+`75cd48c6274e7f4740530d97877ec048708d5334`.
+
 This document is the merge gate for source execution work. The canonical
 plugin architecture and terminology are defined in
 [Agent-Reach as a Hermes plugin](agent-reach-plugin-boundary.md). The complete

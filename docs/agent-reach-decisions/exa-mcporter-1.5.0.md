@@ -34,6 +34,9 @@ final Hermes verification is complete. The tag preserves reachability only;
 the exact commit remains the dependency selector and publication remains a
 separate Hermes Reach release operation.
 
+Current recovery mapping: `hermes-reach-integration-0.1.0a4` ->
+`75cd48c6274e7f4740530d97877ec048708d5334`.
+
 ## Closed Invocation
 
 Both descriptors accept only a trimmed `query` and bounded `limit`. Web is

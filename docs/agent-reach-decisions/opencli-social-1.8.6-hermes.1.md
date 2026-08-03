@@ -59,6 +59,10 @@ and integration have the identical tree recorded above. The protected recovery
 reference points directly to the integration commit, and final Hermes
 verification is complete. It preserves reachability only; the exact commit
 remains the dependency selector.
+
+Current recovery mapping: `hermes-reach-integration-0.1.0a4` ->
+`75cd48c6274e7f4740530d97877ec048708d5334`.
+
 The fix permits multiple
 links only for the packaged lifecycle guard after RECORD/current-byte
 validation; the private guard snapshot remains single-link and user-selected

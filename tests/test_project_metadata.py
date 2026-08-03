@@ -15,6 +15,7 @@ AGENT_REACH_TREE = "e86ee839621360b991d985ad9d4cb18e36f86351"
 AGENT_REACH_REVIEWED_HEAD = "e91e3efa045e75f08d4e7fdd9749fe26d4f774c5"
 AGENT_REACH_RECOVERY_TAG = "hermes-reach-integration-0.1.0a4"
 AGENT_REACH_RECOVERY_RULESET_ID = "19975135"
+AGENT_REACH_RECOVERY_MAPPING = f"`{AGENT_REACH_RECOVERY_TAG}` -> `{AGENT_REACH_COMMIT}`"
 REJECTED_PREFREEZE_AGENT_REACH_COMMIT = "7bc42839d3dd290e4af93b24e0b03b738cff0ffa"
 REJECTED_PREFREEZE_AGENT_REACH_TREE = "382557e0bec76819f0633f31895580a0f549b6bd"
 ROLLBACK_AGENT_REACH_COMMIT = "281dc3352c63cdb644f02e028cc5d645c279954a"
@@ -223,7 +224,9 @@ def test_integrated_docs_freeze_review_and_release_state() -> None:
         assert "unmerged" not in document
         assert AGENT_REACH_RECOVERY_TAG in document
         assert AGENT_REACH_RECOVERY_RULESET_ID in document
-        assert "untagged" not in document
+        assert AGENT_REACH_RECOVERY_MAPPING in normalized_document
+        assert "integration branch remains untagged" not in normalized_document.lower()
+        assert "branch remains untagged and lacks" not in normalized_document.lower()
         assert "update and deletion" in normalized_document
         assert "no bypass actor" in normalized_document
 
