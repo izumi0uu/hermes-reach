@@ -26,13 +26,45 @@ from hermes_reach.runtime.adapters import AdapterRegistry
 from hermes_reach.runtime.availability import AvailabilityRecord
 from hermes_reach.runtime.dispatcher import RuntimeDispatcher
 from hermes_reach.runtime.policy import ReadOnlyPolicy
-from hermes_reach.sources.connector import connector_bindings
+from hermes_reach.sources.connector import (
+    PRODUCTION_CONNECTOR_BACKEND_BY_OPERATION,
+    PRODUCTION_CONNECTOR_OPERATIONS,
+    connector_bindings,
+)
 from hermes_reach.sources.registry import build_alpha1_registry
 from hermes_reach.tools import reach_search
 
 NOW = 1_800_000_000
 BACKEND = PublicBackendIdentity("reach-bounded-executor-v1", "1")
 OPENCLI_SOCIAL_BACKEND = PublicBackendIdentity("opencli", "1.8.6-hermes.1")
+XUEQIU_BACKEND = PublicBackendIdentity("xueqiu-api", "1.5.0+search.v1")
+EXPECTED_PRODUCTION_CONNECTOR_OPERATIONS = (
+    ("reddit", "search.posts"),
+    ("reddit", "read.post"),
+    ("reddit", "browse.subreddit"),
+    ("reddit", "browse.hot"),
+    ("reddit", "browse.popular"),
+    ("reddit", "browse.all"),
+    ("reddit", "read.subreddit"),
+    ("facebook", "search"),
+    ("facebook", "read.profile"),
+    ("facebook", "browse.feed"),
+    ("facebook", "browse.groups"),
+    ("instagram", "search.users"),
+    ("instagram", "read.profile"),
+    ("instagram", "browse.user_posts"),
+    ("instagram", "browse.explore"),
+    ("twitter", "search.posts"),
+    ("xiaohongshu", "search.notes"),
+    ("xueqiu", "search.stocks"),
+)
+EXPECTED_PRODUCTION_CONNECTOR_BACKENDS = (
+    *(
+        (operation, OPENCLI_SOCIAL_BACKEND)
+        for operation in EXPECTED_PRODUCTION_CONNECTOR_OPERATIONS[:17]
+    ),
+    (("xueqiu", "search.stocks"), XUEQIU_BACKEND),
+)
 
 
 def _id(value: int) -> str:
@@ -268,8 +300,38 @@ def test_connector_factory_rejects_duplicate_unknown_and_planned_operations() ->
         ("facebook", "browse.feed", "opencli", "1.8.6-hermes.1"),
         ("instagram", "browse.explore", "opencli", "1.8.6-hermes.1"),
     }
-    with pytest.raises(ValueError, match="selection"):
-        connector_bindings(client, _availability, (("exa", "search.code"),))
+    for operation in ("search.web", "search.code"):
+        with pytest.raises(ValueError, match="selection"):
+            connector_bindings(client, _availability, (("exa", operation),))
+    for operation in ("search.people", "search.jobs"):
+        with pytest.raises(ValueError, match="selection"):
+            connector_bindings(client, _availability, (("linkedin", operation),))
+
+
+def test_production_connector_manifest_is_exact_and_ordered() -> None:
+    client = _FixtureConnectorClient([])
+
+    assert PRODUCTION_CONNECTOR_OPERATIONS == EXPECTED_PRODUCTION_CONNECTOR_OPERATIONS
+    assert tuple(PRODUCTION_CONNECTOR_BACKEND_BY_OPERATION.items()) == (
+        EXPECTED_PRODUCTION_CONNECTOR_BACKENDS
+    )
+    bindings = connector_bindings(
+        client,
+        _availability,
+        PRODUCTION_CONNECTOR_OPERATIONS,
+    )
+    assert tuple(
+        (
+            binding.source,
+            binding.operation,
+            binding.backend_id,
+            binding.backend_version,
+        )
+        for binding in bindings
+    ) == tuple(
+        (source, operation, backend.backend_id, backend.backend_version)
+        for (source, operation), backend in EXPECTED_PRODUCTION_CONNECTOR_BACKENDS
+    )
 
 
 def test_multi_source_tool_trace_reaches_each_connector_binding(

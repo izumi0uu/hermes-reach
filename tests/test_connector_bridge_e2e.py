@@ -25,9 +25,11 @@ from hermes_reach.connector.client import (
     VpsProfileStore,
     _endpoint_digest,
 )
+from hermes_reach.connector.errors import ConnectorError, ConnectorErrorCode
 from hermes_reach.connector.execution import (
     ConnectorExecutionComposition,
     ConnectorExecutorBinding,
+    SecretExecutionPlan,
 )
 from hermes_reach.connector.identity import (
     ConnectorKeyStore,
@@ -37,8 +39,11 @@ from hermes_reach.connector.identity import (
 )
 from hermes_reach.connector.media_policy import ModelPolicy
 from hermes_reach.connector.protocol import (
+    ErrorFrame,
     GrantClaims,
     GrantScope,
+    OperationInvocationV1,
+    OperationResponseV1,
     OperationResultItemV1,
     OperationResultV1,
     PairingResolution,
@@ -52,11 +57,22 @@ from hermes_reach.connector.protocol import (
     pairing_transcript_hash,
     record_digest,
 )
+from hermes_reach.connector.secrets import (
+    BitwardenSecretBinding,
+    CapabilityId,
+    SecretBindingCatalog,
+    SecretMaterial,
+)
 from hermes_reach.connector.service import ConnectorService
 from hermes_reach.connector.store import AuthorityStore, StoreWriterLease
 from hermes_reach.connector.tls import ConnectorTLSStore
 from hermes_reach.connector.transport import PinnedWssClient
-from hermes_reach.contracts import OperationCall, validate_browse, validate_read
+from hermes_reach.contracts import (
+    OperationCall,
+    validate_browse,
+    validate_read,
+    validate_search,
+)
 from hermes_reach.runtime.adapters import AdapterRegistry
 from hermes_reach.runtime.availability import AvailabilityRecord
 from hermes_reach.runtime.dispatcher import RuntimeDispatcher
@@ -65,6 +81,16 @@ from hermes_reach.sources.opencli_social import (
     OpenCliSessionAttestation,
     attest_opencli_social_session,
     opencli_social_execution_composition,
+)
+from hermes_reach.sources.xueqiu import (
+    XUEQIU_BACKEND,
+    XUEQIU_COOKIE_INJECTION_TARGET,
+    XueqiuExecutor,
+    xueqiu_scope,
+)
+from hermes_reach.sources.xueqiu_worker import (
+    XueqiuProjection,
+    XueqiuStockProjection,
 )
 from tests.support.opencli_social import (
     build_opencli_artifact_closure,
@@ -75,6 +101,7 @@ PASSPHRASE = "bridge-e2e-passphrase"
 SCOPE = GrantScope("rss", "read.feed", "public")
 REDDIT_SCOPE = GrantScope("reddit", "read.post", "public")
 INSTAGRAM_EXPLORE_SCOPE = GrantScope("instagram", "browse.explore", "account_visible")
+TWITTER_SCOPE = GrantScope("twitter", "search.posts", "public")
 BACKEND = PublicBackendIdentity("reach-bounded-executor-v1", "1")
 SOCIAL_BACKEND = PublicBackendIdentity("opencli", "1.8.6-hermes.1")
 CANARY = "BRIDGE_QUERY_CANARY"
@@ -84,6 +111,8 @@ INSTAGRAM_RESULT_CANARY = "EXPLORE_RESULT_CANARY"
 NODE_PATH_CANARY = "OPENCLI_NODE_PATH_CANARY"
 OPENCLI_ROOT_PATH_CANARY = "OPENCLI_ROOT_PATH_CANARY"
 SESSION_PATH_CANARY = "OPENCLI_SESSION_PATH_CANARY"
+TWITTER_QUERY_CANARY = "TWITTER_WSS_QUERY_CANARY"
+XUEQIU_COOKIE_CANARY = "xq_a_token=WSS_SECRET_CANARY; u=fixture"
 REDDIT_OUTPUT = """\
 - type: POST
   author: alice
@@ -109,6 +138,21 @@ INSTAGRAM_EXPLORE_OUTPUT = f"""\
   likes: 50
   comments: 4
   type: image
+"""
+TWITTER_OUTPUT = """\
+- id: "1951234567890123456"
+  author: Alice
+  bio: Builder
+  text: Fixture Twitter post
+  created_at: "2026-08-02T00:00:00Z"
+  likes: 12
+  views: 345
+  url: https://x.com/alice/status/1951234567890123456
+  has_media: false
+  media_urls: []
+  media_posters: []
+  card:
+  quoted_tweet:
 """
 
 
@@ -138,6 +182,23 @@ def _reader(*passphrases: str) -> TtyPassphraseReader:
         return next(values)
 
     return TtyPassphraseReader._from_test_terminal(_Terminal(), prompt=prompt)
+
+
+class _RecordingTransport:
+    def __init__(self, delegate: PinnedWssClient) -> None:
+        self._delegate = delegate
+        self.frames: list[bytes] = []
+
+    async def exchange(
+        self,
+        invocation: OperationInvocationV1,
+        *,
+        deadline: float,
+    ) -> OperationResponseV1 | ErrorFrame:
+        self.frames.append(encode_record(invocation))
+        response = await self._delegate.exchange(invocation, deadline=deadline)
+        self.frames.append(encode_record(response))
+        return response
 
 
 class _FixtureExecutor:
@@ -181,6 +242,56 @@ class _BlockingExecutor:
         self.cleaned.set()
 
 
+class _XueqiuFixtureWorker:
+    def __init__(self) -> None:
+        self.calls = 0
+        self.cookie_seen = False
+
+    async def execute(
+        self,
+        query: str,
+        limit: int,
+        cookie_header: str,
+        *,
+        deadline: float,
+    ) -> XueqiuProjection:
+        assert query == "600519"
+        assert limit == 2
+        assert deadline > time.monotonic()
+        self.calls += 1
+        self.cookie_seen = cookie_header == XUEQIU_COOKIE_CANARY
+        return XueqiuProjection(
+            (XueqiuStockProjection("SH600519", "Kweichow Moutai", "SH"),),
+            False,
+        )
+
+
+class _XueqiuSecretProvider:
+    def __init__(self, capability: CapabilityId) -> None:
+        self.capability = capability
+        self.calls = 0
+        self.material: SecretMaterial | None = None
+
+    async def resolve(
+        self,
+        capability_id: CapabilityId,
+        *,
+        deadline: float,
+        require_fresh: bool,
+    ) -> SecretMaterial:
+        assert capability_id == self.capability
+        assert deadline > time.monotonic()
+        assert require_fresh is True
+        self.calls += 1
+        source = bytearray(XUEQIU_COOKIE_CANARY.encode())
+        self.material = SecretMaterial(source)
+        assert not any(source)
+        return self.material
+
+    def __repr__(self) -> str:
+        return "_XueqiuSecretProvider(<redacted>)"
+
+
 @dataclass
 class _BridgeHarness:
     service: ConnectorService
@@ -191,6 +302,7 @@ class _BridgeHarness:
     snapshot_store: ConnectorSnapshotStore
     trusted_state: Path
     vps_state: Path
+    frames: list[bytes]
 
 
 async def _open_bridge(
@@ -347,10 +459,11 @@ async def _open_bridge(
         vps_state / "receipts.jsonl", connector_public, role="vps"
     )
     snapshot_store = ConnectorSnapshotStore(vps_state)
+    transport = _RecordingTransport(PinnedWssClient(endpoint, profile.authority()))
     client = ConnectorClient(
         profile,
         vps,
-        PinnedWssClient(endpoint, profile.authority()),
+        transport,
         receipt_ledger,
         snapshot_store,
         id_factory=ids,
@@ -364,6 +477,7 @@ async def _open_bridge(
         snapshot_store,
         trusted_state,
         vps_state,
+        transport.frames,
     )
 
 
@@ -416,6 +530,74 @@ def _instagram_explore_call() -> OperationCall:
             "operation": "browse.explore",
             "options": {"limit": 1},
         }
+    )
+
+
+def _twitter_call() -> OperationCall:
+    return validate_search(
+        {
+            "requests": [
+                {
+                    "source": "twitter",
+                    "operation": "search.posts",
+                    "query": TWITTER_QUERY_CANARY,
+                    "options": {"limit": 1},
+                }
+            ]
+        }
+    )[0]
+
+
+def _xueqiu_call() -> OperationCall:
+    return validate_search(
+        {
+            "requests": [
+                {
+                    "source": "xueqiu",
+                    "operation": "search.stocks",
+                    "query": "600519",
+                    "options": {"limit": 2},
+                }
+            ]
+        }
+    )[0]
+
+
+def _capability(value: int) -> CapabilityId:
+    return CapabilityId.new(lambda size: bytes([value]) * size)
+
+
+def _xueqiu_composition(
+    tmp_path: Path,
+    capability: CapabilityId,
+    provider: _XueqiuSecretProvider,
+    worker: _XueqiuFixtureWorker,
+) -> ConnectorExecutionComposition:
+    scope = xueqiu_scope(capability)
+    binding = BitwardenSecretBinding(
+        capability,
+        "xueqiu",
+        "search.stocks",
+        "12345678-1234-4234-8234-123456789abc",
+        "XUEQIU_COOKIE",
+        XUEQIU_COOKIE_INJECTION_TARGET,
+        tmp_path / "bitwarden-profile",
+        "a" * 64,
+    )
+    catalog = SecretBindingCatalog((binding,))
+    return ConnectorExecutionComposition(
+        (
+            ConnectorExecutorBinding(
+                scope,
+                XUEQIU_BACKEND,
+                XueqiuExecutor(scope, worker),
+                secret=SecretExecutionPlan(
+                    catalog,
+                    provider,
+                    XUEQIU_COOKIE_INJECTION_TARGET,
+                ),
+            ),
+        )
     )
 
 
@@ -596,6 +778,158 @@ def test_production_social_composition_and_vps_runtime_cross_real_wss(
         finally:
             await harness.service.close()
             harness.lease.close()
+
+    asyncio.run(exercise())
+
+
+def test_twitter_search_crosses_production_opencli_wss_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _require_loopback_bind()
+    attestation = _opencli_social_fixture(
+        tmp_path,
+        expected_argv=(
+            "twitter",
+            "search",
+            TWITTER_QUERY_CANARY,
+            "--limit",
+            "1",
+            "--format",
+            "yaml",
+        ),
+        output=TWITTER_OUTPUT,
+    )
+    composition = opencli_social_execution_composition(attestation)
+
+    async def exercise() -> None:
+        harness = await _open_bridge(
+            tmp_path,
+            None,
+            scope=TWITTER_SCOPE,
+            execution_composition=composition,
+            persist_vps_profile=True,
+        )
+        monkeypatch.setattr(VpsKeyStore, "_ensure_platform", lambda self: None)
+        runtime = build_vps_runtime(harness.vps_state)
+        try:
+            result = await runtime.dispatch(_twitter_call(), trace_id="b" * 32)
+
+            assert result is not None
+            assert result.selected_backend_id == SOCIAL_BACKEND.backend_id
+            assert [(item.kind, item.text) for item in result.items] == [
+                (
+                    "entry",
+                    "Fixture Twitter post | reactions: 12 | views: 345 | media: no",
+                )
+            ]
+            assert result.items[0].native_id == "1951234567890123456"
+            assert result.items[0].url == ("https://x.com/i/status/1951234567890123456")
+            receipt = harness.receipt_ledger.records()[0].receipt
+            assert (receipt.source, receipt.operation) == (
+                "twitter",
+                "search.posts",
+            )
+            assert receipt.backend == SOCIAL_BACKEND
+            assert harness.store.inspect_grants()[0].used_count == 1
+            assert TWITTER_QUERY_CANARY.encode() not in _persisted_state_bytes(harness)
+        finally:
+            await harness.service.close()
+            harness.lease.close()
+
+    asyncio.run(exercise())
+
+
+def test_xueqiu_secret_capability_is_authorized_before_one_use_and_never_leaks(
+    tmp_path: Path,
+) -> None:
+    _require_loopback_bind()
+    rejected_root = tmp_path / "rejected"
+    success_root = tmp_path / "success"
+    rejected_root.mkdir()
+    success_root.mkdir()
+    approved_capability = _capability(81)
+    rejected_capability = _capability(82)
+    provider = _XueqiuSecretProvider(approved_capability)
+    worker = _XueqiuFixtureWorker()
+    composition = _xueqiu_composition(
+        success_root,
+        approved_capability,
+        provider,
+        worker,
+    )
+
+    async def exercise() -> None:
+        rejected = await _open_bridge(
+            rejected_root,
+            None,
+            scope=xueqiu_scope(rejected_capability),
+            execution_composition=composition,
+        )
+        try:
+            with pytest.raises(ConnectorError) as denied:
+                await rejected.client.execute(_xueqiu_call(), trace_id="2" * 32)
+            assert denied.value.code == ConnectorErrorCode.GRANT_SCOPE_DENIED.value
+            assert provider.calls == 0
+            assert worker.calls == 0
+            assert rejected.store.inspect_grants()[0].used_count == 0
+            denied_records = rejected.receipt_ledger.records()
+            assert len(denied_records) == 1
+            assert denied_records[0].receipt.backend is None
+            assert denied_records[0].receipt.failure is not None
+            assert denied_records[0].receipt.failure.cause_code == (
+                ConnectorErrorCode.GRANT_SCOPE_DENIED.value
+            )
+            assert all(
+                XUEQIU_COOKIE_CANARY.encode() not in frame for frame in rejected.frames
+            )
+        finally:
+            await rejected.service.close()
+            rejected.lease.close()
+
+        approved = await _open_bridge(
+            success_root,
+            None,
+            scope=xueqiu_scope(approved_capability),
+            execution_composition=composition,
+        )
+        try:
+            response = await approved.client.execute(_xueqiu_call(), trace_id="3" * 32)
+
+            assert provider.calls == 1
+            assert provider.material is not None and provider.material.closed is True
+            assert worker.calls == 1
+            assert worker.cookie_seen is True
+            assert response.result is not None
+            assert response.result.items[0].native_id == "SH600519"
+            assert response.receipt.backend == XUEQIU_BACKEND
+            evidence = approved.receipt_ledger.records()
+            assert len(evidence) == 1
+            assert evidence[0].receipt == response.receipt
+            snapshot = approved.snapshot_store.load()
+            assert snapshot is not None
+            assert snapshot.state == "authenticated"
+            assert snapshot.scopes == (("xueqiu", "search.stocks"),)
+
+            cookie = XUEQIU_COOKIE_CANARY.encode()
+            public_surfaces = (
+                *rejected.frames,
+                *approved.frames,
+                encode_record(response),
+                repr(response).encode(),
+                repr(response.result).encode(),
+                repr(response.receipt).encode(),
+                repr(evidence).encode(),
+                repr(snapshot).encode(),
+                repr(composition).encode(),
+                repr(provider).encode(),
+                repr(provider.material).encode(),
+                _persisted_state_bytes(rejected),
+                _persisted_state_bytes(approved),
+            )
+            assert all(cookie not in surface for surface in public_surfaces)
+        finally:
+            await approved.service.close()
+            approved.lease.close()
 
     asyncio.run(exercise())
 

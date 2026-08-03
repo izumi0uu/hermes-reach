@@ -82,6 +82,37 @@ def test_disabled_github_search_fails_closed_without_http_execution(
     assert "private-query-token" not in json.dumps(response)
 
 
+@pytest.mark.parametrize("operation", ["search.people", "search.jobs"])
+def test_frozen_linkedin_searches_fail_closed_without_backend_work(
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+) -> None:
+    monkeypatch.setattr(socket, "create_connection", _unexpected_side_effect)
+    monkeypatch.setattr(subprocess, "run", _unexpected_side_effect)
+    private_query = "private-linkedin-query"
+
+    response = _run(
+        reach_search(
+            {
+                "requests": [
+                    {
+                        "source": "linkedin",
+                        "operation": operation,
+                        "query": private_query,
+                    }
+                ]
+            }
+        )
+    )
+
+    group = response["groups"][0]
+    assert response["outcome"] == "error"
+    assert group["availability"] == "unavailable"
+    assert group["error"]["code"] == "capability_unavailable"
+    assert group["attempts"] == []
+    assert private_query not in json.dumps(response)
+
+
 def test_planned_exa_search_requires_setup_without_echoing_query() -> None:
     private_query = "private-exa-query"
 
@@ -201,7 +232,8 @@ def test_status_can_filter_planned_operations_without_hiding_released_rows() -> 
     assert sources["web"]["operations"] == []
     assert sources["web"]["availability"] == "unavailable"
     assert [operation["name"] for operation in sources["exa"]["operations"]] == [
-        "search.web"
+        "search.web",
+        "search.code",
     ]
     assert sources["exa"]["availability"] == "setup_required"
     assert sources["github"]["operations"] == []

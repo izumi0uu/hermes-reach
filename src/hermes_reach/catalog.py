@@ -31,9 +31,9 @@ PROTOCOL_VERSION: Final = "v1"
 EXA_SETUP_REQUIRED_REASON: Final = (
     "The exact Agent-Reach-selected mcporter artifact bundle requires setup."
 )
-EXA_CODE_UNAVAILABLE_REASON: Final = (
-    "The Agent-Reach-selected Exa code method has an incompatible deprecated "
-    "live contract."
+LINKEDIN_SEARCH_UNAVAILABLE_REASON: Final = (
+    "The selected LinkedIn backend remains frozen because its running service "
+    "identity, query diagnostics, and timeout controls cannot be attested."
 )
 WEB_UNAVAILABLE_REASON: Final = (
     "The pinned Agent-Reach Web callable remains frozen pending a bounded, "
@@ -306,7 +306,13 @@ SOURCE_CATALOG: Final[tuple[SourceSpec, ...]] = (
         "account_session",
         (
             _operation(
-                "twitter", "search.posts", "search", 2, "account_session", (LIMIT,)
+                "twitter",
+                "search.posts",
+                "search",
+                2,
+                "account_session",
+                (LIMIT,),
+                implementation_state="implemented",
             ),
             _operation("twitter", "read.post", "read", 2, "account_session"),
             _operation("twitter", "read.article", "read", 2, "account_session"),
@@ -643,7 +649,13 @@ SOURCE_CATALOG: Final[tuple[SourceSpec, ...]] = (
         "account_session",
         (
             _operation(
-                "xiaohongshu", "search.notes", "search", 2, "account_session", (LIMIT,)
+                "xiaohongshu",
+                "search.notes",
+                "search",
+                2,
+                "account_session",
+                (LIMIT,),
+                implementation_state="implemented",
             ),
             _operation("xiaohongshu", "read.note", "read", 2, "account_session"),
             _operation(
@@ -674,10 +686,22 @@ SOURCE_CATALOG: Final[tuple[SourceSpec, ...]] = (
         "account_session",
         (
             _operation(
-                "linkedin", "search.people", "search", 3, "account_session", (LIMIT,)
+                "linkedin",
+                "search.people",
+                "search",
+                3,
+                "account_session",
+                (LIMIT,),
+                unavailable_reason=LINKEDIN_SEARCH_UNAVAILABLE_REASON,
             ),
             _operation(
-                "linkedin", "search.jobs", "search", 3, "account_session", (LIMIT,)
+                "linkedin",
+                "search.jobs",
+                "search",
+                3,
+                "account_session",
+                (LIMIT,),
+                unavailable_reason=LINKEDIN_SEARCH_UNAVAILABLE_REASON,
             ),
             _operation("linkedin", "read.person_profile", "read", 3, "account_session"),
             _operation(
@@ -752,7 +776,13 @@ SOURCE_CATALOG: Final[tuple[SourceSpec, ...]] = (
         "account_session",
         (
             _operation(
-                "xueqiu", "search.stocks", "search", 2, "account_session", (LIMIT,)
+                "xueqiu",
+                "search.stocks",
+                "search",
+                2,
+                "account_session",
+                (LIMIT,),
+                implementation_state="implemented",
             ),
             _operation("xueqiu", "read.stock_quote", "read", 2, "account_session"),
             _operation(
@@ -813,7 +843,8 @@ SOURCE_CATALOG: Final[tuple[SourceSpec, ...]] = (
                 1,
                 "credential_free",
                 (LIMIT,),
-                unavailable_reason=EXA_CODE_UNAVAILABLE_REASON,
+                implementation_state="implemented",
+                unavailable_reason=EXA_SETUP_REQUIRED_REASON,
             ),
         ),
     ),

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from hermes_reach.catalog import (
+    LINKEDIN_SEARCH_UNAVAILABLE_REASON,
     SOURCE_CATALOG,
     all_operations,
     get_operation,
@@ -102,10 +103,10 @@ def test_catalog_marks_only_reviewed_backend_paths_implemented() -> None:
         if operation.implementation_state == "implemented"
     }
     assert len(operations) == 63
-    assert len(implemented) == 30
+    assert len(implemented) == 34
     assert (
         sum(operation.implementation_state == "planned" for operation in operations)
-        == 33
+        == 29
     )
     assert implemented == {
         ("youtube", "search.videos"),
@@ -138,18 +139,41 @@ def test_catalog_marks_only_reviewed_backend_paths_implemented() -> None:
         ("v2ex", "read.topic"),
         ("v2ex", "read.user"),
         ("exa", "search.web"),
+        ("exa", "search.code"),
+        ("twitter", "search.posts"),
+        ("xiaohongshu", "search.notes"),
+        ("xueqiu", "search.stocks"),
     }
+    linkedin_searches = {
+        (operation.source, operation.name): operation
+        for operation in operations
+        if (operation.source, operation.name)
+        in {("linkedin", "search.people"), ("linkedin", "search.jobs")}
+    }
+    assert set(linkedin_searches) == {
+        ("linkedin", "search.people"),
+        ("linkedin", "search.jobs"),
+    }
+    assert LINKEDIN_SEARCH_UNAVAILABLE_REASON == (
+        "The selected LinkedIn backend remains frozen because its running service "
+        "identity, query diagnostics, and timeout controls cannot be attested."
+    )
+    assert all(
+        operation.implementation_state == "planned"
+        and operation.unavailable_reason == LINKEDIN_SEARCH_UNAVAILABLE_REASON
+        for operation in linkedin_searches.values()
+    )
     assert all(operation.unavailable_reason for operation in operations)
 
 
-def test_exa_web_is_credential_free_while_incompatible_code_stays_planned() -> None:
+def test_exa_searches_are_implemented_and_share_the_artifact_setup_gate() -> None:
     source = get_source("exa")
 
     assert source is not None
     assert source.access_class == "credential_free"
     for name, expected_state in (
         ("search.web", "implemented"),
-        ("search.code", "planned"),
+        ("search.code", "implemented"),
     ):
         operation = get_operation(source, name)
 
@@ -164,7 +188,7 @@ def test_exa_web_is_credential_free_while_incompatible_code_stays_planned() -> N
         assert operation.targets == ()
     code = get_operation(source, "search.code")
     assert code is not None
-    assert "incompatible deprecated live contract" in code.unavailable_reason
+    assert "mcporter artifact bundle requires setup" in code.unavailable_reason
 
 
 def test_alpha1_operation_inputs_are_catalog_owned() -> None:

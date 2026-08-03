@@ -167,6 +167,11 @@ def register_connector_cli(
         type=Path,
         help="Absolute trusted-device home containing the live OpenCLI session",
     )
+    connector_serve.add_argument(
+        "--xueqiu-binding-manifest",
+        type=Path,
+        help="Absolute owner-only Xueqiu capability binding manifest",
+    )
     connector_serve.set_defaults(func=handler)
 
     connector_pair = commands.add_parser(

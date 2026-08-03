@@ -1,128 +1,89 @@
-# Exa mcporter decision for Agent-Reach 1.5.0
-
-- Status: Web search reviewed as a conditional owner-fork binding; code search
-  remains fail-closed
-- Date: 2026-07-31
-- Direct owner-fork operation: `exa:search.web`
-- Not implemented: `exa:search.code`
-- Web backend: `exa-mcporter` version `0.12.3+exa-web.v1`
-- Official Agent-Reach base: `Panniantong/Agent-Reach` `1.5.0` at
-  `b4d52c46c9113cb0f653d6df4cf71ebadf4930ac`
-- Final owner-fork integration: `izumi0uu/Agent-Reach` at
-  `9b69146588b1d162515b81db26b51643c15de8eb`
-- Final integration tree: `e19835071ae6560431b66d5a21e51b598d3d9c81`
-- Rollback integration pin: `2a5829cf3b50bc435c647bfae4c050b1837d0235`
-  (`hermes-reach-integration-0.1.0a3`)
+# Exa mcporter Runtime Decision
 
 ## Decision
 
-Implement `exa:search.web` through one closed owner-fork `execution.v1`
-descriptor for the exact Agent-Reach-selected mcporter + Exa Web method. Keep
-`exa:search.code` planned and unavailable because the pinned Agent-Reach
-`tokensNum` call is incompatible with the live deprecated method's
-`numResults` schema and special endpoint. Renaming the argument or substituting
-Web search would be a semantic change, not exact reuse.
+`exa:search.web` and `exa:search.code` are separate default-local
+`direct_owner_fork_runtime` operations. Both use the exact reviewed mcporter
+artifact closure, but they keep independent backend versions, endpoints,
+methods, result schemas, parsers, and projection tests.
 
-Web search has a `default_local` binding surface in the operation ledger, but
-Hermes composes it only when the operator supplies one complete valid artifact
-attestation. With no values or a partial or malformed declaration, status is
-`setup_required`. Registration, status, and rejected requests do not
-probe Node, mcporter, configuration, the provider, PATH, or the network.
+| Operation | Backend version | Result schema |
+| --- | --- | --- |
+| `search.web` | `0.12.3+exa-web.v1` | `exa.search.result.v1` |
+| `search.code` | `0.12.3+exa-code.v1` | `exa.code.result.v1` |
 
-The owner approved Exa-only provider query visibility on 2026-07-31. Exa sees
-the submitted query and may retain it. Hermes excludes query text from argv,
-environment, provenance, stable errors, receipts, and audit, but this design
-does not claim that the provider does not log queries.
+## Provenance
 
-## Closed Descriptor And Invocation
+- Agent-Reach official base:
+  `b4d52c46c9113cb0f653d6df4cf71ebadf4930ac`
+- Accepted owner-fork candidate:
+  `ee200e7160c4b093a2ba0fcee9f2a6842aefe20d`
+- Accepted candidate tree:
+  `56883c0872bed94050660b16d1ade2e46f73fef9`
+- Rollback integration:
+  `281dc3352c63cdb644f02e028cc5d645c279954a`
 
-The descriptor accepts exact `{query, limit}` arguments: a trimmed query from
-1 through 4,096 characters and a non-boolean integer limit from 1 through 50.
-The provider receives at most 20 results. The result is zero to 20 closed
-`exa.search.result.v1` items under backend
-`exa-mcporter@0.12.3+exa-web.v1`.
+Hermes consumes the candidate by exact commit, never by branch or tag. It is
+the unmerged and untagged head of owner-fork PR #6; this task does not publish
+it.
 
-The fork owns one fixed invocation:
+## Closed Invocation
+
+Both descriptors accept only a trimmed `query` and bounded `limit`. Web is
+fixed to the base Exa MCP endpoint and `web_search_exa`. Code is fixed to:
 
 ```text
-NODE MCPORTER_CLI --config CONFIG --log-level error call
-  --http-url https://mcp.exa.ai/mcp --name exa --tool web_search_exa
-  --args - --output json --timeout 14000 --no-oauth
+endpoint: https://mcp.exa.ai/mcp?tools=get_code_context_exa
+tool: get_code_context_exa
+stdin: {"query": <query>, "numResults": <bounded limit>}
 ```
 
-Canonical compact stdin is exactly a JSON object containing `query` and
-`numResults`. The request cannot select executable, argv, endpoint, method,
-MCP server name, config, environment, credential, output format, timeout, OAuth,
-or fallback. The provider call is keyless and does not read a Hermes, Exa, or
-Bitwarden secret.
+Official Agent-Reach 1.5.0 documented the stale `tokensNum` argument. A live
+read-only schema probe showed that the method expects `numResults` and the
+special endpoint above. The maintained fork records this as a contract
+correction. Hermes does not translate the stale call or substitute Web search.
 
-The child runs with no shell and a sterile environment containing only private
-HOME/XDG/TMP roots plus fixed locale/time values. It has no PATH, Node options,
-npm variables, credentials, proxy/TLS overrides, or editor configuration. The
-fork bounds stdin/stdout, uses a new process group, kills and reaps on timeout
-or cancellation, rejects mutable/oversized/non-JSON MCP envelopes, and projects
-only reviewed result fields.
+The fork alone owns endpoint and method selection, fixed mcporter argv,
+stdin mapping, bounded process lifecycle, MCP envelope validation, Web text
+grammar, Code `Title`/`URL`/`Code or Highlights or Text` grammar, native
+projection, and backend error mapping. The request cannot select executable,
+endpoint, method, output mode, OAuth, provider, or fallback.
 
-## Artifact Capability
+## Artifact And Privacy Boundary
 
-The descriptor requires fieldless `network_access.v1` plus
-`mcporter_artifacts.v1`. Hermes builds the latter only from all seven explicit
-operator values:
+Both operations require ordered `network_access.v1` and
+`mcporter_artifacts.v1` capabilities. Hermes constructs the latter only from a
+complete operator declaration of the absolute Node executable and digest,
+mcporter root/CLI and reviewed tree digest, and sterile config path/digest.
+Missing or malformed evidence leaves both operations `setup_required`.
 
-- absolute Node executable path and SHA-256;
-- absolute mcporter root, an in-root CLI path, and the reviewed tree SHA-256;
-- absolute sterile config path and SHA-256.
+Before every call, Agent-Reach revalidates artifact ownership, modes, link
+counts, containment, versions, dependency closure, tree identity, and sterile
+config. The child has no shell, PATH, proxy, ambient credential, browser, or
+fallback authority and runs in a private HOME/XDG/TMP process group.
 
-The config bytes are exactly `{"imports":[],"mcpServers":{}}` with no trailing
-newline. The mcporter tree digest is the fork's bounded canonical tree digest,
-not a plain archive checksum; operators must retain the reviewed generation
-record together with the deployed tree.
+Exa receives and may retain the submitted query. Hermes keeps the query out of
+argv, environment, cwd, paths, provenance, receipts, audit, logs, exception
+text, and persisted artifacts. Result and stderr bytes remain bounded and are
+never included in stable failure envelopes. Each binding owns one provider
+attempt so the generic runner cannot submit the query twice.
 
-The capability contains no query, endpoint, method, argv, environment, secret,
-or callable. Before invocation, the fork revalidates canonical paths, exact
-file/tree identities, ownership and write constraints, Node and mcporter
-versions, the CLI's pinned dependency graph, and the closed sterile config.
-Missing evidence maps to `backend_unavailable`; identity drift maps to
-`backend_incompatible`.
+## Hermes Boundary
 
-Hermes starts only the fixed isolated Python worker, passes the closed
-attestation in its internal length-prefixed frame, validates the exact
-Agent-Reach handshake with `runtime_module="exa"`, and independently validates
-the typed result before normalization. The worker process is killable but is
-not a kernel syscall sandbox; the accepted artifacts remain an operator-owned
-supply-chain trust boundary.
+Hermes starts only the fixed isolated Python worker, performs the exact
+`runtime_module="exa"` fork handshake, passes the already closed artifact
+identity, independently validates the selected operation/backend/schema/result
+frame, normalizes it, and owns receipts and audit. It contains no Exa endpoint,
+method selector, result parser, API-key client, or semantic fallback.
 
-## Code Search Blocker
+## Review And Rollback
 
-Official Agent-Reach 1.5.0 documents
-`exa.get_code_context_exa(query, tokensNum)`. Archived live-contract evidence
-shows that the current deprecated provider method rejects `tokensNum`, expects
-`numResults`, and is exposed only through a special endpoint. The Web method
-cannot stand in for code search. `exa:search.code` therefore remains planned,
-has no descriptor or production binding, and reports unavailable.
+Reopen this decision on any official base or fork commit movement, execution
+protocol/capability change, Node or mcporter closure change, endpoint/method/
+schema/formatter change, provider-query policy change, worker framing, backend
+identity, error mapping, or projection change.
 
-Review code search only when a future pinned Agent-Reach contract and live
-provider schema agree exactly and the same artifact, process, output, and query
-visibility gates pass.
-
-## Review Milestone
-
-Review this decision on any official base or owner-fork commit change;
-execution protocol, schema, capability, RECORD, Node/mcporter closure, tree
-digest algorithm, sterile-config contract, Exa endpoint/method/schema/formatter,
-provider query visibility, worker framing, backend identity, error mapping, or
-projection change. Any Agent-Reach pin movement reopens all 63 operations.
-
-## Rollout And Rollback
-
-Final integration `9b69146588b1d162515b81db26b51643c15de8eb` is consumed by exact SHA.
-Its tree `e19835071ae6560431b66d5a21e51b598d3d9c81` exactly matches reviewed PR
-head `fd93d2ec86511a4a1514b7ebd13cd996be709692`. All pin-sensitive gates must
-pass before Hermes merge; a protected immutable recovery tag is still required
-before release.
-
-Rollback restores exact pin `2a5829cf3b50bc435c647bfae4c050b1837d0235`,
-recoverable through immutable tag `hermes-reach-integration-0.1.0a3`, and
-returns both Exa operations to their previous planned/unbound state. The old
-generic injected-client path is not restored. No credential, protocol, grant,
-Connector, database, receipt, audit, or stored-data migration is required.
+Rollback restores `281dc3352c63cdb644f02e028cc5d645c279954a`, keeps Web
+search on its previous exact descriptor, and returns Code search to
+planned/unbound. No credential, public protocol, grant, Connector, database,
+receipt, audit, or stored-data migration is required.

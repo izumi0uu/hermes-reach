@@ -24,6 +24,8 @@ OPENCLI_SOCIAL_SCOPES: Final = (
     GrantScope("instagram", "read.profile", "public"),
     GrantScope("instagram", "browse.user_posts", "public"),
     GrantScope("instagram", "browse.explore", "account_visible"),
+    GrantScope("twitter", "search.posts", "public"),
+    GrantScope("xiaohongshu", "search.notes", "public"),
 )
 OPENCLI_SOCIAL_OPERATIONS: Final = tuple(
     (scope.source, scope.operation) for scope in OPENCLI_SOCIAL_SCOPES

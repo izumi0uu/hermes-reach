@@ -339,7 +339,7 @@ def test_foreground_service_starts_locked_then_tty_approves_one_pairing(
             assert display is not None
             assert display.device_label == pairing.device_label
             assert display.device_fingerprint.startswith("sha256:")
-            assert display.scopes == (("web", "read.url", "public"),)
+            assert display.scopes == (("web", "read.url", "public", None),)
             assert service.pending_pairings() == (display,)
 
             service.approve_pairing(pairing.pairing_id)

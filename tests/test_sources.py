@@ -483,14 +483,11 @@ def test_v2ex_rows_have_fixed_fork_bindings_without_registry_io() -> None:
     assert client.calls == []
 
 
-def test_exa_web_requires_artifacts_while_code_search_stays_unavailable() -> None:
+def test_both_exa_searches_require_the_same_complete_artifact_attestation() -> None:
     registry = build_alpha1_registry(FixtureHttpClient())
     runtime = build_alpha1_runtime(FixtureHttpClient())
 
-    for operation, implementation_state, availability in (
-        ("search.web", "implemented", "setup_required"),
-        ("search.code", "planned", "unavailable"),
-    ):
+    for operation in ("search.web", "search.code"):
         record = registry.availability("exa", operation)
         call = validate_search(
             {
@@ -505,8 +502,8 @@ def test_exa_web_requires_artifacts_while_code_search_stays_unavailable() -> Non
             }
         )[0]
 
-        assert call.operation.implementation_state == implementation_state
-        assert record.state == availability
+        assert call.operation.implementation_state == "implemented"
+        assert record.state == "setup_required"
         assert record.reason == call.operation.unavailable_reason
         assert record.backend_id is None
         assert record.backend_version is None
@@ -526,32 +523,34 @@ def _exa_artifacts() -> ExaArtifactAttestation:
     )
 
 
-def test_exa_artifacts_enable_only_the_fixed_web_binding() -> None:
+def test_exa_artifacts_enable_two_independently_versioned_bindings() -> None:
     registry = build_alpha1_registry(exa_artifacts=_exa_artifacts())
-    call = validate_search(
-        {
-            "requests": [
-                {
-                    "source": "exa",
-                    "operation": "search.web",
-                    "query": "bounded query",
-                    "options": {"limit": 3},
-                }
-            ]
-        }
-    )[0]
+    for operation, backend_version in (
+        ("search.web", "0.12.3+exa-web.v1"),
+        ("search.code", "0.12.3+exa-code.v1"),
+    ):
+        call = validate_search(
+            {
+                "requests": [
+                    {
+                        "source": "exa",
+                        "operation": operation,
+                        "query": "bounded query",
+                        "options": {"limit": 3},
+                    }
+                ]
+            }
+        )[0]
+        candidates = registry.candidates(ReadOnlyPolicy().authorize(call))
 
-    candidates = registry.candidates(ReadOnlyPolicy().authorize(call))
-
-    assert len(candidates) == 1
-    assert candidates[0].backend_id == "exa-mcporter"
-    assert candidates[0].backend_version == "0.12.3+exa-web.v1"
-    assert candidates[0].retry_owner == "binding"
-    assert registry.has_binding("exa", "search.code") is False
-    assert registry.availability("exa", "search.code").state == "unavailable"
+        assert len(candidates) == 1
+        assert candidates[0].backend_id == "exa-mcporter"
+        assert candidates[0].backend_version == backend_version
+        assert candidates[0].retry_owner == "binding"
+        assert registry.has_binding("exa", operation) is True
 
 
-def test_invalid_exa_attestation_degrades_only_exa_web() -> None:
+def test_invalid_exa_attestation_degrades_both_exa_searches_only() -> None:
     builder: Callable[..., AdapterRegistry] = build_alpha1_registry
 
     registry = builder(exa_artifacts=object())
@@ -559,7 +558,7 @@ def test_invalid_exa_attestation_degrades_only_exa_web() -> None:
     assert registry.has_binding("exa", "search.web") is False
     assert registry.availability("exa", "search.web").state == "setup_required"
     assert registry.has_binding("exa", "search.code") is False
-    assert registry.availability("exa", "search.code").state == "unavailable"
+    assert registry.availability("exa", "search.code").state == "setup_required"
     for source, operation in (
         ("rss", "read.feed"),
         ("v2ex", "browse.hot"),
@@ -631,7 +630,7 @@ def test_exa_registry_construction_performs_no_process_network_or_file_io(
     )
 
     assert registry.has_binding("exa", "search.web") is True
-    assert registry.has_binding("exa", "search.code") is False
+    assert registry.has_binding("exa", "search.code") is True
 
 
 def test_registry_preserves_a_falsy_injected_http_client_for_rss() -> None:

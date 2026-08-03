@@ -146,6 +146,11 @@ SOCIAL_CALLS = (
         {"username": "openai.dev", "limit": 7},
     ),
     (_browse("instagram", "browse.explore"), {"limit": 7}),
+    (_search("twitter", "search.posts"), {"query": "private query canary", "limit": 7}),
+    (
+        _search("xiaohongshu", "search.notes"),
+        {"query": "private query canary", "limit": 7},
+    ),
 )
 
 
@@ -205,7 +210,7 @@ class _Worker:
 
 
 @pytest.mark.parametrize(("call", "expected_arguments"), SOCIAL_CALLS)
-def test_executor_maps_all_fifteen_catalog_operations_to_closed_worker_requests(
+def test_executor_maps_all_seventeen_catalog_operations_to_closed_worker_requests(
     call: OperationCall,
     expected_arguments: dict[str, object],
 ) -> None:
@@ -501,7 +506,7 @@ def test_attestation_rejects_path_or_digest_authority_drift(
 def test_composition_binds_exact_backend_and_all_public_account_scopes() -> None:
     composition = opencli_social_execution_composition(_attestation())
 
-    assert repr(composition) == "ConnectorExecutionComposition(count=15)"
+    assert repr(composition) == "ConnectorExecutionComposition(count=17)"
     assert composition.required_scope("reddit", "read.post") == GrantScope(
         "reddit", "read.post", "public"
     )
@@ -511,9 +516,14 @@ def test_composition_binds_exact_backend_and_all_public_account_scopes() -> None
     assert composition.required_scope("instagram", "browse.explore") == GrantScope(
         "instagram", "browse.explore", "account_visible"
     )
-    assert composition.required_scope("twitter", "search.posts") is None
+    assert composition.required_scope("twitter", "search.posts") == GrantScope(
+        "twitter", "search.posts", "public"
+    )
+    assert composition.required_scope("xiaohongshu", "search.notes") == GrantScope(
+        "xiaohongshu", "search.notes", "public"
+    )
     scopes = opencli_social_scopes()
-    assert len(scopes) == 15
+    assert len(scopes) == 17
     assert all(
         composition.required_scope(scope.source, scope.operation) == scope
         for scope in scopes

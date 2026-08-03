@@ -42,6 +42,9 @@ _ARCHIVE_CANARIES = (
     b"CONNECTOR_RELEASE_SECRET_CANARY_7f8b1d",
     b"CONNECTOR_RELEASE_PATH_CANARY_c02e91",
     b"CONNECTOR_RELEASE_QUERY_CANARY_45a63c",
+    b"XUEQIU_COOKIE_CANARY_4b71f0",
+    b"XUEQIU_BWS_PROJECT_CANARY_b951de",
+    b"XUEQIU_BWS_SELECTOR_CANARY_22c8a4",
 )
 _RUNTIME_BASENAMES = frozenset(
     {
@@ -692,7 +695,7 @@ def test_built_distributions_install_and_wheel_follows_real_hermes_lifecycle(
         environment=probe_environment,
         phase="enabled plugin host",
     ) == {
-        "frozen_operations": 10,
+        "frozen_operations": 11,
         "hermes_agent_version": "0.19.0",
         "hermes_reach_version": "0.1.0a1",
         "plugin_source": "entrypoint",
@@ -995,6 +998,16 @@ def _add_forbidden_build_inputs(source: Path) -> None:
     for filename, content in generated_files.items():
         (source / filename).write_bytes(content)
         (source / "src" / "hermes_reach" / filename).write_bytes(content)
+
+    (source / "xueqiu-binding-manifest.json").write_bytes(
+        b'{"cookie":"'
+        + _ARCHIVE_CANARIES[3]
+        + b'","project":"'
+        + _ARCHIVE_CANARIES[4]
+        + b'","selector":"'
+        + _ARCHIVE_CANARIES[5]
+        + b'"}'
+    )
 
 
 def _archive_members(archive_path: Path) -> dict[str, bytes]:

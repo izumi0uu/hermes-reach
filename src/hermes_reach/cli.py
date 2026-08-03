@@ -28,7 +28,11 @@ from .connector.errors import ConnectorError, ConnectorErrorCode
 from .connector.execution import ConnectorExecutionComposition
 from .connector.identity import TtyPassphraseReader, VpsKeyStore
 from .connector.limits import DEFAULT_GRANT_TTL_SECONDS, DEFAULT_GRANT_USES
-from .connector.protocol import GrantScope, ProtocolValidationError
+from .connector.protocol import (
+    GrantScope,
+    ProtocolValidationError,
+    PublicBackendIdentity,
+)
 from .connector.service import ConnectorService
 from .connector.transport import WssEndpoint
 from .contracts import (
@@ -48,9 +52,23 @@ from .sources.opencli_social import (
     opencli_social_scopes,
 )
 from .sources.opencli_social_contract import OPENCLI_SOCIAL_BACKEND
+from .sources.xueqiu import XUEQIU_BACKEND
+from .sources.xueqiu_activation import activate_xueqiu_binding
 from .status import doctor_data, sources_data, status_data, unavailable_command_data
 
 _RUNTIME: RuntimeDispatcher = DEFAULT_RUNTIME
+_SOCIAL_SERVE_PATH_FIELDS = (
+    "opencli_social_node",
+    "opencli_social_root",
+    "opencli_social_cli",
+    "opencli_social_session_home",
+)
+_ActivationSummary = tuple[
+    PublicBackendIdentity,
+    tuple[tuple[str, str], ...],
+    tuple[GrantScope, ...],
+    tuple[str, ...],
+]
 
 
 def register_cli(subparser: argparse.ArgumentParser) -> None:
@@ -211,17 +229,11 @@ def connector_command(
             port = getattr(args, "port", None)
             if type(bind_host) is not str or type(port) is not int:
                 raise ConnectorError(ConnectorErrorCode.CONNECTOR_STATE_INVALID)
-            social_node = getattr(args, "opencli_social_node", None)
-            social_root = getattr(args, "opencli_social_root", None)
-            social_cli = getattr(args, "opencli_social_cli", None)
-            social_session_home = getattr(args, "opencli_social_session_home", None)
-            social_inputs = (
-                social_node,
-                social_root,
-                social_cli,
-                social_session_home,
-            )
-            if all(value is None for value in social_inputs):
+            social_inputs = _optional_path_group(args, _SOCIAL_SERVE_PATH_FIELDS)
+            xueqiu_manifest = getattr(args, "xueqiu_binding_manifest", None)
+            if xueqiu_manifest is not None and not isinstance(xueqiu_manifest, Path):
+                raise ConnectorError(ConnectorErrorCode.CONNECTOR_STATE_INVALID)
+            if social_inputs is None and xueqiu_manifest is None:
                 mutations.serve(
                     state_directory,
                     reader=reader,
@@ -229,41 +241,56 @@ def connector_command(
                     port=port,
                 )
                 return
-            if (
-                not isinstance(social_node, Path)
-                or not isinstance(social_root, Path)
-                or not isinstance(social_cli, Path)
-                or not isinstance(social_session_home, Path)
-            ):
-                raise ConnectorError(ConnectorErrorCode.CONNECTOR_STATE_INVALID)
-            attestation = attest_opencli_social_session(
-                social_node,
-                social_root,
-                social_cli,
-                social_session_home,
-            )
-            scopes = opencli_social_scopes()
-            rendered_scopes = "".join(
-                f"scope: {scope.source}:{scope.operation}:{scope.data_scope}\n"
-                for scope in scopes
-            )
-            reader._write(
-                "Enable trusted-device Connector executor:\n"
-                f"backend: {OPENCLI_SOCIAL_BACKEND.backend_id}/"
-                f"{OPENCLI_SOCIAL_BACKEND.backend_version}\n"
-                f"Node SHA-256: {attestation.node_sha256}\n"
-                f"OpenCLI tree SHA-256: {attestation.opencli_tree_sha256}\n"
-                f"scopes: {len(scopes)}\n"
-                f"{rendered_scopes}"
-            )
+
+            compositions: list[ConnectorExecutionComposition] = []
+            summaries: list[_ActivationSummary] = []
+            if social_inputs is not None:
+                social_attestation = attest_opencli_social_session(
+                    social_inputs[0],
+                    social_inputs[1],
+                    social_inputs[2],
+                    social_inputs[3],
+                )
+                social_scopes = opencli_social_scopes()
+                compositions.append(
+                    opencli_social_execution_composition(social_attestation)
+                )
+                summaries.append(
+                    (
+                        OPENCLI_SOCIAL_BACKEND,
+                        (
+                            ("node-sha256", social_attestation.node_sha256),
+                            (
+                                "opencli-tree-sha256",
+                                social_attestation.opencli_tree_sha256,
+                            ),
+                        ),
+                        social_scopes,
+                        (),
+                    )
+                )
+            if isinstance(xueqiu_manifest, Path):
+                xueqiu_activation = activate_xueqiu_binding(xueqiu_manifest)
+                compositions.append(xueqiu_activation.composition)
+                summaries.append(
+                    (
+                        XUEQIU_BACKEND,
+                        (("bws-sha256", xueqiu_activation.bws_sha256),),
+                        (xueqiu_activation.scope,),
+                        (),
+                    )
+                )
+
+            reader._write(_render_activation_summary(tuple(summaries)))
             if not reader._confirm("Type enable to continue: ", "enable"):
                 raise ConnectorError(ConnectorErrorCode.INTERACTIVE_UNLOCK_REQUIRED)
+            composition = ConnectorExecutionComposition.combine(compositions)
             mutations.serve(
                 state_directory,
                 reader=reader,
                 bind_host=bind_host,
                 port=port,
-                execution_composition=opencli_social_execution_composition(attestation),
+                execution_composition=composition,
             )
             return
         raise ConnectorError(ConnectorErrorCode.CONNECTOR_STATE_INVALID)
@@ -302,8 +329,12 @@ async def _pair_vps(args: argparse.Namespace, reader: TtyPassphraseReader) -> No
 
     def display(challenge: PairingDisplay) -> None:
         rendered_scopes = ", ".join(
-            f"{source}:{operation}:{data_scope}"
-            for source, operation, data_scope in challenge.scopes
+            (
+                f"{source}:{operation}:{data_scope}"
+                if capability_id is None
+                else f"{source}:{operation}:{data_scope}:{capability_id}"
+            )
+            for source, operation, data_scope, capability_id in challenge.scopes
         )
         reader._write(
             "Compare this pairing on the trusted Connector terminal.\n"
@@ -333,23 +364,64 @@ def _parse_grant_scopes(values: list[str]) -> tuple[GrantScope, ...]:
     scopes: list[GrantScope] = []
     for value in values:
         parts = value.split(":")
-        if len(parts) not in {2, 3} or any(not part for part in parts):
+        if len(parts) not in {2, 3, 4} or any(not part for part in parts):
             raise ConnectorError(ConnectorErrorCode.GRANT_SCOPE_DENIED)
         source = get_source(parts[0])
         operation = get_operation(source, parts[1]) if source is not None else None
         if operation is None or operation.tool == "status":
             raise ConnectorError(ConnectorErrorCode.GRANT_SCOPE_DENIED)
         data_scope = operation.runtime.data_scope
-        if len(parts) == 3 and parts[2] != data_scope:
+        if len(parts) >= 3 and parts[2] != data_scope:
             raise ConnectorError(ConnectorErrorCode.GRANT_SCOPE_DENIED)
         try:
-            scopes.append(GrantScope(parts[0], parts[1], data_scope))
+            scopes.append(
+                GrantScope(
+                    parts[0],
+                    parts[1],
+                    data_scope,
+                    parts[3] if len(parts) == 4 else None,
+                )
+            )
         except ProtocolValidationError:
             raise ConnectorError(ConnectorErrorCode.GRANT_SCOPE_DENIED) from None
     ordered = tuple(sorted(scopes, key=lambda item: (item.source, item.operation)))
     if len({(item.source, item.operation) for item in ordered}) != len(ordered):
         raise ConnectorError(ConnectorErrorCode.GRANT_SCOPE_DENIED)
     return ordered
+
+
+def _optional_path_group(
+    args: argparse.Namespace,
+    names: tuple[str, ...],
+) -> tuple[Path, ...] | None:
+    values = tuple(getattr(args, name, None) for name in names)
+    if all(value is None for value in values):
+        return None
+    if any(not isinstance(value, Path) for value in values):
+        raise ConnectorError(ConnectorErrorCode.CONNECTOR_STATE_INVALID)
+    return tuple(value for value in values if isinstance(value, Path))
+
+
+def _render_activation_summary(summaries: tuple[_ActivationSummary, ...]) -> str:
+    if not summaries:
+        raise ConnectorError(ConnectorErrorCode.CONNECTOR_STATE_INVALID)
+    lines = ["Enable trusted-device Connector executors:"]
+    scopes: list[GrantScope] = []
+    for backend, digests, selected_scopes, prerequisites in summaries:
+        lines.append(f"backend: {backend.backend_id}/{backend.backend_version}")
+        lines.extend(f"digest: {name}:{value}" for name, value in digests)
+        lines.extend(f"prerequisite: {value}" for value in prerequisites)
+        scopes.extend(selected_scopes)
+    lines.append(f"scopes: {len(scopes)}")
+    lines.extend(f"scope: {_grant_scope_label(scope)}" for scope in scopes)
+    return "\n".join(lines) + "\n"
+
+
+def _grant_scope_label(scope: GrantScope) -> str:
+    label = f"{scope.source}:{scope.operation}:{scope.data_scope}"
+    if scope.capability_id is not None:
+        return f"{label}:{scope.capability_id}"
+    return label
 
 
 def render_command(args: argparse.Namespace) -> str:

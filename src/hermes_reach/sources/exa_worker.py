@@ -9,6 +9,7 @@ import sys
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import BinaryIO, Final, Literal, Protocol, TypeAlias, cast
 from urllib.parse import urlsplit
 
@@ -18,7 +19,7 @@ from ..agent_reach_bridge import (
 )
 from .exa_artifacts import ExaArtifactAttestation
 
-WorkerOperation = Literal["search.web"]
+WorkerOperation = Literal["search.web", "search.code"]
 WorkerErrorCode = Literal[
     "unsupported_protocol_version",
     "invalid_request",
@@ -43,7 +44,9 @@ PROTOCOL_VERSION: Final = "v1"
 EXPECTED_SOURCE: Final = "exa"
 EXPECTED_BACKEND_ID: Final = "exa-mcporter"
 EXPECTED_BACKEND_VERSION: Final = "0.12.3+exa-web.v1"
+EXPECTED_CODE_BACKEND_VERSION: Final = "0.12.3+exa-code.v1"
 RESULT_SCHEMA: Final = "exa.search.result.v1"
+CODE_RESULT_SCHEMA: Final = "exa.code.result.v1"
 
 MAX_REQUEST_BYTES: Final = 64 * 1024
 MAX_OUTPUT_BYTES: Final = 512 * 1024
@@ -91,7 +94,8 @@ _FAILURE_FIELDS: Final = frozenset(
 )
 _BACKEND_FIELDS: Final = frozenset({"id", "version"})
 _ERROR_FIELDS: Final = frozenset({"code"})
-_ITEM_FIELDS: Final = frozenset({"author", "published_at", "text", "title", "url"})
+_WEB_ITEM_FIELDS: Final = frozenset({"author", "published_at", "text", "title", "url"})
+_CODE_ITEM_FIELDS: Final = frozenset({"text", "title", "url"})
 _ERROR_CODES: Final[frozenset[str]] = frozenset(
     {
         "unsupported_protocol_version",
@@ -120,14 +124,40 @@ class ExaProtocolError(ValueError):
 
 
 @dataclass(frozen=True, slots=True)
+class _OperationContract:
+    backend_version: str
+    result_schema: str
+    item_fields: frozenset[str]
+
+
+_OPERATION_CONTRACTS: Final = MappingProxyType(
+    {
+        "search.web": _OperationContract(
+            EXPECTED_BACKEND_VERSION,
+            RESULT_SCHEMA,
+            _WEB_ITEM_FIELDS,
+        ),
+        "search.code": _OperationContract(
+            EXPECTED_CODE_BACKEND_VERSION,
+            CODE_RESULT_SCHEMA,
+            _CODE_ITEM_FIELDS,
+        ),
+    }
+)
+
+
+@dataclass(frozen=True, slots=True, repr=False)
 class WorkerRequest:
     operation: WorkerOperation
     query: str
     limit: int
     artifacts: ExaArtifactAttestation
 
+    def __repr__(self) -> str:
+        return f"WorkerRequest(operation={self.operation!r}, payload=<redacted>)"
 
-@dataclass(frozen=True, slots=True)
+
+@dataclass(frozen=True, slots=True, repr=False)
 class ExaResultProjection:
     """One independently validated result returned by the fork."""
 
@@ -137,14 +167,35 @@ class ExaResultProjection:
     author: str | None
     published_at: str | None
 
+    def __repr__(self) -> str:
+        return "ExaResultProjection(<redacted>)"
 
-@dataclass(frozen=True, slots=True)
+
+@dataclass(frozen=True, slots=True, repr=False)
+class ExaCodeResultProjection:
+    """One independently validated Code result returned by the fork."""
+
+    text: str
+    title: str
+    url: str
+
+    def __repr__(self) -> str:
+        return "ExaCodeResultProjection(<redacted>)"
+
+
+ExaItemProjection: TypeAlias = ExaResultProjection | ExaCodeResultProjection
+
+
+@dataclass(frozen=True, slots=True, repr=False)
 class ExaProjection:
-    """A complete validated Exa Web worker result."""
+    """A complete validated Exa worker result for one closed operation."""
 
     operation: WorkerOperation
-    items: tuple[ExaResultProjection, ...]
+    items: tuple[ExaItemProjection, ...]
     truncated: bool
+
+    def __repr__(self) -> str:
+        return f"ExaProjection(operation={self.operation!r}, result=<redacted>)"
 
 
 @dataclass(frozen=True, slots=True)
@@ -198,8 +249,10 @@ def encode_request(
     query: str,
     limit: int,
     artifacts: ExaArtifactAttestation,
+    *,
+    operation: str = "search.web",
 ) -> bytes:
-    """Encode one fixed Exa Web request for the isolated worker."""
+    """Encode one fixed Exa request for the isolated worker."""
 
     if type(artifacts) is not ExaArtifactAttestation:
         raise ExaProtocolError("worker_request_invalid")
@@ -207,7 +260,7 @@ def encode_request(
         {
             "artifacts": artifacts.frame_fields(),
             "limit": limit,
-            "operation": "search.web",
+            "operation": operation,
             "protocol": PROTOCOL_VERSION,
             "query": query,
         }
@@ -215,17 +268,27 @@ def encode_request(
     return _encode_frame(_request_value(request), MAX_REQUEST_BYTES)
 
 
-def decode_response(raw: bytes, *, limit: int) -> WorkerResponse:
+def decode_response(
+    raw: bytes,
+    *,
+    limit: int,
+    operation: str = "search.web",
+) -> WorkerResponse:
     """Independently validate the complete bounded worker response."""
 
+    contract_operation = _operation(operation, request=False)
     maximum_items = min(_bounded_limit(limit), MAX_ITEMS)
     value = _decode_frame(raw, MAX_OUTPUT_BYTES)
     if not isinstance(value, dict):
         raise ExaProtocolError("worker_response_invalid")
     if set(value) == _SUCCESS_FIELDS:
-        return _decode_success(value, maximum_items=maximum_items)
+        return _decode_success(
+            value,
+            operation=contract_operation,
+            maximum_items=maximum_items,
+        )
     if set(value) == _FAILURE_FIELDS:
-        return _decode_failure(value)
+        return _decode_failure(value, operation=contract_operation)
     raise ExaProtocolError("worker_response_invalid")
 
 
@@ -245,15 +308,13 @@ def _read_request(stream: BinaryIO) -> WorkerRequest:
 def _validated_request(value: object) -> WorkerRequest:
     if not isinstance(value, dict) or set(value) != _REQUEST_FIELDS:
         raise ExaProtocolError("worker_request_invalid")
-    if (
-        value.get("protocol") != PROTOCOL_VERSION
-        or value.get("operation") != "search.web"
-    ):
+    if value.get("protocol") != PROTOCOL_VERSION:
         raise ExaProtocolError("worker_request_invalid")
+    operation = _operation(value.get("operation"), request=True)
     query = _bounded_text(value.get("query"), MAX_QUERY_CHARACTERS)
     limit = _bounded_limit(value.get("limit"))
     artifacts = _decode_artifacts(value.get("artifacts"))
-    return WorkerRequest("search.web", query, limit, artifacts)
+    return WorkerRequest(operation, query, limit, artifacts)
 
 
 def _decode_artifacts(value: object) -> ExaArtifactAttestation:
@@ -302,7 +363,7 @@ def _execute_request(
     try:
         api = provider()
     except Exception:
-        return _failure_value("backend_contract_violation")
+        return _failure_value("backend_contract_violation", request.operation)
 
     try:
         request_factory = cast(Callable[..., object], api.execution_request_type)
@@ -311,7 +372,7 @@ def _execute_request(
         context_factory = cast(Callable[..., object], api.execution_context_type)
         artifacts_type = getattr(api, "mcporter_artifacts_type", None)
         if not isinstance(artifacts_type, type):
-            return _failure_value("backend_contract_violation")
+            return _failure_value("backend_contract_violation", request.operation)
         artifacts_factory = cast(Callable[..., object], artifacts_type)
 
         execution_request = request_factory(
@@ -337,95 +398,114 @@ def _execute_request(
             return _success_value(
                 cast(_ExecutionSuccess, result),
                 api=api,
+                operation=request.operation,
                 maximum_items=maximum_items,
             )
         if type(result) is api.execution_failure_type:
             failure = cast(_ExecutionFailure, result)
             code = failure.error_code
             if (
-                _valid_execution_identity(failure)
+                _valid_execution_identity(failure, request.operation)
                 and type(code) is str
                 and code in _ERROR_CODES
             ):
-                return _failure_value(cast(WorkerErrorCode, code))
+                return _failure_value(
+                    cast(WorkerErrorCode, code),
+                    request.operation,
+                )
     except Exception:
-        return _failure_value("backend_contract_violation")
-    return _failure_value("backend_contract_violation")
+        return _failure_value("backend_contract_violation", request.operation)
+    return _failure_value("backend_contract_violation", request.operation)
 
 
 def _success_value(
     success: _ExecutionSuccess,
     *,
     api: AgentReachExecutionApi,
+    operation: WorkerOperation,
     maximum_items: int,
 ) -> Mapping[str, object]:
+    contract = _OPERATION_CONTRACTS[operation]
     items = success.items
     if (
-        not _valid_execution_identity(success)
+        not _valid_execution_identity(success, operation)
         or success.partial_error_code is not None
         or type(success.truncated) is not bool
         or type(items) is not tuple
         or len(items) > maximum_items
     ):
-        return _failure_value("backend_contract_violation")
+        return _failure_value("backend_contract_violation", operation)
     projected: list[dict[str, object]] = []
     for raw_item in items:
         if type(raw_item) is not api.execution_item_type:
-            return _failure_value("backend_contract_violation")
+            return _failure_value("backend_contract_violation", operation)
         item = cast(_ExecutionItem, raw_item)
-        if item.schema_id != RESULT_SCHEMA:
-            return _failure_value("backend_contract_violation")
+        if item.schema_id != contract.result_schema:
+            return _failure_value("backend_contract_violation", operation)
         try:
-            projected.append(_item_value(_decode_item(item.fields)))
+            projected.append(
+                _item_value(_decode_item(item.fields, operation=operation))
+            )
         except ExaProtocolError:
-            return _failure_value("backend_contract_violation")
+            return _failure_value("backend_contract_violation", operation)
     return {
-        "backend": _backend_value(),
+        "backend": _backend_value(operation),
         "items": projected,
-        "operation": "search.web",
+        "operation": operation,
         "partial": None,
         "protocol": PROTOCOL_VERSION,
-        "schema": RESULT_SCHEMA,
+        "schema": contract.result_schema,
         "source": EXPECTED_SOURCE,
         "truncated": success.truncated,
     }
 
 
-def _valid_execution_identity(value: _ExecutionSuccess | _ExecutionFailure) -> bool:
+def _valid_execution_identity(
+    value: _ExecutionSuccess | _ExecutionFailure,
+    operation: WorkerOperation,
+) -> bool:
     return bool(
         value.protocol_version == PROTOCOL_VERSION
         and value.source == EXPECTED_SOURCE
-        and value.operation == "search.web"
+        and value.operation == operation
         and value.backend_id == EXPECTED_BACKEND_ID
-        and value.backend_version == EXPECTED_BACKEND_VERSION
+        and value.backend_version == _OPERATION_CONTRACTS[operation].backend_version
     )
 
 
-def _failure_value(error_code: WorkerErrorCode) -> dict[str, object]:
+def _failure_value(
+    error_code: WorkerErrorCode,
+    operation: WorkerOperation = "search.web",
+) -> dict[str, object]:
     return {
-        "backend": _backend_value(),
+        "backend": _backend_value(operation),
         "error": {"code": error_code},
-        "operation": "search.web",
+        "operation": operation,
         "protocol": PROTOCOL_VERSION,
         "source": EXPECTED_SOURCE,
     }
 
 
-def _backend_value() -> dict[str, str]:
-    return {"id": EXPECTED_BACKEND_ID, "version": EXPECTED_BACKEND_VERSION}
+def _backend_value(operation: WorkerOperation) -> dict[str, str]:
+    return {
+        "id": EXPECTED_BACKEND_ID,
+        "version": _OPERATION_CONTRACTS[operation].backend_version,
+    }
 
 
 def _decode_success(
     value: Mapping[str, object],
     *,
+    operation: WorkerOperation,
     maximum_items: int,
 ) -> ExaProjection:
-    _validate_response_identity(value)
-    _decode_backend(value["backend"])
+    contract = _OPERATION_CONTRACTS[operation]
+    _validate_response_identity(value, operation)
+    _decode_backend(value["backend"], operation)
     items = value["items"]
     truncated = value["truncated"]
     if (
-        value["schema"] != RESULT_SCHEMA
+        value["schema"] != contract.result_schema
         or value["partial"] is not None
         or type(truncated) is not bool
         or not isinstance(items, list)
@@ -433,47 +513,59 @@ def _decode_success(
     ):
         raise ExaProtocolError("worker_response_invalid")
     return ExaProjection(
-        "search.web",
-        tuple(_decode_item(item) for item in items),
+        operation,
+        tuple(_decode_item(item, operation=operation) for item in items),
         truncated,
     )
 
 
-def _decode_failure(value: Mapping[str, object]) -> ForkExecutionFailure:
-    _validate_response_identity(value)
-    _decode_backend(value["backend"])
+def _decode_failure(
+    value: Mapping[str, object],
+    *,
+    operation: WorkerOperation,
+) -> ForkExecutionFailure:
+    _validate_response_identity(value, operation)
+    _decode_backend(value["backend"], operation)
     error = value["error"]
     if not isinstance(error, dict) or set(error) != _ERROR_FIELDS:
         raise ExaProtocolError("worker_response_invalid")
     code = error["code"]
     if type(code) is not str or code not in _ERROR_CODES:
         raise ExaProtocolError("worker_response_invalid")
-    return ForkExecutionFailure("search.web", cast(WorkerErrorCode, code))
+    return ForkExecutionFailure(operation, cast(WorkerErrorCode, code))
 
 
-def _validate_response_identity(value: Mapping[str, object]) -> None:
+def _validate_response_identity(
+    value: Mapping[str, object],
+    operation: WorkerOperation,
+) -> None:
     if (
         value["protocol"] != PROTOCOL_VERSION
         or value["source"] != EXPECTED_SOURCE
-        or value["operation"] != "search.web"
+        or value["operation"] != operation
     ):
         raise ExaProtocolError("worker_response_invalid")
 
 
-def _decode_backend(value: object) -> None:
+def _decode_backend(value: object, operation: WorkerOperation) -> None:
     if (
         not isinstance(value, dict)
         or set(value) != _BACKEND_FIELDS
         or value["id"] != EXPECTED_BACKEND_ID
-        or value["version"] != EXPECTED_BACKEND_VERSION
+        or value["version"] != _OPERATION_CONTRACTS[operation].backend_version
     ):
         raise ExaProtocolError("worker_response_invalid")
 
 
-def _decode_item(value: object) -> ExaResultProjection:
+def _decode_item(
+    value: object,
+    *,
+    operation: WorkerOperation,
+) -> ExaItemProjection:
+    contract = _OPERATION_CONTRACTS[operation]
     if (
         not isinstance(value, Mapping)
-        or set(value) != _ITEM_FIELDS
+        or set(value) != contract.item_fields
         or any(type(key) is not str for key in value)
     ):
         raise ExaProtocolError("worker_response_invalid")
@@ -482,6 +574,8 @@ def _decode_item(value: object) -> ExaResultProjection:
     url = _label_text(value["url"], MAX_URL_CHARACTERS)
     if not _valid_public_url(url):
         raise ExaProtocolError("worker_response_invalid")
+    if operation == "search.code":
+        return ExaCodeResultProjection(text, title, url)
     return ExaResultProjection(
         text,
         title,
@@ -491,14 +585,18 @@ def _decode_item(value: object) -> ExaResultProjection:
     )
 
 
-def _item_value(item: ExaResultProjection) -> dict[str, object]:
-    return {
-        "author": item.author,
-        "published_at": item.published_at,
-        "text": item.text,
-        "title": item.title,
-        "url": item.url,
-    }
+def _item_value(item: ExaItemProjection) -> dict[str, object]:
+    if type(item) is ExaCodeResultProjection:
+        return {"text": item.text, "title": item.title, "url": item.url}
+    if type(item) is ExaResultProjection:
+        return {
+            "author": item.author,
+            "published_at": item.published_at,
+            "text": item.text,
+            "title": item.title,
+            "url": item.url,
+        }
+    raise ExaProtocolError("worker_response_invalid")
 
 
 def _required_text(value: object, maximum: int) -> str:
@@ -547,6 +645,14 @@ def _bounded_limit(value: object) -> int:
     if type(value) is not int or not 1 <= value <= MAX_LIMIT:
         raise ExaProtocolError("worker_request_invalid")
     return value
+
+
+def _operation(value: object, *, request: bool) -> WorkerOperation:
+    if type(value) is not str or value not in _OPERATION_CONTRACTS:
+        raise ExaProtocolError(
+            "worker_request_invalid" if request else "worker_response_invalid"
+        )
+    return cast(WorkerOperation, value)
 
 
 def _valid_public_url(value: str) -> bool:
@@ -716,7 +822,7 @@ def _main() -> int:
     except ExaProtocolError:
         try:
             output = _encode_frame(
-                _failure_value("backend_contract_violation"),
+                _failure_value("backend_contract_violation", request.operation),
                 MAX_OUTPUT_BYTES,
             )
         except Exception:
@@ -734,6 +840,9 @@ if __name__ == "__main__":
 
 
 __all__ = [
+    "CODE_RESULT_SCHEMA",
+    "EXPECTED_CODE_BACKEND_VERSION",
+    "ExaCodeResultProjection",
     "ExaProjection",
     "ExaProtocolError",
     "ExaResultProjection",

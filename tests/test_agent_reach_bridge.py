@@ -333,6 +333,7 @@ def test_static_handshake_only_discovers_capabilities(
         "agent_reach.execution.v1.v2ex",
         "agent_reach.execution.v1.exa",
         "agent_reach.execution.v1.opencli_social",
+        "agent_reach.execution.v1.xueqiu",
         "yt_dlp",
         "yt_dlp_ejs",
         "deno",
@@ -352,7 +353,9 @@ def test_static_handshake_only_discovers_capabilities(
     assert api.mcporter_artifacts_type.__name__ == "McporterArtifactsV1"
     assert api.opencli_session_capability == "opencli_session.v1"
     assert api.opencli_session_type.__name__ == "OpenCliSessionV1"
-    assert len(api.capabilities) == 29
+    assert api.xueqiu_session_capability == "xueqiu_session.v1"
+    assert api.xueqiu_session_type.__name__ == "XueqiuSessionV1"
+    assert len(api.capabilities) == 33
     assert all(
         module_name not in sys.modules for module_name in runtime_and_backend_modules
     )
@@ -393,6 +396,10 @@ def test_static_handshake_freezes_order_and_new_descriptor_schemas() -> None:
         ("instagram", "read.profile"),
         ("instagram", "browse.user_posts"),
         ("instagram", "browse.explore"),
+        ("twitter", "search.posts"),
+        ("xiaohongshu", "search.notes"),
+        ("xueqiu", "search.stocks"),
+        ("exa", "search.code"),
     )
     by_operation = {
         (capability.source, capability.operation): capability
@@ -413,7 +420,7 @@ def test_static_handshake_freezes_order_and_new_descriptor_schemas() -> None:
         "network_access.v1",
         "mcporter_artifacts.v1",
     )
-    social = api.capabilities[14:]
+    social = api.capabilities[14:29]
     assert all(capability.backend_id == "opencli" for capability in social)
     assert all(capability.backend_version == "1.8.6-hermes.1" for capability in social)
     assert all(
@@ -427,12 +434,29 @@ def test_static_handshake_freezes_order_and_new_descriptor_schemas() -> None:
     assert groups.result_schema_ids == ("facebook.group.v1",)
     explore = by_operation[("instagram", "browse.explore")]
     assert explore.argument_schema_id == "instagram.browse.explore.arguments.v1"
+    twitter = by_operation[("twitter", "search.posts")]
+    assert twitter.result_schema_ids == ("twitter.post.v1",)
+    assert twitter.required_host_capabilities == ("opencli_session.v1",)
+    xiaohongshu = by_operation[("xiaohongshu", "search.notes")]
+    assert xiaohongshu.result_schema_ids == ("xiaohongshu.note.v1",)
+    assert xiaohongshu.required_host_capabilities == ("opencli_session.v1",)
+    xueqiu = by_operation[("xueqiu", "search.stocks")]
+    assert xueqiu.backend_id == "xueqiu-api"
+    assert xueqiu.required_host_capabilities == ("xueqiu_session.v1",)
+    exa_code = by_operation[("exa", "search.code")]
+    assert exa_code.backend_id == "exa-mcporter"
+    assert exa_code.backend_version == "0.12.3+exa-code.v1"
+    assert exa_code.result_schema_ids == ("exa.code.result.v1",)
+    assert exa_code.required_host_capabilities == (
+        "network_access.v1",
+        "mcporter_artifacts.v1",
+    )
 
 
 def test_static_handshake_attests_opencli_runtime_and_guard_records() -> None:
     installation = bridge._default_installation_reader(AGENT_REACH_DISTRIBUTION)
 
-    assert len(installation.files) == 13
+    assert len(installation.files) == 14
     assert {
         relative: (installed.hash_algorithm, installed.hash_value, installed.size)
         for relative, installed in installation.files.items()
@@ -440,17 +464,23 @@ def test_static_handshake_attests_opencli_runtime_and_guard_records() -> None:
         in {
             "agent_reach/execution/v1/opencli_social.py",
             "agent_reach/execution/v1/_opencli_no_lifecycle.mjs",
+            "agent_reach/execution/v1/xueqiu.py",
         }
     } == {
         "agent_reach/execution/v1/opencli_social.py": (
             "sha256",
-            "GNpKPH9gmWAJY37PD6X1ZunVSwsHbPj3su7TeH6uEUE",
-            68_824,
+            "uXvlrPLp-foRHNmfd3DRJZOP88_RF2ZTNOGTa99YUhs",
+            76_010,
         ),
         "agent_reach/execution/v1/_opencli_no_lifecycle.mjs": (
             "sha256",
             "nJzZv4Fj-z-6hj-Upx6eoJ6jMjuE-JoGtV49HxlRUhM",
             3_539,
+        ),
+        "agent_reach/execution/v1/xueqiu.py": (
+            "sha256",
+            "f2Kv-gT3YpRIqybPANceHebf1a9zguBUxuveAEJdFFc",
+            26_512,
         ),
     }
 
@@ -466,6 +496,7 @@ def test_static_handshake_attests_opencli_runtime_and_guard_records() -> None:
         "agent_reach/execution/v1/exa.py",
         "agent_reach/execution/v1/opencli_social.py",
         "agent_reach/execution/v1/_opencli_no_lifecycle.mjs",
+        "agent_reach/execution/v1/xueqiu.py",
     ],
 )
 @pytest.mark.parametrize(
@@ -512,6 +543,7 @@ def test_static_handshake_rejects_record_metadata_drift(
         "agent_reach/execution/v1/exa.py",
         "agent_reach/execution/v1/opencli_social.py",
         "agent_reach/execution/v1/_opencli_no_lifecycle.mjs",
+        "agent_reach/execution/v1/xueqiu.py",
     ],
 )
 def test_static_handshake_rejects_record_content_drift(
@@ -628,6 +660,7 @@ def test_static_handshake_rejects_parent_initializer_content_drift_before_import
         "agent_reach/execution/v1/exa.py",
         "agent_reach/execution/v1/opencli_social.py",
         "agent_reach/execution/v1/_opencli_no_lifecycle.mjs",
+        "agent_reach/execution/v1/xueqiu.py",
     ],
 )
 def test_static_handshake_requires_every_fork_runtime_record(relative: str) -> None:
@@ -716,6 +749,26 @@ def test_static_handshake_rejects_every_descriptor_drift(
             "required_host_capabilities",
             ("network_access.v1",),
         ),
+        (
+            ("twitter", "search.posts"),
+            "result_schema_ids",
+            ("twitter.post.v2",),
+        ),
+        (
+            ("xiaohongshu", "search.notes"),
+            "required_host_capabilities",
+            ("network_access.v1",),
+        ),
+        (
+            ("xueqiu", "search.stocks"),
+            "backend_version",
+            "1.5.0+search.v2",
+        ),
+        (
+            ("exa", "search.code"),
+            "result_schema_ids",
+            ("exa.web.result.v1",),
+        ),
     ],
 )
 def test_static_handshake_rejects_new_descriptor_schema_drift(
@@ -751,6 +804,7 @@ def test_static_handshake_rejects_new_descriptor_schema_drift(
         "network_access_capability",
         "private_workspace_capability",
         "mcporter_artifacts_capability",
+        "xueqiu_session_capability",
         "missing_capability",
         "reversed_capabilities",
         "list_capabilities",
@@ -773,6 +827,8 @@ def test_static_handshake_rejects_protocol_host_and_registry_drift(
         monkeypatch.setattr(execution, "PRIVATE_WORKSPACE_CAPABILITY", "workspace.v2")
     elif drift == "mcporter_artifacts_capability":
         monkeypatch.setattr(execution, "MCPORTER_ARTIFACTS_CAPABILITY", "process.v1")
+    elif drift == "xueqiu_session_capability":
+        monkeypatch.setattr(execution, "XUEQIU_SESSION_CAPABILITY", "cookie.v1")
     elif drift == "missing_capability":
         monkeypatch.setattr(registry, "_CAPABILITIES", capabilities[:1])
     elif drift == "reversed_capabilities":
@@ -813,11 +869,16 @@ def test_static_handshake_rejects_a_callable_from_a_mixed_module(
         validate_agent_reach_execution_contract(direct_url_reader=_direct_url)
 
 
+@pytest.mark.parametrize(
+    "class_name",
+    ["ExecutionRequestV1", "XueqiuSessionV1"],
+)
 def test_static_handshake_rejects_a_fake_required_contract_class(
     monkeypatch: pytest.MonkeyPatch,
+    class_name: str,
 ) -> None:
     execution = _execution_module()
-    monkeypatch.setattr(execution, "ExecutionRequestV1", FakeCapability)
+    monkeypatch.setattr(execution, class_name, FakeCapability)
 
     with pytest.raises(AgentReachBridgeError, match="capability contract"):
         validate_agent_reach_execution_contract(direct_url_reader=_direct_url)
@@ -871,7 +932,15 @@ def test_static_handshake_rejects_module_origin_drift(
 
 @pytest.mark.parametrize(
     "runtime_module",
-    ["rss", "bilibili", "youtube", "v2ex", "exa", "opencli_social"],
+    [
+        "rss",
+        "bilibili",
+        "youtube",
+        "v2ex",
+        "exa",
+        "opencli_social",
+        "xueqiu",
+    ],
 )
 def test_worker_handshake_rejects_runtime_module_origin_drift(
     monkeypatch: pytest.MonkeyPatch,
@@ -940,7 +1009,7 @@ def test_worker_handshake_accepts_youtube_without_importing_backend(
         runtime_module="youtube",
     )
 
-    assert len(api.capabilities) == 29
+    assert len(api.capabilities) == 33
     assert all(
         module_name not in sys.modules
         for module_name in ("yt_dlp", "yt_dlp_ejs", "deno")
@@ -953,6 +1022,7 @@ def test_worker_handshake_accepts_youtube_without_importing_backend(
         ("v2ex", "execute_v2ex"),
         ("exa", "execute_exa"),
         ("opencli_social", "execute_opencli_social"),
+        ("xueqiu", "execute_xueqiu"),
     ],
 )
 def test_worker_handshake_rejects_new_runtime_signature_drift(
@@ -1076,8 +1146,14 @@ def test_upstream_doctor_projection_is_redacted_and_uses_read_only_config() -> N
     result = upstream_doctor_data(doctor, lambda: catalog)
 
     youtube = next(item for item in result["channels"] if item["source"] == "youtube")
+    linkedin = next(item for item in result["channels"] if item["source"] == "linkedin")
     assert youtube["availability"] == "degraded"
     assert youtube["active_backend"] == "youtube-backend"
+    assert linkedin["availability"] == "unavailable"
+    assert linkedin["backends"] == []
+    assert "active_backend" not in linkedin
+    assert "linkedin-scraper-mcp" not in str(linkedin)
+    assert "Jina Reader" not in str(linkedin)
     assert "host-command" not in str(result)
     assert "secret" not in str(result)
     assert result["pinned_commit"] == AGENT_REACH_FORK_COMMIT
@@ -1093,6 +1169,17 @@ def test_upstream_doctor_rejects_an_incomplete_or_unknown_report() -> None:
 
     with pytest.raises(AgentReachBridgeError):
         upstream_doctor_data(lambda _: {}, lambda: catalog)
+    with pytest.raises(AgentReachBridgeError):
+        upstream_doctor_data(
+            lambda _: {
+                "web": {
+                    "status": "off",
+                    "active_backend": None,
+                    "reach_policy": [],
+                }
+            },
+            lambda: catalog,
+        )
 
 
 def test_upstream_health_never_probes_session_or_credential_channels() -> None:
@@ -1121,4 +1208,9 @@ def test_upstream_health_never_probes_session_or_credential_channels() -> None:
     assert "xiaoyuzhou" not in SAFE_AGENT_REACH_DOCTOR_CHANNELS
     assert report["xueqiu"]["reach_policy"] == "connector_required"
     assert report["xiaoyuzhou"]["reach_policy"] == "connector_required"
+    assert report["linkedin"] == {
+        "status": "off",
+        "active_backend": None,
+        "reach_policy": "frozen_unavailable",
+    }
     assert "raw-upstream-message" not in str(report)

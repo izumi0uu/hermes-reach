@@ -21,13 +21,14 @@ AGENT_REACH_DISTRIBUTION: Final = "agent-reach"
 AGENT_REACH_VERSION: Final = "1.5.0"
 AGENT_REACH_OFFICIAL_BASE_COMMIT: Final = "b4d52c46c9113cb0f653d6df4cf71ebadf4930ac"
 AGENT_REACH_FORK_URL: Final = "https://github.com/izumi0uu/Agent-Reach.git"
-AGENT_REACH_FORK_COMMIT: Final = "281dc3352c63cdb644f02e028cc5d645c279954a"
+AGENT_REACH_FORK_COMMIT: Final = "ee200e7160c4b093a2ba0fcee9f2a6842aefe20d"
 AGENT_REACH_PROTOCOL_VERSION: Final = "v1"
 AGENT_REACH_FETCHED_DOCUMENT_CAPABILITY: Final = "fetched_document.v1"
 AGENT_REACH_NETWORK_ACCESS_CAPABILITY: Final = "network_access.v1"
 AGENT_REACH_PRIVATE_WORKSPACE_CAPABILITY: Final = "private_workspace.v1"
 AGENT_REACH_MCPORTER_ARTIFACTS_CAPABILITY: Final = "mcporter_artifacts.v1"
 AGENT_REACH_OPENCLI_SESSION_CAPABILITY: Final = "opencli_session.v1"
+AGENT_REACH_XUEQIU_SESSION_CAPABILITY: Final = "xueqiu_session.v1"
 # Compatibility alias for callers that previously knew only one exact dependency pin.
 AGENT_REACH_COMMIT: Final = AGENT_REACH_FORK_COMMIT
 BILIBILI_CLI_DISTRIBUTION: Final = "bilibili-cli"
@@ -42,6 +43,10 @@ DENO_DISTRIBUTION: Final = "deno"
 DENO_VERSION: Final = "2.8.3"
 SAFE_AGENT_REACH_DOCTOR_CHANNELS: Final[frozenset[str]] = frozenset(
     {"web", "rss", "v2ex", "youtube"}
+)
+_FROZEN_AGENT_REACH_DOCTOR_CHANNELS: Final[frozenset[str]] = frozenset({"linkedin"})
+_FROZEN_AGENT_REACH_DOCTOR_REASON: Final = (
+    "Hermes Reach keeps this upstream channel frozen and unavailable."
 )
 _UPSTREAM_TO_REACH: Final[Mapping[str, str]] = MappingProxyType(
     {
@@ -88,6 +93,7 @@ _EXECUTION_V2EX_MODULE: Final = f"{_EXECUTION_MODULE}.v2ex"
 _EXECUTION_EXA_MODULE: Final = f"{_EXECUTION_MODULE}.exa"
 _EXECUTION_OPENCLI_SOCIAL_MODULE: Final = f"{_EXECUTION_MODULE}.opencli_social"
 _EXECUTION_OPENCLI_GUARD_RESOURCE: Final = f"{_EXECUTION_MODULE}._opencli_no_lifecycle"
+_EXECUTION_XUEQIU_MODULE: Final = f"{_EXECUTION_MODULE}.xueqiu"
 _EXECUTION_MODULE_FILES: Final[Mapping[str, tuple[str, str, int]]] = MappingProxyType(
     {
         _AGENT_REACH_MODULE: (
@@ -102,18 +108,18 @@ _EXECUTION_MODULE_FILES: Final[Mapping[str, tuple[str, str, int]]] = MappingProx
         ),
         _EXECUTION_MODULE: (
             "agent_reach/execution/v1/__init__.py",
-            "E0Rh3_5lAxmaCRb14bq33zUslhtYfAAT7PK4EZd-fEU",
-            1_327,
+            "rtwLQULaRU2pA5brf5UWpYenQau02vPLz_m1-NI-a3o",
+            1_435,
         ),
         _EXECUTION_CONTRACTS_MODULE: (
             "agent_reach/execution/v1/contracts.py",
-            "GNEszOYYOi1rhQo0XJGBO8vJ0tUTGy-Nb08FPPwfwvo",
-            54_266,
+            "erSgC11vWKHzBY18LEBUoiLrdEljujF0LapasCzm1Po",
+            61_860,
         ),
         _EXECUTION_REGISTRY_MODULE: (
             "agent_reach/execution/v1/registry.py",
-            "allM21uoqORwCHcNPHRp8b0qCyJeCbesDLrkdaFGXHI",
-            23_126,
+            "vDc3hsoTZzqyCLwUmVQWJ6LTsLfQ14-50IngQHlYK2Y",
+            25_696,
         ),
         _EXECUTION_RSS_MODULE: (
             "agent_reach/execution/v1/rss.py",
@@ -142,18 +148,23 @@ _EXECUTION_MODULE_FILES: Final[Mapping[str, tuple[str, str, int]]] = MappingProx
         ),
         _EXECUTION_EXA_MODULE: (
             "agent_reach/execution/v1/exa.py",
-            "106HW8O8nRfdpsUrGjacUUmkHyucAZ13YKjUlBypby4",
-            32_724,
+            "HWF0xeYCNBh6txohl-ozw49l-7qlx4uPYx2z3B-ncWk",
+            35_871,
         ),
         _EXECUTION_OPENCLI_SOCIAL_MODULE: (
             "agent_reach/execution/v1/opencli_social.py",
-            "GNpKPH9gmWAJY37PD6X1ZunVSwsHbPj3su7TeH6uEUE",
-            68_824,
+            "uXvlrPLp-foRHNmfd3DRJZOP88_RF2ZTNOGTa99YUhs",
+            76_010,
         ),
         _EXECUTION_OPENCLI_GUARD_RESOURCE: (
             "agent_reach/execution/v1/_opencli_no_lifecycle.mjs",
             "nJzZv4Fj-z-6hj-Upx6eoJ6jMjuE-JoGtV49HxlRUhM",
             3_539,
+        ),
+        _EXECUTION_XUEQIU_MODULE: (
+            "agent_reach/execution/v1/xueqiu.py",
+            "f2Kv-gT3YpRIqybPANceHebf1a9zguBUxuveAEJdFFc",
+            26_512,
         ),
     }
 )
@@ -165,6 +176,7 @@ _EXPECTED_EXECUTION_EXPORTS: Final = (
     "OPENCLI_SESSION_CAPABILITY",
     "PRIVATE_WORKSPACE_CAPABILITY",
     "PROTOCOL_VERSION",
+    "XUEQIU_SESSION_CAPABILITY",
     "ExecutionContextV1",
     "ExecutionErrorCodeV1",
     "ExecutionFailureV1",
@@ -179,6 +191,7 @@ _EXPECTED_EXECUTION_EXPORTS: Final = (
     "OpenCliSessionV1",
     "OperationCapabilityV1",
     "PrivateWorkspaceV1",
+    "XueqiuSessionV1",
     "execute",
     "list_capabilities",
 )
@@ -252,6 +265,7 @@ _EXECUTION_CLASS_FIELDS: Final[Mapping[str, tuple[str, ...]]] = MappingProxyType
             "opencli_tree_sha256",
             "session_home",
         ),
+        "XueqiuSessionV1": ("cookie_header",),
         "ExecutionLimitsV1": (
             "maximum_items",
             "maximum_text_characters",
@@ -917,10 +931,104 @@ _EXPECTED_EXECUTION_CAPABILITIES: Final = (
         2_048,
         512,
     ),
+    (
+        "v1",
+        "twitter",
+        "search.posts",
+        "twitter.search.posts.arguments.v1",
+        ("twitter.post.v1",),
+        "opencli",
+        "1.8.6-hermes.1",
+        ("opencli_session.v1",),
+        50,
+        1_048_576,
+        16_384,
+        524_288,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        2_048,
+        512,
+    ),
+    (
+        "v1",
+        "xiaohongshu",
+        "search.notes",
+        "xiaohongshu.search.notes.arguments.v1",
+        ("xiaohongshu.note.v1",),
+        "opencli",
+        "1.8.6-hermes.1",
+        ("opencli_session.v1",),
+        50,
+        1_048_576,
+        16_384,
+        524_288,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        2_048,
+        512,
+    ),
+    (
+        "v1",
+        "xueqiu",
+        "search.stocks",
+        "xueqiu.search.stocks.arguments.v1",
+        ("xueqiu.stock.v1",),
+        "xueqiu-api",
+        "1.5.0+search.v1",
+        ("xueqiu_session.v1",),
+        50,
+        1_048_576,
+        16_384,
+        1_048_576,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        2_048,
+        512,
+    ),
+    (
+        "v1",
+        "exa",
+        "search.code",
+        "exa.search.code.arguments.v1",
+        ("exa.code.result.v1",),
+        "exa-mcporter",
+        "0.12.3+exa-code.v1",
+        ("network_access.v1", "mcporter_artifacts.v1"),
+        20,
+        1_048_576,
+        16_384,
+        524_288,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        2_048,
+        512,
+    ),
 )
 HealthState = Literal["available", "setup_required", "degraded", "unavailable"]
 ExecutionRuntimeModule = Literal[
-    "rss", "bilibili", "youtube", "v2ex", "exa", "opencli_social"
+    "rss",
+    "bilibili",
+    "youtube",
+    "v2ex",
+    "exa",
+    "opencli_social",
+    "xueqiu",
 ]
 
 
@@ -978,6 +1086,7 @@ class AgentReachExecutionApi:
     private_workspace_capability: str
     mcporter_artifacts_capability: str
     opencli_session_capability: str
+    xueqiu_session_capability: str
     capabilities: tuple[object, ...]
     operation_capability_type: type[object]
     execution_request_type: type[object]
@@ -986,6 +1095,7 @@ class AgentReachExecutionApi:
     private_workspace_type: type[object]
     mcporter_artifacts_type: type[object]
     opencli_session_type: type[object]
+    xueqiu_session_type: type[object]
     execution_limits_type: type[object]
     execution_context_type: type[object]
     execution_item_type: type[object]
@@ -1151,6 +1261,7 @@ def validate_agent_reach_execution_contract(
         "v2ex",
         "exa",
         "opencli_social",
+        "xueqiu",
     }:
         raise AgentReachBridgeError(_INCOMPATIBLE_EXECUTION_CONTRACT)
 
@@ -1201,18 +1312,33 @@ def upstream_doctor_data(
         ):
             raise AgentReachBridgeError(_INCOMPATIBLE_DOCTOR)
         policy = entry.get("reach_policy")
-        if policy is not None and policy != "connector_required":
+        if policy is not None and (
+            type(policy) is not str
+            or policy not in {"connector_required", "frozen_unavailable"}
+        ):
+            raise AgentReachBridgeError(_INCOMPATIBLE_DOCTOR)
+        frozen = channel.upstream_name in _FROZEN_AGENT_REACH_DOCTOR_CHANNELS
+        if policy == "frozen_unavailable" and not frozen:
             raise AgentReachBridgeError(_INCOMPATIBLE_DOCTOR)
         active_backend = entry.get("active_backend")
         availability = (
-            "setup_required"
-            if policy == "connector_required"
-            else _availability(upstream_state, channel.tier)
+            "unavailable"
+            if frozen
+            else (
+                "setup_required"
+                if policy == "connector_required"
+                else _availability(upstream_state, channel.tier)
+            )
         )
         reason = (
-            "Reach requires a trusted Connector before probing this upstream channel."
-            if policy == "connector_required"
-            else _doctor_reason(upstream_state, channel.tier)
+            _FROZEN_AGENT_REACH_DOCTOR_REASON
+            if frozen
+            else (
+                "Reach requires a trusted Connector before probing this "
+                "upstream channel."
+                if policy == "connector_required"
+                else _doctor_reason(upstream_state, channel.tier)
+            )
         )
         item: dict[str, object] = {
             "source": channel.source,
@@ -1220,9 +1346,13 @@ def upstream_doctor_data(
             "availability": availability,
             "reason": reason,
             "tier": channel.tier,
-            "backends": list(channel.backends),
+            "backends": [] if frozen else list(channel.backends),
         }
-        if isinstance(active_backend, str) and active_backend in channel.backends:
+        if (
+            not frozen
+            and isinstance(active_backend, str)
+            and active_backend in channel.backends
+        ):
             item["active_backend"] = active_backend
         channels.append(item)
     return {
@@ -1367,6 +1497,11 @@ def _validated_execution_api(
         contracts_module,
         "OPENCLI_SESSION_CAPABILITY",
     )
+    xueqiu_session_capability = _owned_export(
+        public_module,
+        contracts_module,
+        "XUEQIU_SESSION_CAPABILITY",
+    )
     error_codes = _owned_export(
         public_module,
         contracts_module,
@@ -1385,6 +1520,8 @@ def _validated_execution_api(
         or mcporter_artifacts_capability != AGENT_REACH_MCPORTER_ARTIFACTS_CAPABILITY
         or type(opencli_session_capability) is not str
         or opencli_session_capability != AGENT_REACH_OPENCLI_SESSION_CAPABILITY
+        or type(xueqiu_session_capability) is not str
+        or xueqiu_session_capability != AGENT_REACH_XUEQIU_SESSION_CAPABILITY
         or type(error_codes) is not frozenset
         or error_codes != frozenset(_EXPECTED_EXECUTION_ERROR_CODES)
     ):
@@ -1432,6 +1569,7 @@ def _validated_execution_api(
             class_exports["PrivateWorkspaceV1"],
             class_exports["McporterArtifactsV1"],
             class_exports["OpenCliSessionV1"],
+            class_exports["XueqiuSessionV1"],
         )
         or get_origin(result_type) is not UnionType
         or get_args(result_type)
@@ -1482,6 +1620,10 @@ def _validated_execution_api(
             runtime_module_name = _EXECUTION_OPENCLI_SOCIAL_MODULE
             runtime_function_name = "execute_opencli_social"
             runtime_parameters = ("request", "context")
+        elif runtime_module == "xueqiu":
+            runtime_module_name = _EXECUTION_XUEQIU_MODULE
+            runtime_function_name = "execute_xueqiu"
+            runtime_parameters = ("request", "context")
         else:
             raise AgentReachBridgeError(_INCOMPATIBLE_EXECUTION_CONTRACT)
         validated_runtime_module = _validated_execution_module(
@@ -1526,6 +1668,7 @@ def _validated_execution_api(
         private_workspace_capability=private_workspace_capability,
         mcporter_artifacts_capability=mcporter_artifacts_capability,
         opencli_session_capability=opencli_session_capability,
+        xueqiu_session_capability=xueqiu_session_capability,
         capabilities=capabilities,
         operation_capability_type=capability_type,
         execution_request_type=class_exports["ExecutionRequestV1"],
@@ -1534,6 +1677,7 @@ def _validated_execution_api(
         private_workspace_type=class_exports["PrivateWorkspaceV1"],
         mcporter_artifacts_type=class_exports["McporterArtifactsV1"],
         opencli_session_type=class_exports["OpenCliSessionV1"],
+        xueqiu_session_type=class_exports["XueqiuSessionV1"],
         execution_limits_type=class_exports["ExecutionLimitsV1"],
         execution_context_type=class_exports["ExecutionContextV1"],
         execution_item_type=class_exports["ExecutionItemV1"],
@@ -1726,6 +1870,13 @@ def collect_agent_reach_health(
     report: dict[str, object] = {}
     for channel in loader():
         upstream_name = _channel_name(channel)
+        if upstream_name in _FROZEN_AGENT_REACH_DOCTOR_CHANNELS:
+            report[upstream_name] = {
+                "status": "off",
+                "active_backend": None,
+                "reach_policy": "frozen_unavailable",
+            }
+            continue
         if upstream_name not in SAFE_AGENT_REACH_DOCTOR_CHANNELS:
             report[upstream_name] = {
                 "status": "off",

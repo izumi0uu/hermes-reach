@@ -400,7 +400,7 @@ class OpenCliSocialExecutor:
 def opencli_social_execution_composition(
     attestation: OpenCliSessionAttestation,
 ) -> ConnectorExecutionComposition:
-    """Compose all and only the 15 exact social Connector bindings."""
+    """Compose all and only the 17 exact social Connector bindings."""
 
     if type(attestation) is not OpenCliSessionAttestation:
         raise TypeError("The OpenCLI social composition is invalid.")
@@ -424,6 +424,8 @@ def _arguments_from_call(call: OperationCall) -> dict[str, object]:
         ("reddit", "search.posts"),
         ("facebook", "search"),
         ("instagram", "search.users"),
+        ("twitter", "search.posts"),
+        ("xiaohongshu", "search.notes"),
     }:
         if type(call.query) is not str or call.target is not None:
             raise ValueError("invalid social call")

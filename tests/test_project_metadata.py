@@ -10,8 +10,11 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 PROJECT_VERSION = "0.1.0a1"
-AGENT_REACH_COMMIT = "281dc3352c63cdb644f02e028cc5d645c279954a"
-ROLLBACK_AGENT_REACH_COMMIT = "9b69146588b1d162515b81db26b51643c15de8eb"
+AGENT_REACH_COMMIT = "ee200e7160c4b093a2ba0fcee9f2a6842aefe20d"
+AGENT_REACH_TREE = "56883c0872bed94050660b16d1ade2e46f73fef9"
+REJECTED_PREFREEZE_AGENT_REACH_COMMIT = "7bc42839d3dd290e4af93b24e0b03b738cff0ffa"
+REJECTED_PREFREEZE_AGENT_REACH_TREE = "382557e0bec76819f0633f31895580a0f549b6bd"
+ROLLBACK_AGENT_REACH_COMMIT = "281dc3352c63cdb644f02e028cc5d645c279954a"
 LEGACY_AGENT_REACH_COMMITS = frozenset(
     {
         "2755b0c140a03ab5793540fb3245288891526586",
@@ -185,6 +188,81 @@ def test_active_selectors_do_not_replace_historical_rollback_evidence() -> None:
 
     release_guide = (ROOT / "docs" / "releasing.md").read_text(encoding="utf-8")
     assert ROLLBACK_AGENT_REACH_COMMIT in release_guide
+
+
+def test_candidate_docs_freeze_review_and_release_state() -> None:
+    plugin_boundary = (ROOT / "docs" / "agent-reach-plugin-boundary.md").read_text(
+        encoding="utf-8"
+    )
+    reuse_boundary = (ROOT / "docs" / "agent-reach-reuse-boundary.md").read_text(
+        encoding="utf-8"
+    )
+    release_guide = (ROOT / "docs" / "releasing.md").read_text(encoding="utf-8")
+    skill = (ROOT / "src" / "hermes_reach" / "skill" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+
+    for document in (plugin_boundary, reuse_boundary, release_guide):
+        assert AGENT_REACH_COMMIT in document
+        assert AGENT_REACH_TREE in document
+        assert REJECTED_PREFREEZE_AGENT_REACH_COMMIT in document
+        assert REJECTED_PREFREEZE_AGENT_REACH_TREE in document
+        assert "PR #6" in document
+        assert "unmerged" in document
+        assert "untagged" in document
+
+    normalized_plugin_boundary = " ".join(plugin_boundary.split())
+    assert "exactly 33 operations" in normalized_plugin_boundary
+    assert "all 14 installed files" in normalized_plugin_boundary
+    assert "exactly 44 rows" in normalized_plugin_boundary
+    assert "33 direct + 11 not implemented" in normalized_plugin_boundary
+    assert "exactly 33 direct owner-fork" in skill
+    assert ROLLBACK_AGENT_REACH_COMMIT in release_guide
+
+
+def test_candidate_docs_preserve_connector_activation_and_secret_boundaries() -> None:
+    plugin_boundary = (ROOT / "docs" / "agent-reach-plugin-boundary.md").read_text(
+        encoding="utf-8"
+    )
+    connector_guide = (ROOT / "docs" / "connector-security.md").read_text(
+        encoding="utf-8"
+    )
+    readmes = (
+        (ROOT / "README.md").read_text(encoding="utf-8"),
+        (ROOT / "README_EN.md").read_text(encoding="utf-8"),
+    )
+    activation_flags = (
+        "--opencli-social-node",
+        "--opencli-social-root",
+        "--opencli-social-cli",
+        "--opencli-social-session-home",
+        "--xueqiu-binding-manifest",
+    )
+    rejected_linkedin_flags = (
+        "--linkedin-node",
+        "--linkedin-mcporter-root",
+        "--linkedin-mcporter-cli",
+        "--linkedin-people-config",
+        "--linkedin-jobs-config",
+        "--linkedin-alias-wheel",
+        "--linkedin-backend-wheel",
+        "--linkedin-runtime-lock",
+    )
+
+    for document in (*readmes, connector_guide):
+        for flag in activation_flags:
+            assert flag in document
+        for flag in rejected_linkedin_flags:
+            assert flag not in document
+
+    normalized_boundary = " ".join(plugin_boundary.split())
+    assert "rejected pre-freeze candidate" in normalized_boundary
+    assert 'Remote --> SocialForkOps["17 social owner-fork calls"]' in plugin_boundary
+    assert 'Remote --> XueqiuForkOps["1 Xueqiu owner-fork call"]' in plugin_boundary
+    assert "LinkedInForkOps" not in plugin_boundary
+    assert "no ambient secrets" in normalized_boundary
+    assert "attempt-local `XueqiuSessionV1` Cookie capability" in normalized_boundary
+    assert "no supplied secrets" not in normalized_boundary
 
 
 def test_manifest_includes_reviewed_docs_and_prunes_tests() -> None:
