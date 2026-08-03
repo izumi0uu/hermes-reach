@@ -6,9 +6,11 @@ head `e91e3efa045e75f08d4e7fdd9749fe26d4f774c5`, tree
 `e86ee839621360b991d985ad9d4cb18e36f86351`, was rebase-merged with tree
 equivalence into `hermes/execution-v1` as final integration
 `75cd48c6274e7f4740530d97877ec048708d5334`. It contains exactly 33 descriptors
-and is the exact dependency pin. The integration branch remains untagged and
-is not publishable until immutable recovery-tag protection and final Hermes
-verification are complete. The rejected pre-freeze candidate, commit
+and is the exact dependency pin. Protected immutable recovery reference
+`hermes-reach-integration-0.1.0a4` points to that exact commit, and final Hermes
+provenance, RECORD, runtime, pin-sensitive, and exact-artifact verification are
+complete. The tag is recovery authority only, never a dependency selector.
+The rejected pre-freeze candidate, commit
 `7bc42839d3dd290e4af93b24e0b03b738cff0ffa`, tree
 `382557e0bec76819f0633f31895580a0f549b6bd`, is retained only as rejection
 evidence because it contains two unsafe LinkedIn descriptors.
@@ -304,9 +306,12 @@ receipts, and audit, not a copied platform runtime.
    `e86ee839621360b991d985ad9d4cb18e36f86351`, is the exact dependency pin.
    It is the tree-equivalent rebase integration of owner-fork PR #6's final
    reviewed head `e91e3efa045e75f08d4e7fdd9749fe26d4f774c5` into
-   `hermes/execution-v1`. The integration branch remains untagged, so publication
-   remains blocked until immutable recovery-tag protection and final Hermes
-   verification are complete.
+   `hermes/execution-v1`. Protected lightweight tag
+   `hermes-reach-integration-0.1.0a4` points directly to the integration commit.
+   Active repository ruleset `Protect Hermes Reach integration tags`
+   (`19975135`) blocks update and deletion and has no bypass actor. Final Hermes
+   provenance, RECORD, runtime, pin-sensitive, and exact-artifact verification
+   are complete; package publication remains a separate versioned release.
    Rejected pre-freeze commit `7bc42839d3dd290e4af93b24e0b03b738cff0ffa`, with tree
    `382557e0bec76819f0633f31895580a0f549b6bd`, contains the rejected
    35-descriptor state and remains rejection evidence only. Rollback integration
@@ -321,9 +326,8 @@ receipts, and audit, not a copied platform runtime.
    rollback pin `9b69146588b1d162515b81db26b51643c15de8eb`
    was rebase-merged from reviewed head
    `fd93d2ec86511a4a1514b7ebd13cd996be709692`; both have tree
-   `e19835071ae6560431b66d5a21e51b598d3d9c81`. Hermes never depends on either
-   tag or any future tag; the exact commit pin
-   is authoritative.
+   `e19835071ae6560431b66d5a21e51b598d3d9c81`. Hermes never depends on a
+   recovery tag; the exact commit pin is authoritative.
 6. Migrated platform invocation and projection must be removed from Hermes so
    there is one platform-semantics owner.
 7. A catalog contract classified `implemented_but_unbound` remains
@@ -342,7 +346,9 @@ contains 44 detailed P0/P1/P2 reviews: 11 not-implemented decisions and all
 33 direct owner-fork decisions. The implemented-but-unbound YouTube comments
 contract remains in the complete ledger and its dedicated tests.
 
-Rollback of the current batch restores the previous Hermes release and exact
+The current 33-operation integration remains reachable through protected
+immutable reference `hermes-reach-integration-0.1.0a4`. Rollback of the current
+batch restores the previous Hermes release and exact
 pin `281dc3352c63cdb644f02e028cc5d645c279954a`. It removes the four accepted
 search descriptors and bindings while retaining the preceding 29-operation
 integration. The older pin

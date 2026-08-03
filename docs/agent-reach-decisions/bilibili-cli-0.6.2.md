@@ -126,9 +126,11 @@ The exact commit pin is the dependency authority. The protected immutable tag
 for the original Bilibili integration at
 `f195253d53befdb012d7aa575e732ec627ec29ac`. Protected immutable tag
 `hermes-reach-integration-0.1.0a3` preserves reachability for the previous
-reviewed integration `2a5829cf3b50bc435c647bfae4c050b1837d0235`. The current
-final integration has no recovery tag yet and remains release-ineligible until
-one is protected. Hermes never resolves the dependency by tag or branch.
+reviewed integration `2a5829cf3b50bc435c647bfae4c050b1837d0235`. Protected
+immutable tag `hermes-reach-integration-0.1.0a4` points to the current final
+integration `75cd48c6274e7f4740530d97877ec048708d5334`. Its recovery prerequisite
+is complete, while Hermes still resolves the dependency only by exact commit,
+never by tag or branch.
 
 ## Review Milestone
 

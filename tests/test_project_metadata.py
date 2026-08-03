@@ -13,6 +13,8 @@ PROJECT_VERSION = "0.1.0a1"
 AGENT_REACH_COMMIT = "75cd48c6274e7f4740530d97877ec048708d5334"
 AGENT_REACH_TREE = "e86ee839621360b991d985ad9d4cb18e36f86351"
 AGENT_REACH_REVIEWED_HEAD = "e91e3efa045e75f08d4e7fdd9749fe26d4f774c5"
+AGENT_REACH_RECOVERY_TAG = "hermes-reach-integration-0.1.0a4"
+AGENT_REACH_RECOVERY_RULESET_ID = "19975135"
 REJECTED_PREFREEZE_AGENT_REACH_COMMIT = "7bc42839d3dd290e4af93b24e0b03b738cff0ffa"
 REJECTED_PREFREEZE_AGENT_REACH_TREE = "382557e0bec76819f0633f31895580a0f549b6bd"
 ROLLBACK_AGENT_REACH_COMMIT = "281dc3352c63cdb644f02e028cc5d645c279954a"
@@ -210,6 +212,7 @@ def test_integrated_docs_freeze_review_and_release_state() -> None:
     )
 
     for document in (plugin_boundary, reuse_boundary, release_guide):
+        normalized_document = " ".join(document.split())
         assert AGENT_REACH_COMMIT in document
         assert AGENT_REACH_TREE in document
         assert AGENT_REACH_REVIEWED_HEAD in document
@@ -218,7 +221,11 @@ def test_integrated_docs_freeze_review_and_release_state() -> None:
         assert "PR #6" in document
         assert "merged" in document
         assert "unmerged" not in document
-        assert "untagged" in document
+        assert AGENT_REACH_RECOVERY_TAG in document
+        assert AGENT_REACH_RECOVERY_RULESET_ID in document
+        assert "untagged" not in document
+        assert "update and deletion" in normalized_document
+        assert "no bypass actor" in normalized_document
 
     normalized_plugin_boundary = " ".join(plugin_boundary.split())
     assert "exactly 33 operations" in normalized_plugin_boundary
@@ -227,6 +234,9 @@ def test_integrated_docs_freeze_review_and_release_state() -> None:
     assert "33 direct + 11 not implemented" in normalized_plugin_boundary
     assert "exactly 33 direct owner-fork" in skill
     assert ROLLBACK_AGENT_REACH_COMMIT in release_guide
+    assert "prepare_release.py version --tag v0.1.0a2" in release_guide
+    assert "git tag v0.1.0a2" in release_guide
+    assert "git tag v0.1.0a1" not in release_guide
 
 
 def test_integrated_docs_preserve_connector_activation_and_secret_boundaries() -> None:

@@ -7,9 +7,11 @@ head `e91e3efa045e75f08d4e7fdd9749fe26d4f774c5`, tree
 `e86ee839621360b991d985ad9d4cb18e36f86351`, was rebase-merged with tree
 equivalence into `hermes/execution-v1` as final integration commit
 `75cd48c6274e7f4740530d97877ec048708d5334`. It contains exactly 33 descriptors
-and is the exact dependency pin. The integration branch remains untagged and
-is not publishable until immutable recovery-tag protection and final Hermes
-verification are complete. The rejected pre-freeze candidate, commit
+and is the exact dependency pin. Protected immutable recovery reference
+`hermes-reach-integration-0.1.0a4` points to that exact commit, and final Hermes
+provenance, RECORD, runtime, pin-sensitive, and exact-artifact verification are
+complete. The tag is recovery authority only, not a dependency or publication
+selector. The rejected pre-freeze candidate, commit
 `7bc42839d3dd290e4af93b24e0b03b738cff0ffa` (tree
 `382557e0bec76819f0633f31895580a0f549b6bd`) is retained only as rejection
 evidence because it contains two unsafe LinkedIn descriptors.
@@ -211,10 +213,14 @@ final integration is `75cd48c6274e7f4740530d97877ec048708d5334`, with tree
 `e86ee839621360b991d985ad9d4cb18e36f86351`. It is the exact Hermes dependency
 pin and the tree-equivalent rebase integration of owner-fork PR #6's final
 reviewed head `e91e3efa045e75f08d4e7fdd9749fe26d4f774c5` into
-`hermes/execution-v1`. The integration branch remains untagged and is not
-release-eligible. Before publication, its immutable recovery tag must be
-protected from movement and deletion, and Hermes must complete the final
-provenance, RECORD, runtime, and pin-sensitive verification gates.
+`hermes/execution-v1`. Protected lightweight tag
+`hermes-reach-integration-0.1.0a4` points directly to that commit. Active
+repository ruleset `Protect Hermes Reach integration tags` (`19975135`) matches
+the integration-tag namespace, blocks update and deletion, and has no bypass
+actor. Final Hermes provenance, RECORD, runtime, pin-sensitive, and
+exact-artifact verification are complete. This satisfies the fork recovery
+gate; publishing a new Hermes Reach package remains a separate versioned
+release operation.
 
 The rejected pre-freeze commit
 `7bc42839d3dd290e4af93b24e0b03b738cff0ffa`, with tree
@@ -252,7 +258,9 @@ For an upstream update:
    and immutable recovery reference;
 6. update Hermes in a separate rebase-only change pinned to that commit.
 
-Rollback of the accepted four-operation batch removes Twitter search,
+The current 33-operation integration remains reachable through protected
+immutable reference `hermes-reach-integration-0.1.0a4`. Rollback of the accepted
+four-operation batch removes Twitter search,
 Xiaohongshu search, Xueqiu stock search, and Exa Code, then restores the
 previous Hermes release and exact dependency pin
 `281dc3352c63cdb644f02e028cc5d645c279954a`. The older pin

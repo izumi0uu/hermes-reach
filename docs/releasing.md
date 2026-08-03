@@ -20,7 +20,7 @@ The current integration and rollback references are:
 
 | Purpose | Recovery reference | Exact dependency commit |
 | --- | --- | --- |
-| Final 33-operation rebase integration and current pin | none; owner-fork PR #6 is merged into `hermes/execution-v1`, but the branch remains untagged and non-publishable | `75cd48c6274e7f4740530d97877ec048708d5334` |
+| Final 33-operation rebase integration and current pin | `hermes-reach-integration-0.1.0a4` (protected from update and deletion) | `75cd48c6274e7f4740530d97877ec048708d5334` |
 | Rejected pre-freeze 35-operation state | none; retained only as LinkedIn rejection evidence | `7bc42839d3dd290e4af93b24e0b03b738cff0ffa` |
 | Rollback: 29-operation public/social integration | pending; no immutable recovery tag exists | `281dc3352c63cdb644f02e028cc5d645c279954a` |
 | Historical: pre-hardlink-fix 29-operation integration | pending; incompatible with uv hardlink installs | `ec4a5e36434c9df9ee236dc12734843163fc17ac` |
@@ -33,10 +33,13 @@ Owner-fork PR #6's final reviewed head
 `e91e3efa045e75f08d4e7fdd9749fe26d4f774c5` resolves to tree
 `e86ee839621360b991d985ad9d4cb18e36f86351`. It was rebase-merged with tree
 equivalence into `hermes/execution-v1` as final 33-descriptor integration
-`75cd48c6274e7f4740530d97877ec048708d5334`, which Hermes pins exactly. The
-integration branch remains untagged and lacks an immutable recovery tag, so it
-must not be published until recovery-tag protection and final Hermes
-provenance, RECORD, runtime, and pin-sensitive verification are complete.
+`75cd48c6274e7f4740530d97877ec048708d5334`, which Hermes pins exactly.
+Protected lightweight tag `hermes-reach-integration-0.1.0a4` points directly to
+that commit. Active repository ruleset `Protect Hermes Reach integration tags`
+(`19975135`) matches `refs/tags/hermes-reach-integration-*`, blocks update and
+deletion, and has no bypass actor. Final Hermes provenance, RECORD, runtime,
+pin-sensitive, and exact-artifact verification are complete. The tag remains a
+recovery reference; installation metadata still selects the commit.
 
 The rejected pre-freeze commit `7bc42839d3dd290e4af93b24e0b03b738cff0ffa`
 resolves to tree `382557e0bec76819f0633f31895580a0f549b6bd`. It contains the two
@@ -46,9 +49,11 @@ prior final integration
 `281dc3352c63cdb644f02e028cc5d645c279954a`, which resolves to tree
 `385b9c95cb3a6372ed1b68b606abc3faed71f307`. That integration was rebase-merged
 from reviewed hardlink-fix PR head `c57ae5b8d78fed6ad52a1f52731db589d875f8a9`, whose tree is
-byte-equivalent. A package release remains forbidden until the new final
-integration receives one protected immutable recovery tag and all release
-gates pass.
+byte-equivalent. The final integration's recovery-tag prerequisite is now
+satisfied. Package publication remains a separate operation: public
+`v0.1.0a1` is immutable and must not be moved or reused, so the next candidate
+must first advance Hermes Reach to a new version (sequentially `0.1.0a2`) and
+pass every release gate against those exact new artifact bytes.
 The prior 29-operation integration `ec4a5e36434c9df9ee236dc12734843163fc17ac`,
 tree `302db7526ed84b1565fa24baf5c06ced69385d80`, remains provenance for the
 social batch but is not a release-compatible rollback under uv hardlink
@@ -91,10 +96,13 @@ without them is an operator error, even if the YAML gate passes.
 Final integration `75cd48c6274e7f4740530d97877ec048708d5334`, tree
 `e86ee839621360b991d985ad9d4cb18e36f86351`, is the tree-equivalent rebase
 integration of owner-fork PR #6's final reviewed head
-`e91e3efa045e75f08d4e7fdd9749fe26d4f774c5` into `hermes/execution-v1`. The
-branch remains untagged and lacks the immutable recovery-tag prerequisite.
-It must not be published until that protection and final Hermes verification
-are complete. The rejected pre-freeze state remains evidence only.
+`e91e3efa045e75f08d4e7fdd9749fe26d4f774c5` into `hermes/execution-v1`.
+Protected immutable recovery reference `hermes-reach-integration-0.1.0a4`
+points directly to the integration commit. Ruleset `19975135` prevents update
+and deletion with no bypass actor, and final Hermes verification is complete.
+This clears the Agent-Reach recovery prerequisite only; publishing the next
+Hermes Reach pre-release still requires a new version and the complete workflow
+below. The rejected pre-freeze state remains evidence only.
 
 ## Local dry run
 
@@ -109,17 +117,19 @@ uv run mypy
 uv run pytest
 ```
 
-Build the candidate bytes once, without a generated file in `dist/`, then prove
-the exact sdist installs offline, run the full Hermes lifecycle against the
-exact wheel, and perform the release metadata checks:
+After the reviewed release change advances `pyproject.toml`, `plugin.yaml`, and
+the lock metadata to `0.1.0a2`, build the candidate bytes once without a
+generated file in `dist/`. Then prove the exact sdist installs offline, run the
+full Hermes lifecycle against the exact wheel, and perform the release metadata
+checks:
 
 ```bash
-uv run python scripts/prepare_release.py version --tag v0.1.0a1
+uv run python scripts/prepare_release.py version --tag v0.1.0a2
 uv build --clear --no-create-gitignore --out-dir dist
 uv run pytest tests/test_connector_release_security.py \
   --release-dist "$PWD/dist"
 uv run python scripts/prepare_release.py artifacts \
-  --tag v0.1.0a1 \
+  --tag v0.1.0a2 \
   --dist-dir "$PWD/dist"
 ```
 
@@ -139,8 +149,8 @@ After the release change is reviewed, rebased, merged, and pushed to `main`:
 git switch main
 git pull --ff-only
 git status --short
-git tag v0.1.0a1
-git push origin refs/tags/v0.1.0a1
+git tag v0.1.0a2
+git push origin refs/tags/v0.1.0a2
 ```
 
 Do not push the tag unless the status output is empty and the local commit is
@@ -201,13 +211,13 @@ set.
 Verify the published wheel and sdist independently, then check their digests:
 
 ```bash
-gh release download v0.1.0a1 --repo izumi0uu/hermes-reach --dir release-audit
+gh release download v0.1.0a2 --repo izumi0uu/hermes-reach --dir release-audit
 gh attestation verify \
-  release-audit/hermes_reach-0.1.0a1-py3-none-any.whl \
+  release-audit/hermes_reach-0.1.0a2-py3-none-any.whl \
   --repo izumi0uu/hermes-reach \
   --signer-workflow izumi0uu/hermes-reach/.github/workflows/release.yml
 gh attestation verify \
-  release-audit/hermes_reach-0.1.0a1.tar.gz \
+  release-audit/hermes_reach-0.1.0a2.tar.gz \
   --repo izumi0uu/hermes-reach \
   --signer-workflow izumi0uu/hermes-reach/.github/workflows/release.yml
 cd release-audit
@@ -233,7 +243,7 @@ The commands show Python 3.11; repeat the complete smoke in separate roots for
 Python 3.12 and 3.13 before announcing the release:
 
 ```bash
-WHEEL="$(pwd)/release-audit/hermes_reach-0.1.0a1-py3-none-any.whl"
+WHEEL="$(pwd)/release-audit/hermes_reach-0.1.0a2-py3-none-any.whl"
 SMOKE_ROOT="$(mktemp -d)"
 SMOKE_VENV="$SMOKE_ROOT/venv"
 SMOKE_PYTHON_VERSION=3.11

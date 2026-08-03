@@ -1296,8 +1296,8 @@ def test_release_docs_distinguish_uploaded_assets_from_generated_sources() -> No
             "$RELEASE_DIR/hermes_reach-0.1.0a1.tar.gz",
         ],
         ROOT / "docs" / "releasing.md": [
-            "release-audit/hermes_reach-0.1.0a1-py3-none-any.whl",
-            "release-audit/hermes_reach-0.1.0a1.tar.gz",
+            "release-audit/hermes_reach-0.1.0a2-py3-none-any.whl",
+            "release-audit/hermes_reach-0.1.0a2.tar.gz",
         ],
     }
     subject_disclaimers = {
@@ -1344,6 +1344,8 @@ def test_release_docs_distinguish_uploaded_assets_from_generated_sources() -> No
     assert "`WITHDRAWN`" in release_guide
     assert "fix forward with a new version and tag" in release_guide
     assert "disable the public release" not in release_guide
+    assert "gh release download v0.1.0a2" in release_guide
+    assert "gh release download v0.1.0a1" not in release_guide
 
 
 def test_release_guide_public_smoke_is_fresh_complete_and_cwd_safe() -> None:
@@ -1357,7 +1359,7 @@ def test_release_guide_public_smoke_is_fresh_complete_and_cwd_safe() -> None:
     assert audit_commands.rindex("cd ..") > audit_commands.rindex(
         "shasum -a 256 --check SHA256SUMS"
     )
-    assert 'WHEEL="$(pwd)/release-audit/hermes_reach-0.1.0a1-py3-none-any.whl"' in (
+    assert 'WHEEL="$(pwd)/release-audit/hermes_reach-0.1.0a2-py3-none-any.whl"' in (
         install_block
     )
     assert 'test -f "$WHEEL"' in install_block

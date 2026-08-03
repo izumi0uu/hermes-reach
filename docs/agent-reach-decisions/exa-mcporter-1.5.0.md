@@ -22,14 +22,17 @@ methods, result schemas, parsers, and projection tests.
   `e86ee839621360b991d985ad9d4cb18e36f86351`
 - Final rebase-merged owner-fork integration:
   `75cd48c6274e7f4740530d97877ec048708d5334`
+- Protected recovery reference: `hermes-reach-integration-0.1.0a4`
 - Rollback integration:
   `281dc3352c63cdb644f02e028cc5d645c279954a`
 
 Hermes consumes the final integration by exact commit, never by branch or tag.
 Owner-fork PR #6 rebase-merged the reviewed head into `hermes/execution-v1`;
 the reviewed head and integration have the identical tree recorded above. The
-integration branch remains untagged and is not publishable until immutable
-recovery-tag protection and final Hermes verification are complete.
+protected recovery reference points directly to the integration commit, and
+final Hermes verification is complete. The tag preserves reachability only;
+the exact commit remains the dependency selector and publication remains a
+separate Hermes Reach release operation.
 
 ## Closed Invocation
 

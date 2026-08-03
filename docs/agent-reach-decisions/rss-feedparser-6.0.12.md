@@ -55,9 +55,10 @@ Any mismatch fails closed before Reach tools, CLI, or skill registration. The
 original RSS/Bilibili integration remains recoverable through
 `hermes-reach-integration-0.1.0a2`. Protected immutable tag
 `hermes-reach-integration-0.1.0a3` preserves reachability for the previous
-integration `2a5829cf3b50bc435c647bfae4c050b1837d0235`. The current final
-integration has no recovery tag yet and remains release-ineligible until one is
-protected; Hermes is always pinned by commit and never resolves by tag.
+integration `2a5829cf3b50bc435c647bfae4c050b1837d0235`. Protected immutable
+tag `hermes-reach-integration-0.1.0a4` points to current final integration
+`75cd48c6274e7f4740530d97877ec048708d5334`; Hermes remains pinned by exact
+commit and never resolves the dependency by tag.
 
 ## Ownership and security composition
 
