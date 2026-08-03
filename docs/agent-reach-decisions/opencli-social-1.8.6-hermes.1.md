@@ -40,7 +40,7 @@ Every row is classified `direct_owner_fork_runtime`, uses backend
   `385b9c95cb3a6372ed1b68b606abc3faed71f307`
 - Prior final rebase integration:
   `281dc3352c63cdb644f02e028cc5d645c279954a`
-- Accepted non-GitHub search candidate:
+- Accepted reviewed search-capability candidate:
   `ee200e7160c4b093a2ba0fcee9f2a6842aefe20d`
 - Accepted candidate tree:
   `56883c0872bed94050660b16d1ade2e46f73fef9`
