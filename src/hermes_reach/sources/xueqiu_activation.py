@@ -6,6 +6,7 @@ import json
 import os
 import re
 import stat
+import sys
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -13,6 +14,7 @@ from typing import Final, Protocol, cast
 
 from ..connector.errors import ConnectorError, ConnectorErrorCode
 from ..connector.execution import ConnectorExecutionComposition
+from ..connector.limits import SUPPORTED_CONNECTOR_PLATFORMS
 from ..connector.protocol import GrantScope
 from ..connector.secrets import (
     BitwardenSecretBinding,
@@ -80,12 +82,14 @@ def activate_xueqiu_binding(
     *,
     environment: Mapping[str, str] | None = None,
     provider_factory: _ProviderFactory = BitwardenSecretProvider,
+    _platform: str | None = None,
 ) -> XueqiuActivation:
     """Validate one owner-only manifest and compose its exact executor."""
 
+    _require_secure_platform(sys.platform if _platform is None else _platform)
     try:
         value = _read_manifest(manifest_path)
-        capability = CapabilityId.parse(value["capability_id"])
+        capability = CapabilityId.parse(_string(value, "capability_id"))
         bws_sha256 = _string(value, "bws_sha256")
         binding = BitwardenSecretBinding(
             capability_id=capability,
@@ -138,16 +142,15 @@ def _read_manifest(path: Path) -> dict[str, object]:
 def _read_owner_file(path: Path) -> bytes:
     if not isinstance(path, Path) or not path.is_absolute() or ".." in path.parts:
         raise ValueError("invalid Xueqiu binding manifest")
-    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    flags = os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW
     descriptor = -1
     try:
         descriptor = os.open(path, flags)
         before = os.fstat(descriptor)
-        geteuid = getattr(os, "geteuid", None)
         if (
             not stat.S_ISREG(before.st_mode)
             or before.st_nlink != 1
-            or (geteuid is not None and before.st_uid != geteuid())
+            or before.st_uid != os.geteuid()
             or stat.S_IMODE(before.st_mode) != 0o600
             or not 0 < before.st_size <= _MAX_MANIFEST_BYTES
         ):
@@ -184,6 +187,16 @@ def _object_without_duplicates(
             raise ValueError("invalid Xueqiu binding manifest")
         value[key] = item
     return value
+
+
+def _require_secure_platform(platform: str) -> None:
+    if (
+        platform not in SUPPORTED_CONNECTOR_PLATFORMS
+        or not hasattr(os, "O_CLOEXEC")
+        or not hasattr(os, "O_NOFOLLOW")
+        or not hasattr(os, "geteuid")
+    ):
+        raise ConnectorError(ConnectorErrorCode.UNSUPPORTED_PLATFORM)
 
 
 def _raise_invalid_manifest() -> None:

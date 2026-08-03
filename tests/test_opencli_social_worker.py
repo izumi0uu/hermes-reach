@@ -801,6 +801,31 @@ def test_worker_rejects_native_subreddit_target_drift() -> None:
     )
 
 
+def test_worker_rejects_xiaohongshu_native_text_title_drift() -> None:
+    arguments = {"query": "private query", "limit": 1}
+    request = _request("xiaohongshu", "search.notes", arguments)
+    native = _native_item("xiaohongshu", "search.notes")
+    drifted = _Item(native.schema_id, {**native.fields, "title": "Different headline"})
+
+    value = worker._execute_request(
+        request,
+        execution_api_provider=_provider(
+            _api(
+                lambda *_: _Success(
+                    source="xiaohongshu",
+                    operation="search.notes",
+                    items=(drifted,),
+                )
+            )
+        ),
+    )
+
+    assert value == worker._failure_value(
+        ("xiaohongshu", "search.notes"),
+        "backend_contract_violation",
+    )
+
+
 def test_projection_budget_truncates_without_changing_item_order() -> None:
     items = tuple(
         worker.SocialItemProjection(

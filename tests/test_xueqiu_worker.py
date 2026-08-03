@@ -104,12 +104,16 @@ def _provider(value: SimpleNamespace) -> worker.ExecutionApiProvider:
     return cast(worker.ExecutionApiProvider, lambda: value)
 
 
-def _request(cookie: str = COOKIE_CANARY) -> worker.WorkerRequest:
+def _request(
+    cookie: str = COOKIE_CANARY,
+    *,
+    deadline: float | None = None,
+) -> worker.WorkerRequest:
     frame = worker.encode_request(
         "600519",
         2,
         cookie,
-        deadline=time.monotonic() + 60,
+        deadline=time.monotonic() + 60 if deadline is None else deadline,
     )
     try:
         return worker._read_request(io.BytesIO(frame))
@@ -302,6 +306,40 @@ def test_cancellation_checkpoint_returns_closed_failure_and_clears_cookie() -> N
 
     assert value == worker._failure_value("cancelled")
     assert not any(request.cookie_header)
+
+
+def test_expired_deadline_returns_closed_failure_and_clears_cookie() -> None:
+    request = _request(deadline=time.monotonic() - 1)
+
+    value = worker._execute_request(
+        request,
+        execution_api_provider=_provider(
+            _api(lambda _request, _context: pytest.fail("executed after deadline"))
+        ),
+    )
+
+    assert value == worker._failure_value("deadline_exceeded")
+    assert not any(request.cookie_header)
+
+
+@pytest.mark.parametrize(
+    "cookie",
+    (
+        "xq_a_token=value",
+        "xq_a_token=value; u=1",
+        " xq_a_token=value",
+        "xq_a_token=value;",
+        "xq_a_token=one; xq_a_token=two",
+        "u=1",
+        "xq_a_token=",
+        "=value",
+        "xq_a_token=with space",
+    ),
+)
+def test_cookie_validators_agree_on_ascii_input(cookie: str) -> None:
+    assert worker._valid_cookie_text(cookie) == worker._valid_cookie_bytes(
+        bytearray(cookie.encode("ascii"))
+    )
 
 
 def test_runtime_loader_selects_only_the_xueqiu_module(

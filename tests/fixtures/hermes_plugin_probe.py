@@ -1327,12 +1327,14 @@ def _assert_frozen_calls(registry: Any, client: FixtureHttpClient) -> None:
         (source.name, operation.name)
         for source in SOURCE_CATALOG
         for operation in source.operations
-        if source.name in {"web", "github"}
-        or (
-            source.name == "linkedin"
-            and operation.name in {"search.people", "search.jobs"}
-        )
         if operation.implementation_state == "planned"
+        and (
+            source.name in {"web", "github"}
+            or (
+                source.name == "linkedin"
+                and operation.name in {"search.people", "search.jobs"}
+            )
+        )
     }
     assert len(requested_operations) == 11
     assert len(set(requested_operations)) == 11
