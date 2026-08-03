@@ -40,18 +40,23 @@ Every row is classified `direct_owner_fork_runtime`, uses backend
   `385b9c95cb3a6372ed1b68b606abc3faed71f307`
 - Prior final rebase integration:
   `281dc3352c63cdb644f02e028cc5d645c279954a`
-- Accepted reviewed search-capability candidate:
-  `ee200e7160c4b093a2ba0fcee9f2a6842aefe20d`
-- Accepted candidate tree:
-  `56883c0872bed94050660b16d1ade2e46f73fef9`
+- Final reviewed search-capability PR head:
+  `e91e3efa045e75f08d4e7fdd9749fe26d4f774c5`
+- Reviewed and final integration tree:
+  `e86ee839621360b991d985ad9d4cb18e36f86351`
+- Final rebase-merged search-capability integration:
+  `75cd48c6274e7f4740530d97877ec048708d5334`
 - Pre-hardlink-fix integration:
   `ec4a5e36434c9df9ee236dc12734843163fc17ac`
 - Social-disable rollback Agent-Reach pin:
   `9b69146588b1d162515b81db26b51643c15de8eb`
 
 The reviewed hardlink-fix PR head and prior integration have identical trees.
-Hermes pins the accepted candidate commit, not a branch or tag. It is the
-unmerged and untagged head of owner-fork PR #6 and is not release-eligible.
+Hermes pins the final integration commit, not a branch or tag. Owner-fork PR #6
+rebase-merged the reviewed head into `hermes/execution-v1`; the reviewed head
+and integration have the identical tree recorded above. The integration branch
+remains untagged and is not release-eligible until immutable recovery-tag
+protection and final Hermes verification are complete.
 The fix permits multiple
 links only for the packaged lifecycle guard after RECORD/current-byte
 validation; the private guard snapshot remains single-link and user-selected

@@ -10,8 +10,9 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 PROJECT_VERSION = "0.1.0a1"
-AGENT_REACH_COMMIT = "ee200e7160c4b093a2ba0fcee9f2a6842aefe20d"
-AGENT_REACH_TREE = "56883c0872bed94050660b16d1ade2e46f73fef9"
+AGENT_REACH_COMMIT = "75cd48c6274e7f4740530d97877ec048708d5334"
+AGENT_REACH_TREE = "e86ee839621360b991d985ad9d4cb18e36f86351"
+AGENT_REACH_REVIEWED_HEAD = "e91e3efa045e75f08d4e7fdd9749fe26d4f774c5"
 REJECTED_PREFREEZE_AGENT_REACH_COMMIT = "7bc42839d3dd290e4af93b24e0b03b738cff0ffa"
 REJECTED_PREFREEZE_AGENT_REACH_TREE = "382557e0bec76819f0633f31895580a0f549b6bd"
 ROLLBACK_AGENT_REACH_COMMIT = "281dc3352c63cdb644f02e028cc5d645c279954a"
@@ -22,9 +23,15 @@ LEGACY_AGENT_REACH_COMMITS = frozenset(
         "0f0edca8d2d5f6179de2b38cd777d3c93232a99e",
         "3416c83ce588fadb3e8b007395b7175b26df769d",
         "b33506ac15f8aad27e4a3c5a595fb5f757347509",
+        "ee200e7160c4b093a2ba0fcee9f2a6842aefe20d",
     }
 )
-LEGACY_AGENT_REACH_TREES = frozenset({"55648469505908aa655745f5ca7704d495f12183"})
+LEGACY_AGENT_REACH_TREES = frozenset(
+    {
+        "55648469505908aa655745f5ca7704d495f12183",
+        "56883c0872bed94050660b16d1ade2e46f73fef9",
+    }
+)
 OWNER_FORK_AGENT_REACH_DEPENDENCY = (
     "agent-reach @ git+https://github.com/izumi0uu/Agent-Reach.git@"
     f"{AGENT_REACH_COMMIT}"
@@ -190,7 +197,7 @@ def test_active_selectors_do_not_replace_historical_rollback_evidence() -> None:
     assert ROLLBACK_AGENT_REACH_COMMIT in release_guide
 
 
-def test_candidate_docs_freeze_review_and_release_state() -> None:
+def test_integrated_docs_freeze_review_and_release_state() -> None:
     plugin_boundary = (ROOT / "docs" / "agent-reach-plugin-boundary.md").read_text(
         encoding="utf-8"
     )
@@ -205,10 +212,12 @@ def test_candidate_docs_freeze_review_and_release_state() -> None:
     for document in (plugin_boundary, reuse_boundary, release_guide):
         assert AGENT_REACH_COMMIT in document
         assert AGENT_REACH_TREE in document
+        assert AGENT_REACH_REVIEWED_HEAD in document
         assert REJECTED_PREFREEZE_AGENT_REACH_COMMIT in document
         assert REJECTED_PREFREEZE_AGENT_REACH_TREE in document
         assert "PR #6" in document
-        assert "unmerged" in document
+        assert "merged" in document
+        assert "unmerged" not in document
         assert "untagged" in document
 
     normalized_plugin_boundary = " ".join(plugin_boundary.split())
@@ -220,7 +229,7 @@ def test_candidate_docs_freeze_review_and_release_state() -> None:
     assert ROLLBACK_AGENT_REACH_COMMIT in release_guide
 
 
-def test_candidate_docs_preserve_connector_activation_and_secret_boundaries() -> None:
+def test_integrated_docs_preserve_connector_activation_and_secret_boundaries() -> None:
     plugin_boundary = (ROOT / "docs" / "agent-reach-plugin-boundary.md").read_text(
         encoding="utf-8"
     )
@@ -256,7 +265,7 @@ def test_candidate_docs_preserve_connector_activation_and_secret_boundaries() ->
             assert flag not in document
 
     normalized_boundary = " ".join(plugin_boundary.split())
-    assert "rejected pre-freeze candidate" in normalized_boundary
+    assert "rejected pre-freeze commit" in normalized_boundary
     assert 'Remote --> SocialForkOps["17 social owner-fork calls"]' in plugin_boundary
     assert 'Remote --> XueqiuForkOps["1 Xueqiu owner-fork call"]' in plugin_boundary
     assert "LinkedInForkOps" not in plugin_boundary

@@ -21,7 +21,7 @@ AGENT_REACH_DISTRIBUTION: Final = "agent-reach"
 AGENT_REACH_VERSION: Final = "1.5.0"
 AGENT_REACH_OFFICIAL_BASE_COMMIT: Final = "b4d52c46c9113cb0f653d6df4cf71ebadf4930ac"
 AGENT_REACH_FORK_URL: Final = "https://github.com/izumi0uu/Agent-Reach.git"
-AGENT_REACH_FORK_COMMIT: Final = "ee200e7160c4b093a2ba0fcee9f2a6842aefe20d"
+AGENT_REACH_FORK_COMMIT: Final = "75cd48c6274e7f4740530d97877ec048708d5334"
 AGENT_REACH_PROTOCOL_VERSION: Final = "v1"
 AGENT_REACH_FETCHED_DOCUMENT_CAPABILITY: Final = "fetched_document.v1"
 AGENT_REACH_NETWORK_ACCESS_CAPABILITY: Final = "network_access.v1"
@@ -153,8 +153,8 @@ _EXECUTION_MODULE_FILES: Final[Mapping[str, tuple[str, str, int]]] = MappingProx
         ),
         _EXECUTION_OPENCLI_SOCIAL_MODULE: (
             "agent_reach/execution/v1/opencli_social.py",
-            "uXvlrPLp-foRHNmfd3DRJZOP88_RF2ZTNOGTa99YUhs",
-            76_010,
+            "Bgft8BysFi3-Pv21hdG45i5XKnU7ucDQLNPRJ10kzhM",
+            76_023,
         ),
         _EXECUTION_OPENCLI_GUARD_RESOURCE: (
             "agent_reach/execution/v1/_opencli_no_lifecycle.mjs",
@@ -163,8 +163,8 @@ _EXECUTION_MODULE_FILES: Final[Mapping[str, tuple[str, str, int]]] = MappingProx
         ),
         _EXECUTION_XUEQIU_MODULE: (
             "agent_reach/execution/v1/xueqiu.py",
-            "f2Kv-gT3YpRIqybPANceHebf1a9zguBUxuveAEJdFFc",
-            26_512,
+            "tnxJ8tHS1WzCKTUI9BO3pc6uoyOt_E8cdRIthONd3Cg",
+            26_575,
         ),
     }
 )

@@ -11,15 +11,20 @@ Connector-only `direct_owner_fork_runtime` operation using
 
 - Agent-Reach official base:
   `b4d52c46c9113cb0f653d6df4cf71ebadf4930ac`
-- Accepted Agent-Reach candidate commit:
-  `ee200e7160c4b093a2ba0fcee9f2a6842aefe20d`
-- Accepted Agent-Reach candidate tree:
-  `56883c0872bed94050660b16d1ade2e46f73fef9`
+- Final reviewed Agent-Reach PR head:
+  `e91e3efa045e75f08d4e7fdd9749fe26d4f774c5`
+- Reviewed and final Agent-Reach integration tree:
+  `e86ee839621360b991d985ad9d4cb18e36f86351`
+- Final rebase-merged Agent-Reach integration commit:
+  `75cd48c6274e7f4740530d97877ec048708d5334`
 - rollback integration:
   `281dc3352c63cdb644f02e028cc5d645c279954a`
 
-The candidate is pinned by exact commit. It is the unmerged and untagged head
-of owner-fork PR #6 and is not release-eligible under this task.
+The final integration is pinned by exact commit. Owner-fork PR #6 rebase-merged
+the reviewed head into `hermes/execution-v1`; the reviewed head and integration
+have the identical tree recorded above. The integration branch remains untagged
+and is not release-eligible until immutable recovery-tag protection and final
+Hermes verification are complete.
 
 ## Secret Boundary
 

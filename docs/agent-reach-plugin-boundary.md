@@ -2,14 +2,17 @@
 
 Status: canonical architecture. The runtime was reviewed on 2026-08-02 against
 official Agent-Reach `1.5.0` base
-`b4d52c46c9113cb0f653d6df4cf71ebadf4930ac`. The accepted owner-fork
-candidate is commit `ee200e7160c4b093a2ba0fcee9f2a6842aefe20d` (tree
-`56883c0872bed94050660b16d1ade2e46f73fef9`) with exactly 33 descriptors.
-It is the exact dependency pin and current head of owner-fork PR #6, but the
-PR is still unmerged, untagged, and not publishable. Its parent
+`b4d52c46c9113cb0f653d6df4cf71ebadf4930ac`. Owner-fork PR #6's final reviewed
+head `e91e3efa045e75f08d4e7fdd9749fe26d4f774c5`, tree
+`e86ee839621360b991d985ad9d4cb18e36f86351`, was rebase-merged with tree
+equivalence into `hermes/execution-v1` as final integration commit
+`75cd48c6274e7f4740530d97877ec048708d5334`. It contains exactly 33 descriptors
+and is the exact dependency pin. The integration branch remains untagged and
+is not publishable until immutable recovery-tag protection and final Hermes
+verification are complete. The rejected pre-freeze candidate, commit
 `7bc42839d3dd290e4af93b24e0b03b738cff0ffa` (tree
-`382557e0bec76819f0633f31895580a0f549b6bd`) is the rejected pre-freeze
-candidate because it contains two unsafe LinkedIn descriptors.
+`382557e0bec76819f0633f31895580a0f549b6bd`) is retained only as rejection
+evidence because it contains two unsafe LinkedIn descriptors.
 
 Hermes Reach is a Hermes security wrapper around an exact, owner-maintained
 [Agent-Reach fork](https://github.com/izumi0uu/Agent-Reach). That fork is based
@@ -204,14 +207,16 @@ expose a generic execution surface.
 ## Fork updates, recovery, and rollback
 
 Hermes depends on an exact reviewed fork commit, never a branch or tag. The
-current integration candidate is `ee200e7160c4b093a2ba0fcee9f2a6842aefe20d`,
-with tree `56883c0872bed94050660b16d1ade2e46f73fef9`. It is the 33-descriptor
-head of owner-fork PR #6 and the exact Hermes dependency pin. PR #6 remains
-unmerged and untagged, so this candidate is not release-eligible. After a
-rebase merge, Hermes must prove final-tree equivalence, update the final exact
-pin, and repeat the provenance, RECORD, runtime, and pin-sensitive gates.
+final integration is `75cd48c6274e7f4740530d97877ec048708d5334`, with tree
+`e86ee839621360b991d985ad9d4cb18e36f86351`. It is the exact Hermes dependency
+pin and the tree-equivalent rebase integration of owner-fork PR #6's final
+reviewed head `e91e3efa045e75f08d4e7fdd9749fe26d4f774c5` into
+`hermes/execution-v1`. The integration branch remains untagged and is not
+release-eligible. Before publication, its immutable recovery tag must be
+protected from movement and deletion, and Hermes must complete the final
+provenance, RECORD, runtime, and pin-sensitive verification gates.
 
-The candidate's pre-freeze parent
+The rejected pre-freeze commit
 `7bc42839d3dd290e4af93b24e0b03b738cff0ffa`, with tree
 `382557e0bec76819f0633f31895580a0f549b6bd`, is rejected because it contains 35
 descriptors including LinkedIn. It is retained only as rejection evidence.

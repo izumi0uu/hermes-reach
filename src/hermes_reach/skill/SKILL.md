@@ -23,9 +23,11 @@ exact `public` grants. Xueqiu is SecretProvider-backed, also uses an exact
 `public` grant, and additionally requires its opaque secret capability. Hermes owns
 no platform command, endpoint, method, or parser. Exa Web and Code still report
 `setup_required` until the operator supplies the complete reviewed artifact
-attestation. The accepted reviewed fork candidate is
-`ee200e7160c4b093a2ba0fcee9f2a6842aefe20d`, tree
-`56883c0872bed94050660b16d1ade2e46f73fef9`. Fork execution does not make the
+attestation. Owner-fork PR #6's final reviewed head
+`e91e3efa045e75f08d4e7fdd9749fe26d4f774c5` was rebase-merged with tree
+equivalence into `hermes/execution-v1` as final integration
+`75cd48c6274e7f4740530d97877ec048708d5334`; both resolve to tree
+`e86ee839621360b991d985ad9d4cb18e36f86351`. Fork execution does not make the
 other 30 catalog operations executable. The pre-freeze candidate
 `7bc42839d3dd290e4af93b24e0b03b738cff0ffa` is rejected because it also
 contains two LinkedIn descriptors; it is not routing or release authority.

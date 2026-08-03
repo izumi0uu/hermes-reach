@@ -27,9 +27,12 @@ SOCIAL_AGENT_REACH_REVIEWED_HEAD = "a3dcdb3a6638e14ceda8cfa9a3cc7a010d80fa80"
 SOCIAL_AGENT_REACH_INTEGRATION_TREE = "302db7526ed84b1565fa24baf5c06ced69385d80"
 FINAL_AGENT_REACH_REVIEWED_HEAD = "c57ae5b8d78fed6ad52a1f52731db589d875f8a9"
 FINAL_AGENT_REACH_INTEGRATION_TREE = "385b9c95cb3a6372ed1b68b606abc3faed71f307"
-REVIEWED_SEARCH_CAPABILITIES_AGENT_REACH_HEAD = AGENT_REACH_FORK_COMMIT
-REVIEWED_SEARCH_CAPABILITIES_AGENT_REACH_TREE = (
-    "56883c0872bed94050660b16d1ade2e46f73fef9"
+SEARCH_CAPABILITIES_AGENT_REACH_REVIEWED_HEAD = (
+    "e91e3efa045e75f08d4e7fdd9749fe26d4f774c5"
+)
+SEARCH_CAPABILITIES_AGENT_REACH_INTEGRATION_COMMIT = AGENT_REACH_FORK_COMMIT
+SEARCH_CAPABILITIES_AGENT_REACH_INTEGRATION_TREE = (
+    "e86ee839621360b991d985ad9d4cb18e36f86351"
 )
 OPENCLI_SOCIAL_VERSION = "1.8.6-hermes.1"
 REVIEW_FIELDS = frozenset(
@@ -565,12 +568,26 @@ def test_governance_docs_preserve_worker_and_recovery_tag_boundaries() -> None:
     assert "Hermes never depends on either tag" in normalized_reuse_boundary
     assert "the exact commit pin is authoritative" in normalized_reuse_boundary
     assert "hermes-reach-integration-0.1.0a2" in normalized_plugin_boundary
-    assert AGENT_REACH_FORK_COMMIT in normalized_plugin_boundary
-    assert REVIEWED_SEARCH_CAPABILITIES_AGENT_REACH_HEAD in normalized_reuse_boundary
-    assert REVIEWED_SEARCH_CAPABILITIES_AGENT_REACH_TREE in normalized_plugin_boundary
-    assert REVIEWED_SEARCH_CAPABILITIES_AGENT_REACH_TREE in normalized_reuse_boundary
-    assert REVIEWED_SEARCH_CAPABILITIES_AGENT_REACH_HEAD in normalized_opencli_decision
-    assert REVIEWED_SEARCH_CAPABILITIES_AGENT_REACH_TREE in normalized_opencli_decision
+    assert SEARCH_CAPABILITIES_AGENT_REACH_REVIEWED_HEAD in normalized_plugin_boundary
+    assert SEARCH_CAPABILITIES_AGENT_REACH_REVIEWED_HEAD in normalized_reuse_boundary
+    assert SEARCH_CAPABILITIES_AGENT_REACH_REVIEWED_HEAD in normalized_opencli_decision
+    assert (
+        SEARCH_CAPABILITIES_AGENT_REACH_INTEGRATION_COMMIT in normalized_plugin_boundary
+    )
+    assert (
+        SEARCH_CAPABILITIES_AGENT_REACH_INTEGRATION_COMMIT in normalized_reuse_boundary
+    )
+    assert (
+        SEARCH_CAPABILITIES_AGENT_REACH_INTEGRATION_COMMIT
+        in normalized_opencli_decision
+    )
+    assert (
+        SEARCH_CAPABILITIES_AGENT_REACH_INTEGRATION_TREE in normalized_plugin_boundary
+    )
+    assert SEARCH_CAPABILITIES_AGENT_REACH_INTEGRATION_TREE in normalized_reuse_boundary
+    assert (
+        SEARCH_CAPABILITIES_AGENT_REACH_INTEGRATION_TREE in normalized_opencli_decision
+    )
     assert FINAL_AGENT_REACH_REVIEWED_HEAD in normalized_plugin_boundary
     assert FINAL_AGENT_REACH_INTEGRATION_TREE in normalized_plugin_boundary
     assert FINAL_AGENT_REACH_REVIEWED_HEAD in normalized_reuse_boundary
