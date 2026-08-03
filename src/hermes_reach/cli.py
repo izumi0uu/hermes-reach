@@ -7,7 +7,7 @@ import asyncio
 import sys
 import time
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 from .agent_reach_bridge import AgentReachBridgeError, upstream_doctor_data
 from .bootstrap import DEFAULT_RUNTIME
@@ -32,6 +32,7 @@ from .connector.protocol import (
     GrantScope,
     ProtocolValidationError,
     PublicBackendIdentity,
+    format_grant_scope,
 )
 from .connector.service import ConnectorService
 from .connector.transport import WssEndpoint
@@ -329,11 +330,7 @@ async def _pair_vps(args: argparse.Namespace, reader: TtyPassphraseReader) -> No
 
     def display(challenge: PairingDisplay) -> None:
         rendered_scopes = ", ".join(
-            (
-                f"{source}:{operation}:{data_scope}"
-                if capability_id is None
-                else f"{source}:{operation}:{data_scope}:{capability_id}"
-            )
+            format_grant_scope(source, operation, data_scope, capability_id)
             for source, operation, data_scope, capability_id in challenge.scopes
         )
         reader._write(
@@ -399,7 +396,7 @@ def _optional_path_group(
         return None
     if any(not isinstance(value, Path) for value in values):
         raise ConnectorError(ConnectorErrorCode.CONNECTOR_STATE_INVALID)
-    return tuple(value for value in values if isinstance(value, Path))
+    return cast("tuple[Path, ...]", values)
 
 
 def _render_activation_summary(summaries: tuple[_ActivationSummary, ...]) -> str:
@@ -413,15 +410,17 @@ def _render_activation_summary(summaries: tuple[_ActivationSummary, ...]) -> str
         lines.extend(f"prerequisite: {value}" for value in prerequisites)
         scopes.extend(selected_scopes)
     lines.append(f"scopes: {len(scopes)}")
-    lines.extend(f"scope: {_grant_scope_label(scope)}" for scope in scopes)
+    lines.extend(
+        "scope: "
+        + format_grant_scope(
+            scope.source,
+            scope.operation,
+            scope.data_scope,
+            scope.capability_id,
+        )
+        for scope in scopes
+    )
     return "\n".join(lines) + "\n"
-
-
-def _grant_scope_label(scope: GrantScope) -> str:
-    label = f"{scope.source}:{scope.operation}:{scope.data_scope}"
-    if scope.capability_id is not None:
-        return f"{label}:{scope.capability_id}"
-    return label
 
 
 def render_command(args: argparse.Namespace) -> str:

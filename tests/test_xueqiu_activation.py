@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+import hermes_reach.sources.xueqiu_activation as xueqiu_activation
 from hermes_reach.connector.errors import ConnectorError, ConnectorErrorCode
 from hermes_reach.connector.secrets import (
     CapabilityId,
@@ -174,6 +175,62 @@ def test_manifest_rejects_duplicate_keys_and_unknown_fields(
             activate_xueqiu_binding(path, provider_factory=factory)
         assert caught.value.code == ConnectorErrorCode.SECRET_UNAVAILABLE.value
         assert factory.calls == 0
+
+
+@pytest.mark.parametrize("capability_id", [1, [], {"id": "nested"}])
+def test_manifest_rejects_non_string_capability_ids_before_provider_creation(
+    tmp_path: Path,
+    capability_id: object,
+) -> None:
+    path = tmp_path / "invalid-capability.json"
+    value = _manifest_value(tmp_path)
+    value["capability_id"] = capability_id
+    _write_manifest(path, value)
+    factory = _ProviderFactory()
+
+    with pytest.raises(ConnectorError) as caught:
+        activate_xueqiu_binding(path, provider_factory=factory)
+
+    assert caught.value.code == ConnectorErrorCode.SECRET_UNAVAILABLE.value
+    assert factory.calls == 0
+
+
+def test_activation_rejects_unsupported_platform_before_manifest_access(
+    tmp_path: Path,
+) -> None:
+    factory = _ProviderFactory()
+
+    with pytest.raises(ConnectorError) as caught:
+        activate_xueqiu_binding(
+            tmp_path / "missing.json",
+            provider_factory=factory,
+            _platform="win32",
+        )
+
+    assert caught.value.code == ConnectorErrorCode.UNSUPPORTED_PLATFORM.value
+    assert factory.calls == 0
+
+
+@pytest.mark.parametrize("attribute", ["O_CLOEXEC", "O_NOFOLLOW", "geteuid"])
+def test_activation_requires_every_posix_manifest_guarantee_before_access(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    attribute: str,
+) -> None:
+    path = tmp_path / "xueqiu-binding.json"
+    _write_manifest(path, _manifest_value(tmp_path))
+    factory = _ProviderFactory()
+    monkeypatch.delattr(xueqiu_activation.os, attribute)
+
+    with pytest.raises(ConnectorError) as caught:
+        activate_xueqiu_binding(
+            path,
+            provider_factory=factory,
+            _platform="linux",
+        )
+
+    assert caught.value.code == ConnectorErrorCode.UNSUPPORTED_PLATFORM.value
+    assert factory.calls == 0
 
 
 def test_manifest_rejects_relative_paths_without_reading_them(tmp_path: Path) -> None:

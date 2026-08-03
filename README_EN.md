@@ -416,9 +416,9 @@ flowchart TD
 
 The 15-channel registry, backend metadata, and official compatibility baseline
 come from official Agent-Reach. Owner-fork execution v1 directly runs two RSS,
-four Bilibili, three YouTube, four V2EX, one Exa Web, and 15 OpenCLI social
-operations, plus four accepted search operations. The Hermes product catalog
-has 63 read-only operations: 34 are marked implemented and 29 are planned.
+four Bilibili, three YouTube, four V2EX, two Exa, and 18 Connector-only
+operations. The Hermes product catalog has 63 read-only operations: 34 are
+marked implemented and 29 are planned.
 Thirty-three have concrete executors, all through the owner-fork runtime.
 Fifteen binding surfaces are default-local and 18 are Connector-only. Exa's executors are implemented but are not
 composed without complete artifact evidence, so its normal state is

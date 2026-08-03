@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import signal
 import time
 from collections.abc import Iterator, Mapping
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -566,6 +568,48 @@ def test_isolated_worker_cancellation_zeroes_frame_and_reaps_process(
         )
 
     assert asyncio.run(exercise()) == (True, True, True)
+
+
+def test_worker_cleanup_escalates_when_sigterm_is_ignored(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Process:
+        def __init__(self) -> None:
+            self.pid = 4242
+            self.returncode: int | None = None
+            self.terminated = False
+
+        def terminate(self) -> None:
+            self.terminated = True
+
+        def kill(self) -> None:
+            raise AssertionError("process-group escalation must be used")
+
+        async def wait(self) -> int:
+            while self.returncode is None:
+                await asyncio.sleep(0)
+            return self.returncode
+
+    process = _Process()
+    signals: list[tuple[int, int]] = []
+
+    def killpg(pid: int, selected_signal: int) -> None:
+        signals.append((pid, selected_signal))
+        process.returncode = -selected_signal
+
+    monkeypatch.setattr(xueqiu, "_WORKER_GRACEFUL_SHUTDOWN_SECONDS", 0.001)
+    monkeypatch.setattr(xueqiu.os, "killpg", killpg)
+
+    asyncio.run(
+        xueqiu._cleanup_process_group(
+            cast(asyncio.subprocess.Process, process),
+            terminate_group=True,
+        )
+    )
+
+    assert process.terminated is True
+    assert signals == [(process.pid, signal.SIGKILL)]
+    assert process.returncode == -signal.SIGKILL
 
 
 def test_parent_normalization_bounds_long_names_and_marks_truncation() -> None:

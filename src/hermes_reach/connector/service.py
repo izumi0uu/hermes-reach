@@ -45,6 +45,7 @@ from .protocol import (
     create_pairing_resolution,
     create_signed_grant,
     encode_record,
+    format_grant_scope,
     pairing_sas,
     pairing_transcript_hash,
     record_digest,
@@ -960,7 +961,7 @@ def _pairing_display(state: PairingState) -> PairingDisplay:
 
 def _approval_prompt(display: PairingDisplay) -> str:
     scopes = ", ".join(
-        _display_scope(source, operation, data_scope, capability_id)
+        format_grant_scope(source, operation, data_scope, capability_id)
         for source, operation, data_scope, capability_id in display.scopes
     )
     return (
@@ -1001,7 +1002,12 @@ def _pending_pairings_output(pairings: tuple[PairingDisplay, ...]) -> str:
                 f"SAS: {display.sas}",
                 "scopes: "
                 + ", ".join(
-                    _display_scope(source, operation, data_scope, capability_id)
+                    format_grant_scope(
+                        source,
+                        operation,
+                        data_scope,
+                        capability_id,
+                    )
                     for source, operation, data_scope, capability_id in display.scopes
                 ),
                 f"expires_at: {display.expires_at}",
@@ -1010,16 +1016,6 @@ def _pending_pairings_output(pairings: tuple[PairingDisplay, ...]) -> str:
         )
         for display in pairings
     )
-
-
-def _display_scope(
-    source: str,
-    operation: str,
-    data_scope: str,
-    capability_id: str | None,
-) -> str:
-    base = f"{source}:{operation}:{data_scope}"
-    return base if capability_id is None else f"{base}:{capability_id}"
 
 
 def _initial_grant(

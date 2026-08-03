@@ -220,6 +220,18 @@ class GrantScope:
             raise ProtocolValidationError("The capability identifier is invalid.")
 
 
+def format_grant_scope(
+    source: str,
+    operation: str,
+    data_scope: str,
+    capability_id: str | None,
+) -> str:
+    """Render one already-validated grant scope for operator comparison."""
+
+    base = f"{source}:{operation}:{data_scope}"
+    return base if capability_id is None else f"{base}:{capability_id}"
+
+
 @dataclass(frozen=True, slots=True)
 class GrantClaims:
     """Immutable inspectable authority claims signed by the Connector."""

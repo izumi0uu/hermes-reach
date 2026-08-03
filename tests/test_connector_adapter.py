@@ -123,10 +123,9 @@ class _FixtureConnectorClient:
             ),
             True,
         )
-        backend = (
-            OPENCLI_SOCIAL_BACKEND
-            if call.source.name in {"reddit", "facebook", "instagram"}
-            else BACKEND
+        backend = PRODUCTION_CONNECTOR_BACKEND_BY_OPERATION.get(
+            (call.source.name, call.operation.name),
+            BACKEND,
         )
         receipt = create_signed_receipt(
             self._connector,
@@ -156,6 +155,37 @@ class _OfflineConnectorClient:
         del call, trace_id
         self.calls += 1
         raise ConnectorError(ConnectorErrorCode.CONNECTOR_OFFLINE)
+
+
+@pytest.mark.parametrize(
+    ("source", "operation", "expected_backend"),
+    (
+        ("twitter", "search.posts", OPENCLI_SOCIAL_BACKEND),
+        ("xiaohongshu", "search.notes", OPENCLI_SOCIAL_BACKEND),
+        ("xueqiu", "search.stocks", XUEQIU_BACKEND),
+    ),
+)
+def test_fixture_receipts_follow_the_production_backend_map(
+    source: str,
+    operation: str,
+    expected_backend: PublicBackendIdentity,
+) -> None:
+    client = _FixtureConnectorClient([])
+    call = validate_search(
+        {
+            "requests": [
+                {
+                    "source": source,
+                    "operation": operation,
+                    "query": "fixture",
+                }
+            ]
+        }
+    )[0]
+
+    response = asyncio.run(client.execute(call, trace_id="d" * 32))
+
+    assert response.receipt.backend == expected_backend
 
 
 class _ErrorConnectorClient:

@@ -1665,6 +1665,7 @@ def test_signed_request_verification_binds_key_audience_operation_time_and_diges
         ("provider-account", "1"),
         ("secret-selector", "1"),
         ("linkedin-scraper-mcp", "4.14.0"),
+        ("xueqiu-api", "9.9.9+search.v1"),
         ("fixture-backend-v1", "TOKEN_CANARY"),
         ("fixture-backend-v1/path", "1"),
         ("https://backend.invalid", "1"),
@@ -1682,7 +1683,7 @@ def test_public_backend_identity_is_an_explicit_allowlist(
     ("backend_id", "version"),
     [("xueqiu-api", "1.5.0+search.v1")],
 )
-def test_public_backend_identity_accepts_exact_search_batch_backend(
+def test_public_backend_identity_accepts_exact_xueqiu_backend(
     backend_id: str,
     version: str,
 ) -> None:

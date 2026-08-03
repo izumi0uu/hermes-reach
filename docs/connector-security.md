@@ -176,8 +176,9 @@ All four OpenCLI social arguments must be present or absent. The Xueqiu
 manifest is one optional group. An omitted group performs zero file, network,
 process, or secret access. Before state unlock or listener construction, the
 original terminal (TTY) displays only safe backend identities, digests, scopes,
-and the opaque Xueqiu capability ID for all 18 exact source-operation bindings. It
-never displays a path, Bitwarden project, selector, Cookie, or token. Type
+and, when enabled, the opaque Xueqiu capability ID for the exact selected
+source-operation bindings. It never displays a path, Bitwarden project,
+selector, Cookie, or token. Type
 exactly `enable` once to continue. Paths must be
 canonical, absolute, current-user owned, non-symlinked, and not group- or
 world-writable. Node must be a bounded executable regular file; the CLI must be

@@ -14,6 +14,7 @@ from typing import Literal, Protocol
 from .errors import ConnectorError, ConnectorErrorCode
 from .identity import DevicePublicIdentity
 from .limits import CONNECTOR_PROTOCOL_VERSION, CONNECTOR_STORAGE_SCHEMA_VERSION
+from .protocol import format_grant_scope
 from .store import (
     AuthorityStore,
     DeviceInspection,
@@ -321,7 +322,12 @@ def render_connector_grants(
     lines: list[str] = []
     for grant in grants:
         scopes = ",".join(
-            f"{scope.source}:{scope.operation}:{scope.data_scope}"
+            format_grant_scope(
+                scope.source,
+                scope.operation,
+                scope.data_scope,
+                None,
+            )
             for scope in grant.scopes
         )
         lines.append(

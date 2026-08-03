@@ -71,8 +71,12 @@ def test_grant_scope_parser_preserves_an_opaque_secret_capability() -> None:
         [f"xueqiu:search.stocks:public:{capability_id}"]
     ) == (GrantScope("xueqiu", "search.stocks", "public", capability_id),)
 
-    with pytest.raises(cli.ConnectorError):
-        cli._parse_grant_scopes(["xueqiu:search.stocks:account_visible:invalid"])
+    for invalid_scope in (
+        "xueqiu:search.stocks:account_visible:invalid",
+        "xueqiu:search.stocks:public:NOT-Canonical!",
+    ):
+        with pytest.raises(cli.ConnectorError):
+            cli._parse_grant_scopes([invalid_scope])
 
 
 def _social_serve_arguments(

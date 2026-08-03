@@ -420,7 +420,8 @@ def test_static_handshake_freezes_order_and_new_descriptor_schemas() -> None:
         "network_access.v1",
         "mcporter_artifacts.v1",
     )
-    social = api.capabilities[14:29]
+    social = api.capabilities[14:31]
+    assert len(social) == 17
     assert all(capability.backend_id == "opencli" for capability in social)
     assert all(capability.backend_version == "1.8.6-hermes.1" for capability in social)
     assert all(
