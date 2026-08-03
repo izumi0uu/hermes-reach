@@ -705,6 +705,94 @@ EXPECTED_EXECUTION_CAPABILITIES = (
         2_048,
         512,
     ),
+    (
+        "v1",
+        "twitter",
+        "search.posts",
+        "twitter.search.posts.arguments.v1",
+        ("twitter.post.v1",),
+        "opencli",
+        "1.8.6-hermes.1",
+        ("opencli_session.v1",),
+        50,
+        1_048_576,
+        16_384,
+        524_288,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        2_048,
+        512,
+    ),
+    (
+        "v1",
+        "xiaohongshu",
+        "search.notes",
+        "xiaohongshu.search.notes.arguments.v1",
+        ("xiaohongshu.note.v1",),
+        "opencli",
+        "1.8.6-hermes.1",
+        ("opencli_session.v1",),
+        50,
+        1_048_576,
+        16_384,
+        524_288,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        2_048,
+        512,
+    ),
+    (
+        "v1",
+        "xueqiu",
+        "search.stocks",
+        "xueqiu.search.stocks.arguments.v1",
+        ("xueqiu.stock.v1",),
+        "xueqiu-api",
+        "1.5.0+search.v1",
+        ("xueqiu_session.v1",),
+        50,
+        1_048_576,
+        16_384,
+        1_048_576,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        2_048,
+        512,
+    ),
+    (
+        "v1",
+        "exa",
+        "search.code",
+        "exa.search.code.arguments.v1",
+        ("exa.code.result.v1",),
+        "exa-mcporter",
+        "0.12.3+exa-code.v1",
+        ("network_access.v1", "mcporter_artifacts.v1"),
+        20,
+        1_048_576,
+        16_384,
+        524_288,
+        512,
+        8_192,
+        16_000,
+        4_096,
+        8_192,
+        512,
+        2_048,
+        512,
+    ),
 )
 EXPECTED_RUNTIME_HANDSHAKES = (
     (
@@ -743,8 +831,42 @@ EXPECTED_RUNTIME_HANDSHAKES = (
         "execute_opencli_social",
         ("request", "context"),
     ),
+    (
+        "xueqiu",
+        "agent_reach.execution.v1.xueqiu",
+        "execute_xueqiu",
+        ("request", "context"),
+    ),
 )
 FROZEN_CALLS: tuple[tuple[str, dict[str, object], str, str], ...] = (
+    (
+        "reach_search",
+        {
+            "requests": [
+                {
+                    "source": "linkedin",
+                    "operation": "search.people",
+                    "query": "frozen-linkedin-people-query",
+                }
+            ]
+        },
+        "linkedin",
+        "search.people",
+    ),
+    (
+        "reach_search",
+        {
+            "requests": [
+                {
+                    "source": "linkedin",
+                    "operation": "search.jobs",
+                    "query": "frozen-linkedin-jobs-query",
+                }
+            ]
+        },
+        "linkedin",
+        "search.jobs",
+    ),
     (
         "reach_read",
         {
@@ -844,21 +966,6 @@ FROZEN_CALLS: tuple[tuple[str, dict[str, object], str, str], ...] = (
         },
         "github",
         "browse.releases",
-    ),
-    (
-        "reach_search",
-        {
-            "requests": [
-                {
-                    "source": "exa",
-                    "operation": "search.code",
-                    "query": "code search",
-                    "options": {"limit": 3},
-                }
-            ]
-        },
-        "exa",
-        "search.code",
     ),
 )
 
@@ -1219,12 +1326,16 @@ def _assert_frozen_calls(registry: Any, client: FixtureHttpClient) -> None:
     catalog_operations = {
         (source.name, operation.name)
         for source in SOURCE_CATALOG
-        if source.name in {"web", "github", "exa"}
         for operation in source.operations
+        if source.name in {"web", "github"}
+        or (
+            source.name == "linkedin"
+            and operation.name in {"search.people", "search.jobs"}
+        )
         if operation.implementation_state == "planned"
     }
-    assert len(requested_operations) == 10
-    assert len(set(requested_operations)) == 10
+    assert len(requested_operations) == 11
+    assert len(set(requested_operations)) == 11
     assert set(requested_operations) == catalog_operations
 
     effects: list[str] = []

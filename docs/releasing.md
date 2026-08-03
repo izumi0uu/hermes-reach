@@ -16,23 +16,38 @@ deletion so old installs and rollback remain reachable. The tag is only a
 recovery reference and never the dependency selector; the commit in wheel
 metadata remains authoritative.
 
-The current final integration and rollback references are:
+The current candidate and rollback references are:
 
 | Purpose | Recovery reference | Exact dependency commit |
 | --- | --- | --- |
-| Current 29-operation public-platform integration | pending; not release-eligible until a protected immutable recovery tag exists | `281dc3352c63cdb644f02e028cc5d645c279954a` |
+| Accepted 33-operation candidate and current integration pin | none; owner-fork PR #6 is open, unmerged, untagged, and non-publishable | `ee200e7160c4b093a2ba0fcee9f2a6842aefe20d` |
+| Rejected pre-freeze 35-operation parent | none; retained only as LinkedIn rejection evidence | `7bc42839d3dd290e4af93b24e0b03b738cff0ffa` |
+| Rollback: 29-operation public/social integration | pending; no immutable recovery tag exists | `281dc3352c63cdb644f02e028cc5d645c279954a` |
 | Historical: pre-hardlink-fix 29-operation integration | pending; incompatible with uv hardlink installs | `ec4a5e36434c9df9ee236dc12734843163fc17ac` |
 | Rollback: 14-operation public-platform integration | pending; no immutable recovery tag was created by the social batch | `9b69146588b1d162515b81db26b51643c15de8eb` |
 | Rollback: integrated YouTube read-video runtime | `hermes-reach-integration-0.1.0a3` | `2a5829cf3b50bc435c647bfae4c050b1837d0235` |
 | Rollback: RSS + Bilibili execution v1, YouTube exact wrappers | `hermes-reach-integration-0.1.0a2` | `f195253d53befdb012d7aa575e732ec627ec29ac` |
 | Earlier rollback: RSS execution v1 / Hermes Bilibili wrapper | `hermes-reach-integration-0.1.0a1` | `806205fd106f4f4453624becfd773acce8418cf1` |
 
-The final integration `281dc3352c63cdb644f02e028cc5d645c279954a`
-resolves to tree `385b9c95cb3a6372ed1b68b606abc3faed71f307`. It was rebase-merged
+The accepted candidate `ee200e7160c4b093a2ba0fcee9f2a6842aefe20d`
+resolves to tree `56883c0872bed94050660b16d1ade2e46f73fef9` and is the current
+33-descriptor head of owner-fork PR #6. Hermes pins this exact commit. PR #6
+remains open, unmerged, untagged, and without a recovery tag, so the candidate
+must not be published. After a rebase merge, the final integration must have
+the reviewed tree or receive a fresh full review; Hermes must then update the
+exact pin and repeat every pin-sensitive gate.
+
+The candidate's parent `7bc42839d3dd290e4af93b24e0b03b738cff0ffa`
+resolves to tree `382557e0bec76819f0633f31895580a0f549b6bd`. It contains the two
+rejected LinkedIn descriptors and is retained only as pre-freeze evidence, not
+as routing, dependency, merge, tag, or release authority. The accepted
+candidate's rollback is the prior final integration
+`281dc3352c63cdb644f02e028cc5d645c279954a`, which resolves to tree
+`385b9c95cb3a6372ed1b68b606abc3faed71f307`. That integration was rebase-merged
 from reviewed hardlink-fix PR head `c57ae5b8d78fed6ad52a1f52731db589d875f8a9`, whose tree is
-byte-equivalent. Hermes pins the final SHA and repeats every pin-sensitive gate.
-A package release remains forbidden until the final integration receives one
-protected immutable recovery tag and all release gates pass.
+byte-equivalent. A package release remains forbidden until the new final
+integration receives one protected immutable recovery tag and all release
+gates pass.
 The prior 29-operation integration `ec4a5e36434c9df9ee236dc12734843163fc17ac`,
 tree `302db7526ed84b1565fa24baf5c06ced69385d80`, remains provenance for the
 social batch but is not a release-compatible rollback under uv hardlink
@@ -72,8 +87,10 @@ controls:
 
 The workflow cannot configure or prove these repository settings. A tag push
 without them is an operator error, even if the YAML gate passes.
-Final integration `281dc3352c63cdb644f02e028cc5d645c279954a` currently lacks the immutable
-integration-tag prerequisite and must not be published as-is.
+Accepted candidate `ee200e7160c4b093a2ba0fcee9f2a6842aefe20d`, tree
+`56883c0872bed94050660b16d1ade2e46f73fef9`, is reviewed but still unmerged,
+untagged, and lacks the immutable integration-tag prerequisite. It must not be
+published as-is. Its rejected pre-freeze parent remains evidence only.
 
 ## Local dry run
 
@@ -137,8 +154,8 @@ The workflow then:
    checksummed wheel, sdist, and `SHA256SUMS` set;
 5. on Python 3.11, 3.12, and 3.13, installs the exact wheel without a dependency
    cache, repository lock, offline mode, or source checkout, then runs
-   `uv pip check` and validates fork provenance, the 29-descriptor execution
-   handshake including each of the six runtime modules and all 13 attested
+   `uv pip check` and validates fork provenance, the 33-descriptor execution
+   handshake including each of the seven runtime modules and all 14 attested
    execution files, and the 15-channel catalog;
 6. creates separate GitHub OIDC build attestations for the wheel and sdist
    whose digests are listed in `SHA256SUMS`;
@@ -286,12 +303,15 @@ apis = tuple(
         "v2ex",
         "exa",
         "opencli_social",
+        "xueqiu",
     )
 )
 api = apis[0]
 assert all(candidate.capabilities == api.capabilities for candidate in apis)
 assert api.opencli_session_capability == "opencli_session.v1"
 assert api.opencli_session_type.__name__ == "OpenCliSessionV1"
+assert api.xueqiu_session_capability == "xueqiu_session.v1"
+assert api.xueqiu_session_type.__name__ == "XueqiuSessionV1"
 assert tuple((item.source, item.operation) for item in api.capabilities) == (
     ("rss", "read.feed"),
     ("rss", "browse.entries"),
@@ -322,8 +342,12 @@ assert tuple((item.source, item.operation) for item in api.capabilities) == (
     ("instagram", "read.profile"),
     ("instagram", "browse.user_posts"),
     ("instagram", "browse.explore"),
+    ("twitter", "search.posts"),
+    ("xiaohongshu", "search.notes"),
+    ("xueqiu", "search.stocks"),
+    ("exa", "search.code"),
 )
-print("exact Agent-Reach PEP 610 and six-module runtime handshake verified")
+print("exact Agent-Reach PEP 610 and seven-module runtime handshake verified")
 PY
 ```
 
@@ -435,6 +459,11 @@ Retain `$SMOKE_ROOT` with the release evidence until the audit is complete.
   assets, move the old tag, or reuse the withdrawn version.
 - User rollback remains: disable Reach, start a new Hermes session, uninstall
   from the same Hermes Python environment, then run `uv pip check`.
+- A code rollback that reverses the four accepted search operations restores exact fork pin
+  `281dc3352c63cdb644f02e028cc5d645c279954a`. Twitter/X search,
+  Xiaohongshu search, Xueqiu stock search, and Exa
+  Code become unavailable again. No protocol, grant, Connector, database,
+  receipt, audit, or secret migration is needed.
 - A code rollback that reverses the OpenCLI social batch restores the prior
   Hermes release and exact fork pin
   `9b69146588b1d162515b81db26b51643c15de8eb`. The 15 Connector-only social

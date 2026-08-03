@@ -314,7 +314,7 @@ def security_harness(tmp_path: Path) -> _SecurityHarness:
             display=displays.append,
         )
     )
-    assert displays[0].scopes == (("web", "read.url", "public"),)
+    assert displays[0].scopes == (("web", "read.url", "public", None),)
 
     def authority_clock() -> int:
         return NOW + 10

@@ -2,7 +2,7 @@
 
 ## Decision
 
-Reddit, Facebook, and Instagram execute only through the closed
+Reddit, Facebook, Instagram, Twitter search, and Xiaohongshu search execute only through the closed
 `agent_reach.execution.v1` operations in the owner-maintained Agent-Reach fork.
 Hermes Reach does not construct OpenCLI argv, parse OpenCLI YAML, select browser
 actions, or project platform-native rows.
@@ -16,6 +16,8 @@ The complete batch is Connector-only:
 | Facebook | `browse.feed`, `browse.groups` | `account_visible` |
 | Instagram | `search.users`, `read.profile`, `browse.user_posts` | `public` |
 | Instagram | `browse.explore` | `account_visible` |
+| Twitter | `search.posts` | `public` |
+| Xiaohongshu | `search.notes` | `public` |
 
 Every row is classified `direct_owner_fork_runtime`, uses backend
 `opencli/1.8.6-hermes.1`, requires `opencli_session.v1`, and has
@@ -36,17 +38,21 @@ Every row is classified `direct_owner_fork_runtime`, uses backend
   `c57ae5b8d78fed6ad52a1f52731db589d875f8a9`
 - Reviewed hardlink-fix tree:
   `385b9c95cb3a6372ed1b68b606abc3faed71f307`
-- Final rebase integration:
+- Prior final rebase integration:
   `281dc3352c63cdb644f02e028cc5d645c279954a`
-- Final integration tree:
-  `385b9c95cb3a6372ed1b68b606abc3faed71f307`
+- Accepted non-GitHub search candidate:
+  `ee200e7160c4b093a2ba0fcee9f2a6842aefe20d`
+- Accepted candidate tree:
+  `56883c0872bed94050660b16d1ade2e46f73fef9`
 - Pre-hardlink-fix integration:
   `ec4a5e36434c9df9ee236dc12734843163fc17ac`
 - Social-disable rollback Agent-Reach pin:
   `9b69146588b1d162515b81db26b51643c15de8eb`
 
-The reviewed hardlink-fix PR head and final integration have identical trees.
-Hermes pins the final commit, not a branch or tag. The fix permits multiple
+The reviewed hardlink-fix PR head and prior integration have identical trees.
+Hermes pins the accepted candidate commit, not a branch or tag. It is the
+unmerged and untagged head of owner-fork PR #6 and is not release-eligible.
+The fix permits multiple
 links only for the packaged lifecycle guard after RECORD/current-byte
 validation; the private guard snapshot remains single-link and user-selected
 Node/OpenCLI artifacts still reject hardlinks.
@@ -72,7 +78,7 @@ by this boundary.
 
 Agent-Reach owns:
 
-- all 15 operation descriptors and argument schemas;
+- all 17 operation descriptors and argument schemas;
 - the exact OpenCLI commands and fixed options;
 - Node/OpenCLI tree revalidation and private byte snapshots;
 - the no-lifecycle-mutation preload guard;
@@ -92,7 +98,9 @@ Hermes Reach owns:
 - signed receipts, availability snapshots, evidence, and audit.
 
 Hermes source must contain no social-platform OpenCLI argv table, YAML parser,
-DOM selector, endpoint, browser action, or fallback backend. The former
+DOM selector, endpoint, browser action, or fallback backend. Twitter post URLs
+are rebuilt from correlated IDs, and Xiaohongshu result URLs are rebuilt
+without `xsec_token` or other session-bearing parameters, inside the fork. The former
 Reddit-only wrapper is retired by this decision.
 
 ## Trusted-Device Capability
@@ -171,7 +179,7 @@ signed request for this retry.
 
 All four must be present or absent. Before state unlock or listener creation,
 the operator sees the Node digest, OpenCLI tree digest, backend identity, and
-all 15 exact source-operation scopes, then types the literal `enable`.
+all 17 exact source-operation scopes, then types the literal `enable`.
 Absence leaves the Connector execution composition empty. Partial, unsafe, or
 drifted input fails closed without service startup or backend work.
 
@@ -180,9 +188,10 @@ drifted input fails closed without service startup or backend work.
 Any change to the Agent-Reach official base or fork commit, OpenCLI package or
 tree, Node/OpenCLI/session capability, lifecycle guard, command/schema,
 Instagram typed error behavior, worker framing, backend identity, error map,
-or platform projection reopens all 15 decisions.
+or platform projection reopens all 17 decisions.
 
-Rollback restores Hermes to the preceding exact Agent-Reach pin and removes
-the 15 Connector bindings. Existing grants and database state need no
+Rollback restores Hermes to
+`281dc3352c63cdb644f02e028cc5d645c279954a` and removes the two new search
+bindings while preserving the prior 15 Connector bindings. Existing grants and database state need no
 migration; the operations simply become unavailable. No browser session,
 Connector authority, receipt, or audit data is rewritten.

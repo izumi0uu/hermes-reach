@@ -219,7 +219,7 @@ def _exa_environment() -> dict[str, str]:
     }
 
 
-def test_complete_exa_environment_adds_only_the_fixed_local_binding() -> None:
+def test_complete_exa_environment_adds_both_fixed_local_bindings() -> None:
     runtime = runtime_from_environment(_exa_environment())
 
     web = runtime.operation_availability("exa", "search.web")
@@ -229,7 +229,9 @@ def test_complete_exa_environment_adds_only_the_fixed_local_binding() -> None:
     assert web.state == "available"
     assert web.backend_id == "exa-mcporter"
     assert web.backend_version == "0.12.3+exa-web.v1"
-    assert code.state == "unavailable"
+    assert code.state == "available"
+    assert code.backend_id == "exa-mcporter"
+    assert code.backend_version == "0.12.3+exa-code.v1"
 
 
 def test_incomplete_exa_environment_fails_closed_without_hiding_local_sources() -> None:
@@ -374,7 +376,7 @@ def test_verified_single_scope_pairing_builds_only_one_degraded_social_adapter(
     assert not (state_directory / "vps-connector-snapshot.json").exists()
 
 
-def test_verified_complete_social_grant_builds_all_fifteen_degraded_adapters(
+def test_verified_complete_social_grant_builds_all_seventeen_degraded_adapters(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     state_directory = _paired_state(
@@ -391,7 +393,7 @@ def test_verified_complete_social_grant_builds_all_fifteen_degraded_adapters(
     runtime = build_vps_runtime(state_directory)
 
     states = _social_states(runtime)
-    assert len(states) == 15
+    assert len(states) == 17
     assert set(states.values()) == {("degraded", "connector_offline")}
     assert not (state_directory / "receipts.jsonl").exists()
     assert not (state_directory / "vps-connector-snapshot.json").exists()

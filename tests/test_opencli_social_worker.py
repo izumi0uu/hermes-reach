@@ -43,6 +43,8 @@ CASES = (
         {"username": "openai.dev", "limit": 7},
     ),
     ("instagram", "browse.explore", {"limit": 7}),
+    ("twitter", "search.posts", {"query": "private query", "limit": 7}),
+    ("xiaohongshu", "search.notes", {"query": "private query", "limit": 7}),
 )
 
 
@@ -252,6 +254,25 @@ def _native_item(source: str, operation: str) -> _Item:
             "comment_count": 4,
             "media_type": "image",
         },
+        "twitter.post.v1": {
+            "text": "Post body",
+            "native_id": "1951234567890123456",
+            "url": "https://x.com/i/status/1951234567890123456",
+            "author": "Alice",
+            "published_at": "2026-08-02T00:00:00Z",
+            "reaction_count": 12,
+            "view_count": 345,
+            "has_media": 0,
+        },
+        "xiaohongshu.note.v1": {
+            "text": "Agent runtime",
+            "native_id": "64f0123456789abcdef01234",
+            "title": "Agent runtime",
+            "url": "https://www.xiaohongshu.com/explore/64f0123456789abcdef01234",
+            "author": "Alice",
+            "published_at": "2026-08-02",
+            "reaction_count": 12_000,
+        },
     }
     return _Item(schema, samples[schema])
 
@@ -283,7 +304,7 @@ def _worker_success_value(
 
 
 @pytest.mark.parametrize(("source", "operation", "arguments"), CASES)
-def test_all_fifteen_worker_requests_are_closed_and_round_trip(
+def test_all_seventeen_worker_requests_are_closed_and_round_trip(
     source: str,
     operation: str,
     arguments: dict[str, object],
@@ -373,10 +394,98 @@ def test_worker_preserves_rich_fields_in_deterministic_bounded_text() -> None:
 
 
 @pytest.mark.parametrize(
+    ("source", "operation", "expected_text", "expected_url"),
+    [
+        (
+            "twitter",
+            "search.posts",
+            "Post body | reactions: 12 | views: 345 | media: no",
+            "https://x.com/i/status/1951234567890123456",
+        ),
+        (
+            "xiaohongshu",
+            "search.notes",
+            "Agent runtime | reactions: 12000",
+            "https://www.xiaohongshu.com/explore/64f0123456789abcdef01234",
+        ),
+    ],
+)
+def test_new_social_searches_preserve_only_closed_canonical_projection(
+    source: str,
+    operation: str,
+    expected_text: str,
+    expected_url: str,
+) -> None:
+    arguments = {"query": "private query", "limit": 1}
+    value = _worker_success_value(source, operation, arguments)
+
+    response = worker.decode_response(
+        _framed(value),
+        source=source,
+        operation=operation,
+        arguments=arguments,
+    )
+
+    assert isinstance(response, worker.OpenCliSocialProjection)
+    assert response.items[0].text == expected_text
+    assert response.items[0].url == expected_url
+    assert "xsec_" not in repr(value)
+
+
+@pytest.mark.parametrize(
+    ("source", "operation", "changes"),
+    [
+        (
+            "twitter",
+            "search.posts",
+            {"url": "https://twitter.com/alice/status/1951234567890123456"},
+        ),
+        (
+            "twitter",
+            "search.posts",
+            {"native_id": "01951234567890123456"},
+        ),
+        (
+            "xiaohongshu",
+            "search.notes",
+            {
+                "url": (
+                    "https://www.xiaohongshu.com/explore/"
+                    "64f0123456789abcdef01234?xsec_token=secret"
+                )
+            },
+        ),
+        (
+            "xiaohongshu",
+            "search.notes",
+            {"native_id": "64f0123456789abcdef01235"},
+        ),
+    ],
+)
+def test_parent_rejects_new_social_identity_or_session_url_drift(
+    source: str,
+    operation: str,
+    changes: Mapping[str, object],
+) -> None:
+    arguments = {"query": "private query", "limit": 1}
+    value = _worker_success_value(source, operation, arguments)
+    items = cast(list[dict[str, object]], value["items"])
+    value["items"] = [{**items[0], **changes}]
+
+    with pytest.raises(worker.OpenCliSocialProtocolError):
+        worker.decode_response(
+            _framed(value),
+            source=source,
+            operation=operation,
+            arguments=arguments,
+        )
+
+
+@pytest.mark.parametrize(
     "mutation",
     [
         lambda value: {**value, "command": "forbidden"},
-        lambda value: {**value, "source": "twitter"},
+        lambda value: {**value, "source": "linkedin"},
         lambda value: {**value, "operation": "write.post"},
         lambda value: {**value, "arguments": {"query": " query", "limit": 1}},
         lambda value: {**value, "arguments": {"limit": True}},

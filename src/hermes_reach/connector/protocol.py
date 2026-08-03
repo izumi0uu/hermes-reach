@@ -71,6 +71,7 @@ _CROCKFORD_ALPHABET: Final = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 _HEX_32: Final = re.compile(r"[0-9a-f]{32}")
 _HEX_64: Final = re.compile(r"[0-9a-f]{64}")
 _METADATA_ID: Final = re.compile(r"[a-z0-9][a-z0-9._-]{0,127}")
+_BACKEND_VERSION: Final = re.compile(r"[a-z0-9][a-z0-9._+-]{0,127}")
 _FAILURE_CLASSES: Final = frozenset(
     category.value for category in ConnectorErrorCategory
 )
@@ -80,6 +81,7 @@ _SAFE_BACKENDS: Final = frozenset(
     {
         ("reach-bounded-executor-v1", "1"),
         ("opencli", "1.8.6-hermes.1"),
+        ("xueqiu-api", "1.5.0+search.v1"),
     }
 )
 _ITEM_KINDS: Final = frozenset(
@@ -495,7 +497,7 @@ class PublicBackendIdentity:
             type(self.backend_id) is not str
             or type(self.backend_version) is not str
             or _METADATA_ID.fullmatch(self.backend_id) is None
-            or _METADATA_ID.fullmatch(self.backend_version) is None
+            or _BACKEND_VERSION.fullmatch(self.backend_version) is None
             or (self.backend_id, self.backend_version) not in _SAFE_BACKENDS
         ):
             raise ProtocolValidationError(

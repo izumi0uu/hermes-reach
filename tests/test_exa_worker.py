@@ -115,7 +115,20 @@ def _api(execute: Callable[[object, object], object]) -> SimpleNamespace:
     )
 
 
-def _item(**overrides: object) -> _Item:
+def _item(
+    operation: worker.WorkerOperation = "search.web",
+    **overrides: object,
+) -> _Item:
+    if operation == "search.code":
+        return _Item(
+            "exa.code.result.v1",
+            {
+                "text": "def retry(): pass",
+                "title": "Retry implementation",
+                "url": "https://github.com/example/repository/blob/main/retry.py",
+                **overrides,
+            },
+        )
     return _Item(
         "exa.search.result.v1",
         {
@@ -129,22 +142,39 @@ def _item(**overrides: object) -> _Item:
     )
 
 
-def _success_value(**overrides: object) -> dict[str, object]:
+def _success_value(
+    operation: worker.WorkerOperation = "search.web",
+    **overrides: object,
+) -> dict[str, object]:
+    code = operation == "search.code"
     return {
-        "backend": {"id": "exa-mcporter", "version": "0.12.3+exa-web.v1"},
-        "items": [
-            {
-                "author": "Author",
-                "published_at": "2026-07-31",
-                "text": "Result body",
-                "title": "Result title",
-                "url": "https://example.com/result?from=exa",
-            }
-        ],
-        "operation": "search.web",
+        "backend": {
+            "id": "exa-mcporter",
+            "version": ("0.12.3+exa-code.v1" if code else "0.12.3+exa-web.v1"),
+        },
+        "items": (
+            [
+                {
+                    "text": "def retry(): pass",
+                    "title": "Retry implementation",
+                    "url": "https://github.com/example/repository/blob/main/retry.py",
+                }
+            ]
+            if code
+            else [
+                {
+                    "author": "Author",
+                    "published_at": "2026-07-31",
+                    "text": "Result body",
+                    "title": "Result title",
+                    "url": "https://example.com/result?from=exa",
+                }
+            ]
+        ),
+        "operation": operation,
         "partial": None,
         "protocol": "v1",
-        "schema": "exa.search.result.v1",
+        "schema": "exa.code.result.v1" if code else "exa.search.result.v1",
         "source": "exa",
         "truncated": False,
         **overrides,
@@ -165,6 +195,8 @@ def test_request_frame_is_closed_and_round_trips_artifact_identity() -> None:
     request = worker._read_request(io.BytesIO(raw))
 
     assert request == worker.WorkerRequest("search.web", QUERY, 50, _artifacts())
+    assert QUERY not in repr(request)
+    assert "/opt/hermes-reach" not in repr(request)
     payload = json.loads(raw[4:])
     assert set(payload) == {"artifacts", "limit", "operation", "protocol", "query"}
     assert set(payload["artifacts"]) == {
@@ -182,7 +214,7 @@ def test_request_frame_is_closed_and_round_trips_artifact_identity() -> None:
     "mutation",
     [
         lambda value: {**value, "command": "forbidden"},
-        lambda value: {**value, "operation": "search.code"},
+        lambda value: {**value, "operation": "search.future"},
         lambda value: {**value, "query": " query"},
         lambda value: {**value, "limit": True},
         lambda value: {
@@ -248,6 +280,80 @@ def test_worker_builds_exact_typed_fork_request_context_and_projection() -> None
         ),
         True,
     )
+    assert QUERY not in repr(value)
+
+
+def test_code_worker_uses_independent_request_identity_schema_and_projection() -> None:
+    calls: list[tuple[object, object]] = []
+
+    def execute(request: object, context: object) -> object:
+        calls.append((request, context))
+        return _Success(
+            operation="search.code",
+            backend_version="0.12.3+exa-code.v1",
+            items=(_item("search.code"),),
+        )
+
+    request = worker.WorkerRequest("search.code", QUERY, 4, _artifacts())
+    value = worker._execute_request(
+        request,
+        execution_api_provider=_provider(_api(execute)),
+    )
+
+    assert len(calls) == 1
+    execution_request = cast(_ExecutionRequest, calls[0][0])
+    context = cast(_Context, calls[0][1])
+    assert execution_request == _ExecutionRequest(
+        "v1",
+        "exa",
+        "search.code",
+        {"query": QUERY, "limit": 4},
+    )
+    assert context.host_capabilities == (
+        _NetworkAccess(),
+        _McporterArtifacts(**_artifacts().frame_fields()),
+    )
+    assert worker.decode_response(
+        _framed(cast(Mapping[str, object], value)),
+        operation="search.code",
+        limit=4,
+    ) == worker.ExaProjection(
+        "search.code",
+        (
+            worker.ExaCodeResultProjection(
+                "def retry(): pass",
+                "Retry implementation",
+                "https://github.com/example/repository/blob/main/retry.py",
+            ),
+        ),
+        False,
+    )
+
+
+@pytest.mark.parametrize(
+    ("expected_operation", "value"),
+    [
+        ("search.web", _success_value("search.code")),
+        ("search.code", _success_value("search.web")),
+        (
+            "search.code",
+            {
+                **_success_value("search.code"),
+                "schema": "exa.search.result.v1",
+            },
+        ),
+    ],
+)
+def test_parent_decoder_rejects_web_code_identity_or_schema_substitution(
+    expected_operation: worker.WorkerOperation,
+    value: Mapping[str, object],
+) -> None:
+    with pytest.raises(worker.ExaProtocolError):
+        worker.decode_response(
+            _framed(value),
+            operation=expected_operation,
+            limit=4,
+        )
 
 
 def test_worker_preserves_only_closed_fork_failure_code() -> None:
@@ -441,6 +547,40 @@ def test_main_frames_unencodable_selected_result_as_closed_permanent_failure(
     assert len(stdout.getvalue()) <= worker.MAX_OUTPUT_BYTES + 4
     assert worker.decode_response(stdout.getvalue(), limit=1) == (
         worker.ForkExecutionFailure("search.web", "backend_contract_violation")
+    )
+    assert QUERY.encode() not in stdout.getvalue()
+
+
+def test_code_main_overflow_preserves_code_failure_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stdout = io.BytesIO()
+    request = worker.encode_request(
+        QUERY,
+        1,
+        _artifacts(),
+        operation="search.code",
+    )
+    monkeypatch.setattr(
+        worker.sys,
+        "stdin",
+        SimpleNamespace(buffer=io.BytesIO(request)),
+    )
+    monkeypatch.setattr(worker.sys, "stdout", SimpleNamespace(buffer=stdout))
+    monkeypatch.setattr(
+        worker,
+        "_execute_request",
+        lambda _: {"oversized": QUERY + "x" * worker.MAX_OUTPUT_BYTES},
+    )
+
+    assert worker._main() == 0
+    assert worker.decode_response(
+        stdout.getvalue(),
+        operation="search.code",
+        limit=1,
+    ) == worker.ForkExecutionFailure(
+        "search.code",
+        "backend_contract_violation",
     )
     assert QUERY.encode() not in stdout.getvalue()
 

@@ -6,22 +6,29 @@ description: Route bounded, read-only internet retrieval through Hermes Reach.
 # Agent Reach for Hermes
 
 This skill adapts the routing scope of Agent-Reach 1.5.0 from official baseline
-`b4d52c46c9113cb0f653d6df4cf71ebadf4930ac` through exact owner-fork
-commit `281dc3352c63cdb644f02e028cc5d645c279954a` to the Hermes Reach safety
-contract. Fork execution protocol v1 owns exactly 29 direct owner-fork
+`b4d52c46c9113cb0f653d6df4cf71ebadf4930ac` to the Hermes Reach safety
+contract. Fork execution protocol v1 owns exactly 33 direct owner-fork
 operations: two RSS operations
 (`rss:read.feed`, `rss:browse.entries`) and four Bilibili operations
 (`bilibili:search.videos`, `bilibili:read.video`, `bilibili:browse.hot`,
 `bilibili:browse.rank`), all three executable YouTube operations
 (`youtube:search.videos`, `youtube:read.video`, `youtube:read.subtitles`), all
-four V2EX operations, Exa `exa:search.web`, and all 15 catalog operations for
-Reddit, Facebook, and Instagram through the exact pinned fork-owned social
-runtime. The 15 social operations are Connector-only and
-require exact `public` or `account_visible` grants; Hermes owns no social
-platform command or parser. Exa Web still reports
+four V2EX operations, Exa `exa:search.web` and `exa:search.code`, all 15
+catalog operations for Reddit, Facebook, and Instagram, Twitter
+`twitter:search.posts`, Xiaohongshu `xiaohongshu:search.notes`, and Xueqiu
+`xueqiu:search.stocks`. The 18 remote operations
+are Connector-only and require their exact `public` or `account_visible`
+grants. Twitter and Xiaohongshu are trusted-session-backed operations with
+exact `public` grants. Xueqiu is SecretProvider-backed, also uses an exact
+`public` grant, and additionally requires its opaque secret capability. Hermes owns
+no platform command, endpoint, method, or parser. Exa Web and Code still report
 `setup_required` until the operator supplies the complete reviewed artifact
-attestation. Fork execution does not make the other 34 catalog operations
-executable.
+attestation. The accepted reviewed fork candidate is
+`ee200e7160c4b093a2ba0fcee9f2a6842aefe20d`, tree
+`56883c0872bed94050660b16d1ade2e46f73fef9`. Fork execution does not make the
+other 30 catalog operations executable. The pre-freeze candidate
+`7bc42839d3dd290e4af93b24e0b03b738cff0ffa` is rejected because it also
+contains two LinkedIn descriptors; it is not routing or release authority.
 
 ## Execution Boundary
 
@@ -63,13 +70,13 @@ and runtime availability. Use this table only to select the likely source.
 | `bilibili` | Search or read Bilibili videos, hot lists, or rankings. |
 | `xiaoyuzhou` | Read or transcribe supported podcast material. |
 | `v2ex` | Browse or read V2EX topics, replies, nodes, or users. |
-| `twitter` | Search or read supported Twitter/X public or granted account-visible material. |
+| `twitter` | Search Twitter/X posts through the trusted-session-backed Connector operation with a `public` grant. |
 | `reddit` | Search, read, or browse supported Reddit communities. |
-| `xiaohongshu` | Search, read, or browse supported Xiaohongshu material. |
+| `xiaohongshu` | Search Xiaohongshu notes through the trusted-session-backed Connector operation with a `public` grant. |
 | `facebook` | Search, read, or browse supported Facebook material. |
 | `instagram` | Search users or read and browse supported Instagram material. |
-| `linkedin` | Search jobs or read supported LinkedIn profiles and company material. |
-| `xueqiu` | Search or read supported Xueqiu market and discussion material. |
+| `linkedin` | People and jobs search is planned and unavailable; do not attempt it through Reach or another backend. |
+| `xueqiu` | Search Xueqiu stocks through the secret-backed Connector operation with a `public` grant. |
 
 ## Result Handling
 

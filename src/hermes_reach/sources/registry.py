@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from ..agent_reach_bridge import FEEDPARSER_VERSION
-from ..catalog import EXA_CODE_UNAVAILABLE_REASON, EXA_SETUP_REQUIRED_REASON
+from ..catalog import EXA_SETUP_REQUIRED_REASON
 from ..runtime.adapters import AdapterBinding, AdapterCallable, AdapterRegistry
 from ..runtime.availability import Availability
 from ..runtime.dispatcher import RuntimeDispatcher
@@ -133,19 +133,14 @@ def _configure_exa(
     *,
     artifacts_invalid: bool,
 ) -> None:
-    registry.mark(
-        "exa",
-        "search.code",
-        "unavailable",
-        EXA_CODE_UNAVAILABLE_REASON,
-    )
     if artifacts_invalid or type(artifacts) is not ExaArtifactAttestation:
-        registry.mark(
-            "exa",
-            "search.web",
-            "setup_required",
-            EXA_SETUP_REQUIRED_REASON,
-        )
+        for operation in ("search.web", "search.code"):
+            registry.mark(
+                "exa",
+                operation,
+                "setup_required",
+                EXA_SETUP_REQUIRED_REASON,
+            )
         return
     for binding in exa_bindings(artifacts):
         registry.register(binding)

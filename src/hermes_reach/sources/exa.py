@@ -1,4 +1,4 @@
-"""Production binding for fork-owned Agent-Reach Exa Web execution."""
+"""Production bindings for fork-owned Agent-Reach Exa Web and Code execution."""
 
 from __future__ import annotations
 
@@ -18,13 +18,16 @@ from .exa_artifacts import ExaArtifactAttestation
 from .exa_worker import (
     EXPECTED_BACKEND_ID,
     EXPECTED_BACKEND_VERSION,
+    EXPECTED_CODE_BACKEND_VERSION,
     MAX_LIMIT,
     MAX_OUTPUT_BYTES,
+    ExaCodeResultProjection,
     ExaProjection,
     ExaProtocolError,
     ExaResultProjection,
     ForkExecutionFailure,
     WorkerErrorCode,
+    WorkerOperation,
     decode_response,
     encode_request,
 )
@@ -40,6 +43,10 @@ _PROXY_VARIABLES: Final = (
     "all_proxy",
     "no_proxy",
 )
+_EXA_OPERATIONS: Final[tuple[WorkerOperation, ...]] = (
+    "search.web",
+    "search.code",
+)
 
 
 class ExaWorkerError(Exception):
@@ -51,7 +58,13 @@ class ExaWorkerError(Exception):
 
 
 class ExaWorkerClient(Protocol):
-    async def execute(self, query: str, limit: int) -> ExaProjection: ...
+    async def execute(
+        self,
+        query: str,
+        limit: int,
+        *,
+        operation: WorkerOperation = "search.web",
+    ) -> ExaProjection: ...
 
 
 class ExaWorker:
@@ -62,9 +75,22 @@ class ExaWorker:
             raise ValueError("The Exa worker attestation is invalid.")
         self._artifacts = artifacts
 
-    async def execute(self, query: str, limit: int) -> ExaProjection:
+    async def execute(
+        self,
+        query: str,
+        limit: int,
+        *,
+        operation: WorkerOperation = "search.web",
+    ) -> ExaProjection:
         try:
-            request = bytearray(encode_request(query, limit, self._artifacts))
+            request = bytearray(
+                encode_request(
+                    query,
+                    limit,
+                    self._artifacts,
+                    operation=operation,
+                )
+            )
         except ExaProtocolError:
             raise ExaWorkerError("permanent") from None
 
@@ -99,12 +125,12 @@ class ExaWorker:
             if process.returncode != 0:
                 raise ExaWorkerError("transient")
             try:
-                response = decode_response(output, limit=limit)
+                response = decode_response(output, limit=limit, operation=operation)
             except ExaProtocolError:
                 raise ExaWorkerError("permanent") from None
             if isinstance(response, ForkExecutionFailure):
                 raise ExaWorkerError(_fork_failure_class(response.error_code))
-            if response.operation != "search.web":
+            if response.operation != operation:
                 raise ExaWorkerError("permanent")
             response_validated = True
             return response
@@ -138,16 +164,21 @@ class ExaAdapter:
         self,
         artifacts: ExaArtifactAttestation,
         worker: ExaWorkerClient | None = None,
+        *,
+        operation: WorkerOperation = "search.web",
     ) -> None:
         if type(artifacts) is not ExaArtifactAttestation:
             raise ValueError("The Exa adapter attestation is invalid.")
         if worker is not None and not callable(getattr(worker, "execute", None)):
             raise ValueError("The Exa worker client is invalid.")
+        if operation not in _EXA_OPERATIONS:
+            raise ValueError("The Exa operation is invalid.")
         self._worker = worker if worker is not None else ExaWorker(artifacts)
+        self._operation = operation
 
     async def execute(self, authorized: AuthorizedCall) -> AdapterResult:
         try:
-            if not _valid_authorized_call(authorized):
+            if not _valid_authorized_call(authorized, operation=self._operation):
                 return AdapterResult(failure_class="invalid_input")
             query = authorized.call.query
             if type(query) is not str:
@@ -158,8 +189,12 @@ class ExaAdapter:
             )
             if type(limit_value) is not int or not 1 <= limit_value <= MAX_LIMIT:
                 return AdapterResult(failure_class="invalid_input")
-            projection = await self._worker.execute(query, limit_value)
-            return _project_result(projection)
+            projection = await self._worker.execute(
+                query,
+                limit_value,
+                operation=self._operation,
+            )
+            return _project_result(projection, operation=self._operation)
         except asyncio.CancelledError:
             raise
         except ExaWorkerError as error:
@@ -173,19 +208,27 @@ class ExaAdapter:
 def production_exa_binding(
     artifacts: ExaArtifactAttestation,
     *,
+    operation: WorkerOperation = "search.web",
     worker: ExaWorkerClient | None = None,
 ) -> AdapterBinding:
-    """Create the sole Exa binding without probing artifacts or the provider."""
+    """Create one closed Exa binding without probing artifacts or the provider."""
 
-    adapter = ExaAdapter(artifacts, worker)
+    if operation not in _EXA_OPERATIONS:
+        raise ValueError("The Exa operation is invalid.")
+    adapter = ExaAdapter(artifacts, worker, operation=operation)
+    backend_version = (
+        EXPECTED_CODE_BACKEND_VERSION
+        if operation == "search.code"
+        else EXPECTED_BACKEND_VERSION
+    )
     return AdapterBinding(
         source="exa",
-        operation="search.web",
+        operation=operation,
         backend_id=EXPECTED_BACKEND_ID,
-        backend_version=EXPECTED_BACKEND_VERSION,
+        backend_version=backend_version,
         priority=10,
         required_scope="public",
-        equivalence_group="exa:search.web:v1",
+        equivalence_group=f"exa:{operation}:v1",
         execute=adapter.execute,
         retry_owner="binding",
     )
@@ -196,27 +239,42 @@ def exa_bindings(
     *,
     worker: ExaWorkerClient | None = None,
 ) -> tuple[AdapterBinding, ...]:
-    """Return the exact one-operation binding tuple used by registry composition."""
+    """Return the exact independently closed Exa binding tuple."""
 
-    return (production_exa_binding(artifacts, worker=worker),)
+    return tuple(
+        production_exa_binding(
+            artifacts,
+            operation=operation,
+            worker=worker,
+        )
+        for operation in _EXA_OPERATIONS
+    )
 
 
-def _valid_authorized_call(authorized: object) -> bool:
+def _valid_authorized_call(
+    authorized: object,
+    *,
+    operation: WorkerOperation,
+) -> bool:
     if type(authorized) is not AuthorizedCall:
         return False
     call = authorized.call
     return bool(
         call.source.name == "exa"
         and call.operation.source == "exa"
-        and call.operation.name == "search.web"
+        and call.operation.name == operation
         and call.operation.tool == "search"
         and call.target is None
         and operation_call_is_valid(call)
     )
 
 
-def _project_result(projection: object) -> AdapterResult:
-    if type(projection) is not ExaProjection or projection.operation != "search.web":
+def _project_result(
+    projection: object,
+    *,
+    operation: WorkerOperation,
+) -> AdapterResult:
+    if type(projection) is not ExaProjection or projection.operation != operation:
         raise ExaProtocolError("worker_response_invalid")
     return AdapterResult(
         tuple(_project_item(item) for item in projection.items),
@@ -224,7 +282,14 @@ def _project_result(projection: object) -> AdapterResult:
     )
 
 
-def _project_item(item: ExaResultProjection) -> RawItem:
+def _project_item(item: ExaResultProjection | ExaCodeResultProjection) -> RawItem:
+    if type(item) is ExaCodeResultProjection:
+        return RawItem(
+            text=item.text,
+            kind="result",
+            title=item.title,
+            url=item.url,
+        )
     if type(item) is not ExaResultProjection:
         raise ExaProtocolError("worker_response_invalid")
     return RawItem(

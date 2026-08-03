@@ -164,6 +164,24 @@ def test_composition_rejects_duplicates_and_scope_capability_mismatch() -> None:
         _binding(executor, scope=secret_scope)
 
 
+def test_composition_combines_only_closed_nonoverlapping_registries() -> None:
+    executor = _Executor()
+    web = ConnectorExecutionComposition((_binding(executor),))
+    rss_scope = GrantScope("rss", "read.feed", "public")
+    rss = ConnectorExecutionComposition((_binding(executor, scope=rss_scope),))
+
+    combined = ConnectorExecutionComposition.combine((web, rss))
+
+    assert combined.required_scope("web", "read.url") == GrantScope(
+        "web", "read.url", "public"
+    )
+    assert combined.required_scope("rss", "read.feed") == rss_scope
+    with pytest.raises(ValueError, match="duplicate"):
+        ConnectorExecutionComposition.combine((web, web))
+    with pytest.raises(ValueError, match="invalid"):
+        ConnectorExecutionComposition.combine((web, object()))  # type: ignore[arg-type]
+
+
 def test_exact_execution_returns_only_bounded_result_and_is_one_use() -> None:
     executor = _Executor()
     composition = ConnectorExecutionComposition((_binding(executor),))

@@ -22,10 +22,16 @@ from hermes_reach.sources.exa import (
     ExaAdapter,
     ExaWorker,
     ExaWorkerError,
+    exa_bindings,
     production_exa_binding,
 )
 from hermes_reach.sources.exa_artifacts import ExaArtifactAttestation
-from hermes_reach.sources.exa_worker import ExaProjection, ExaResultProjection
+from hermes_reach.sources.exa_worker import (
+    ExaCodeResultProjection,
+    ExaProjection,
+    ExaResultProjection,
+    WorkerOperation,
+)
 
 QUERY = "private Exa query"
 
@@ -42,10 +48,14 @@ def _artifacts() -> ExaArtifactAttestation:
     )
 
 
-def _authorized(*, limit: int | None = None) -> AuthorizedCall:
+def _authorized(
+    operation: WorkerOperation = "search.web",
+    *,
+    limit: int | None = None,
+) -> AuthorizedCall:
     request: dict[str, object] = {
         "source": "exa",
-        "operation": "search.web",
+        "operation": operation,
         "query": QUERY,
     }
     if limit is not None:
@@ -53,9 +63,25 @@ def _authorized(*, limit: int | None = None) -> AuthorizedCall:
     return ReadOnlyPolicy().authorize(validate_search({"requests": [request]})[0])
 
 
-def _projection(*, truncated: bool = False) -> ExaProjection:
+def _projection(
+    operation: WorkerOperation = "search.web",
+    *,
+    truncated: bool = False,
+) -> ExaProjection:
+    if operation == "search.code":
+        return ExaProjection(
+            operation,
+            (
+                ExaCodeResultProjection(
+                    "def retry(): pass",
+                    "Retry implementation",
+                    "https://github.com/example/repository/blob/main/retry.py",
+                ),
+            ),
+            truncated,
+        )
     return ExaProjection(
-        "search.web",
+        operation,
         (
             ExaResultProjection(
                 "Result body",
@@ -72,10 +98,16 @@ def _projection(*, truncated: bool = False) -> ExaProjection:
 class _FixtureWorker:
     def __init__(self, response: ExaProjection | BaseException) -> None:
         self.response = response
-        self.calls: list[tuple[str, int]] = []
+        self.calls: list[tuple[WorkerOperation, str, int]] = []
 
-    async def execute(self, query: str, limit: int) -> ExaProjection:
-        self.calls.append((query, limit))
+    async def execute(
+        self,
+        query: str,
+        limit: int,
+        *,
+        operation: WorkerOperation = "search.web",
+    ) -> ExaProjection:
+        self.calls.append((operation, query, limit))
         if isinstance(self.response, BaseException):
             raise self.response
         return self.response
@@ -210,8 +242,8 @@ def test_adapter_maps_closed_projection_and_uses_default_or_explicit_limit() -> 
         truncated=True,
     )
     assert limited_result.is_success
-    assert default_worker.calls == [(QUERY, 20)]
-    assert limited_worker.calls == [(QUERY, 7)]
+    assert default_worker.calls == [("search.web", QUERY, 20)]
+    assert limited_worker.calls == [("search.web", QUERY, 7)]
 
 
 def test_adapter_rejects_forged_call_before_worker_observes_query() -> None:
@@ -289,9 +321,79 @@ def test_binding_has_exact_identity_and_binding_owned_single_attempt() -> None:
     assert binding.backend_version == "0.12.3+exa-web.v1"
     assert binding.required_scope == "public"
     assert binding.retry_owner == "binding"
-    assert fixture.calls == [(QUERY, 20)]
+    assert fixture.calls == [("search.web", QUERY, 20)]
     assert result.failure_class == "transient"
     assert len(result.attempts) == 1
+
+
+def test_exa_bindings_freeze_independent_web_and_code_identities() -> None:
+    bindings = exa_bindings(_artifacts())
+
+    assert [
+        (
+            binding.operation,
+            binding.backend_id,
+            binding.backend_version,
+            binding.equivalence_group,
+            binding.retry_owner,
+        )
+        for binding in bindings
+    ] == [
+        (
+            "search.web",
+            "exa-mcporter",
+            "0.12.3+exa-web.v1",
+            "exa:search.web:v1",
+            "binding",
+        ),
+        (
+            "search.code",
+            "exa-mcporter",
+            "0.12.3+exa-code.v1",
+            "exa:search.code:v1",
+            "binding",
+        ),
+    ]
+
+
+def test_code_adapter_maps_only_the_code_projection() -> None:
+    fixture = _FixtureWorker(_projection("search.code"))
+    adapter = ExaAdapter(_artifacts(), fixture, operation="search.code")
+
+    result = asyncio.run(adapter.execute(_authorized("search.code", limit=4)))
+
+    assert result == AdapterResult(
+        (
+            exa.RawItem(
+                text="def retry(): pass",
+                kind="result",
+                title="Retry implementation",
+                url="https://github.com/example/repository/blob/main/retry.py",
+            ),
+        )
+    )
+    assert fixture.calls == [("search.code", QUERY, 4)]
+
+
+@pytest.mark.parametrize(
+    ("adapter_operation", "projection_operation"),
+    [("search.web", "search.code"), ("search.code", "search.web")],
+)
+def test_adapter_rejects_cross_operation_projection(
+    adapter_operation: WorkerOperation,
+    projection_operation: WorkerOperation,
+) -> None:
+    fixture = _FixtureWorker(_projection(projection_operation))
+
+    result = asyncio.run(
+        ExaAdapter(
+            _artifacts(),
+            fixture,
+            operation=adapter_operation,
+        ).execute(_authorized(adapter_operation))
+    )
+
+    assert result == AdapterResult(failure_class="permanent")
 
 
 def test_artifact_drift_reports_setup_required_without_retry() -> None:
@@ -313,7 +415,7 @@ def test_artifact_drift_reports_setup_required_without_retry() -> None:
     assert cast(list[dict[str, object]], group["attempts"])[0]["outcome"] == (
         "setup_required"
     )
-    assert fixture.calls == [(QUERY, 20)]
+    assert fixture.calls == [("search.web", QUERY, 20)]
 
 
 def test_parent_uses_fixed_argv_isolated_environment_and_cleans_state(

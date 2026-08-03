@@ -143,6 +143,22 @@ class ConnectorExecutionComposition:
             selected[key] = binding
         self._bindings = MappingProxyType(selected)
 
+    @classmethod
+    def combine(
+        cls,
+        compositions: Sequence[ConnectorExecutionComposition],
+    ) -> ConnectorExecutionComposition:
+        """Combine only already-closed compositions into one exact registry."""
+
+        if isinstance(compositions, str | bytes | bytearray):
+            raise ValueError("The Connector executor composition is invalid.")
+        bindings: list[ConnectorExecutorBinding] = []
+        for composition in compositions:
+            if not isinstance(composition, cls):
+                raise ValueError("The Connector executor composition is invalid.")
+            bindings.extend(composition._bindings.values())
+        return cls(bindings)
+
     def required_scope(self, source: str, operation: str) -> GrantScope | None:
         binding = self._bindings.get((source, operation))
         return None if binding is None else binding.required_scope

@@ -6,13 +6,13 @@
 > `ConnectorService` authorizes and delivers that fixed operation; it does not
 > select a provider, credential, browser session, or local path. Default
 > Connector execution composition remains unbound; this is distinct from the
-> local execution surface, which has 14 owner-fork operations (RSS 2,
-> Bilibili 4, YouTube 3, V2EX 4, and Exa Web 1). The first 13 are composed and
-> available without artifact setup; Exa Web is composed only after a complete
+> local execution surface, which has 15 owner-fork operations (RSS 2,
+> Bilibili 4, YouTube 3, V2EX 4, and Exa Web/Code 2). The first 13 are composed and
+> available without artifact setup; Exa is composed only after a complete
 > operator-supplied Node/mcporter/config attestation. The
 > only Connector production composition path is the explicit two-sided
-> activation of 15 fork-owned Reddit, Facebook, and Instagram operations
-> through one attested Node/OpenCLI/session capability. Treat the controls
+> activation of 18 fork-owned operations: 17 OpenCLI social and one Xueqiu.
+> Treat the controls
 > below as approval for that exact pre-alpha batch only, not for arbitrary
 > commands or production credentials.
 
@@ -54,8 +54,8 @@ encrypted Bitwarden caches.
 
 ## OpenCLI social executor boundary
 
-Seven Reddit, four Facebook, and four Instagram operations have implemented
-source executors. All 15 are disabled by default. The trusted device must
+Seven Reddit, four Facebook, four Instagram, one Twitter, and one Xiaohongshu
+operation have implemented source executors. All 17 are disabled by default. The trusted device must
 explicitly enable the complete exact composition, and Hermes on the VPS must
 load matching paired state with a grant for each operation it may use.
 
@@ -93,12 +93,13 @@ This unbound Connector default does not make the local execution surface empty.
 It contains two direct owner-fork RSS bindings, four direct owner-fork
 Bilibili/bili-cli bindings, three direct owner-fork YouTube bindings, four
 direct owner-fork V2EX bindings, and one direct owner-fork Exa Web contract.
-The first 13 are composed without artifact setup. Exa Web is composed only
+Exa Code adds a second independent contract over the same attested artifacts.
+The first 13 are composed without artifact setup. Exa Web and Code are composed only
 after its complete seven-field artifact attestation is present; otherwise it
 reports `setup_required`. `youtube:read.comments` is implemented but unbound
-and also reports `setup_required`. The Connector contributes 15 additional
+and also reports `setup_required`. The Connector contributes 18 additional
 direct owner-fork executors after both explicit activation gates pass; it does
-not replace or proxy the 14 local operations.
+not replace or proxy the 15 local operations.
 
 The RSS fork path is credential-free and local. Hermes gives it only an
 already-fetched bounded document through `fetched_document.v1`; it receives no
@@ -118,11 +119,33 @@ current directory. The fork owns the pinned yt-dlp calls, subtitle-file safety,
 and native projection.
 
 V2EX uses four fixed fork descriptors and the fork-owned bounded public API
-transport. Exa Web uses one fixed fork descriptor and a closed mcporter
+transport. Exa Web and Code use separate fixed fork descriptors and a closed mcporter
 artifact capability containing only operator-declared absolute paths and
 digests. Neither receives Connector identity, grant, Bitwarden secret, browser
-session, or remote execution authority. Exa receives each Web query directly
+session, or remote execution authority. Exa receives each query directly
 and may retain it; Hermes does not persist the query in receipts or audit.
+
+## OpenCLI social and Xueqiu executor boundaries
+
+LinkedIn people/jobs search is not part of Connector activation. Both
+operations remain planned and unavailable because the reviewed MCP 4.14.0
+route logs query-bearing URLs at `WARNING`, persists query-bearing error
+diagnostics, cannot bind exact artifacts plus effective log threshold and
+12-second timeout to the listening service identity, and can combine
+`section_errors` with retry behavior to duplicate a submission. See the
+[frozen stop-condition decision](agent-reach-decisions/linkedin-scraper-mcp-4.14.0.md).
+
+Xueqiu accepts only one mode-`0600`, owner-only JSON binding manifest. It has
+exactly `protocol_version`, `capability_id`, `project_id`, `selector`,
+`profile_home`, `bws_sha256`, and `server_url`. It cannot contain Cookie or
+another secret value, BWS bootstrap/access token, provider selection, or an
+injection target. Project, selector, profile, and server locators remain on the
+trusted device and never enter TTY output, VPS wire data, receipts, audit, or
+logs. After an exact signed
+grant is authorized, Connector resolves that capability through its isolated
+SecretProvider and supplies the Cookie only to the trusted worker attempt. The
+secret is excluded from frames, public results, receipts, audit, exceptions,
+repr, argv, paths, logs, and persisted artifacts.
 
 ### Exact activation sequence
 
@@ -134,8 +157,8 @@ uv run hermes reach connector init \
   --state-directory /absolute/connector-state
 ```
 
-Start the foreground service with one explicit private or loopback address,
-the exact Node/OpenCLI closure, and the existing trusted session home:
+Start the foreground service with one explicit private or loopback address and
+the exact closures needed for the operation groups being enabled:
 
 ```bash
 uv run hermes reach connector serve \
@@ -145,13 +168,17 @@ uv run hermes reach connector serve \
   --opencli-social-node /absolute/path/to/node \
   --opencli-social-root /absolute/opencli-production-prefix \
   --opencli-social-cli /absolute/opencli-production-prefix/node_modules/@jackwener/opencli/dist/src/main.js \
-  --opencli-social-session-home /absolute/trusted-session-home
+  --opencli-social-session-home /absolute/trusted-session-home \
+  --xueqiu-binding-manifest /absolute/owner-only-xueqiu-binding.json
 ```
 
-All four OpenCLI social arguments must be present or absent. Before state
-unlock or listener construction, the original terminal (TTY) displays the
-backend identity, Node SHA-256, complete OpenCLI tree SHA-256, and all 15 exact
-source-operation scopes. Type exactly `enable` to continue. Paths must be
+All four OpenCLI social arguments must be present or absent. The Xueqiu
+manifest is one optional group. An omitted group performs zero file, network,
+process, or secret access. Before state unlock or listener construction, the
+original terminal (TTY) displays only safe backend identities, digests, scopes,
+and the opaque Xueqiu capability ID for all 18 exact source-operation bindings. It
+never displays a path, Bitwarden project, selector, Cookie, or token. Type
+exactly `enable` once to continue. Paths must be
 canonical, absolute, current-user owned, non-symlinked, and not group- or
 world-writable. Node must be a bounded executable regular file; the CLI must be
 the fixed package entry point inside the dedicated root. Agent-Reach performs
@@ -189,7 +216,10 @@ uv run hermes reach connector pair \
   --scope instagram:search.users:public \
   --scope instagram:read.profile:public \
   --scope instagram:browse.user_posts:public \
-  --scope instagram:browse.explore:account_visible
+  --scope instagram:browse.explore:account_visible \
+  --scope twitter:search.posts:public \
+  --scope xiaohongshu:search.notes:public \
+  --scope xueqiu:search.stocks:public:<opaque-capability-id>
 ```
 
 While the VPS `pair` command waits, enter `pending` at the trusted device's
@@ -209,11 +239,11 @@ HERMES_REACH_VPS_STATE_DIRECTORY=/absolute/vps-state hermes ...
 owner-only local state. It is not a credential, is never sent in an operation,
 and cannot add a scope absent from the signed grant. If it is absent, plugin
 registration performs no Connector file or network work. If it is invalid,
-only the 15 Connector-only social operations are unavailable; all 13 artifact-independent local
-owner-fork bindings continue to load. Exa Web is independently available or
+only the 18 Connector-only operations are unavailable; all 13 artifact-independent local
+owner-fork bindings continue to load. Exa Web/Code are independently available or
 `setup_required` according to its complete artifact attestation. Web and GitHub
 remain planned/unavailable independently of Connector state. Pairing, local
-state, or Exa artifact declarations require restarting Hermes because the
+state, Xueqiu binding manifest, or Exa artifact declarations require restarting Hermes because the
 runtime is composed once at plugin registration. Connector startup never
 persists the Node/OpenCLI/session paths or digests.
 
@@ -226,7 +256,7 @@ discard the in-memory key lease. Device sleep interrupts reachability as well.
 
 Sleep, lock, or exit therefore makes Connector-backed operations degraded. It
 does not disable the 13 artifact-independent credential-free owner-fork
-bindings or change the independently configured Exa Web state. Status reads a
+bindings or change the independently configured Exa Web/Code state. Status reads a
 bounded local snapshot and does not contact the Connector or probe Exa
 artifacts.
 

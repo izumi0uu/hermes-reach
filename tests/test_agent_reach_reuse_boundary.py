@@ -27,6 +27,8 @@ SOCIAL_AGENT_REACH_REVIEWED_HEAD = "a3dcdb3a6638e14ceda8cfa9a3cc7a010d80fa80"
 SOCIAL_AGENT_REACH_INTEGRATION_TREE = "302db7526ed84b1565fa24baf5c06ced69385d80"
 FINAL_AGENT_REACH_REVIEWED_HEAD = "c57ae5b8d78fed6ad52a1f52731db589d875f8a9"
 FINAL_AGENT_REACH_INTEGRATION_TREE = "385b9c95cb3a6372ed1b68b606abc3faed71f307"
+NON_GITHUB_SEARCH_AGENT_REACH_REVIEWED_HEAD = AGENT_REACH_FORK_COMMIT
+NON_GITHUB_SEARCH_AGENT_REACH_TREE = "56883c0872bed94050660b16d1ade2e46f73fef9"
 OPENCLI_SOCIAL_VERSION = "1.8.6-hermes.1"
 REVIEW_FIELDS = frozenset(
     {
@@ -88,7 +90,7 @@ P2_V2EX_FORK_RUNTIME = frozenset(
     }
 )
 
-P2_EXA_FORK_RUNTIME = frozenset({("exa", "search.web")})
+P2_EXA_FORK_RUNTIME = frozenset({("exa", "search.web"), ("exa", "search.code")})
 
 P2_OPENCLI_SOCIAL_FORK_RUNTIME = frozenset(
     {
@@ -107,8 +109,12 @@ P2_OPENCLI_SOCIAL_FORK_RUNTIME = frozenset(
         ("instagram", "read.profile"),
         ("instagram", "browse.user_posts"),
         ("instagram", "browse.explore"),
+        ("twitter", "search.posts"),
+        ("xiaohongshu", "search.notes"),
     }
 )
+
+P2_XUEQIU_FORK_RUNTIME = frozenset({("xueqiu", "search.stocks")})
 
 DIRECT_OWNER_FORK_RUNTIME = (
     P1_RSS_FORK_RUNTIME
@@ -117,6 +123,7 @@ DIRECT_OWNER_FORK_RUNTIME = (
     | P2_V2EX_FORK_RUNTIME
     | P2_EXA_FORK_RUNTIME
     | P2_OPENCLI_SOCIAL_FORK_RUNTIME
+    | P2_XUEQIU_FORK_RUNTIME
 )
 
 EXACT_BACKEND_THIN_WRAPPER: frozenset[tuple[str, str]] = frozenset()
@@ -125,7 +132,9 @@ IMPLEMENTED_BUT_UNBOUND = frozenset({("youtube", "read.comments")})
 
 HERMES_NATIVE_EQUIVALENT: frozenset[tuple[str, str]] = frozenset()
 
-P0_BLOCKED_NOT_IMPLEMENTED = frozenset({("exa", "search.code")})
+P0_BLOCKED_NOT_IMPLEMENTED = frozenset(
+    {("linkedin", "search.people"), ("linkedin", "search.jobs")}
+)
 
 CLOSED_PLATFORM_EXCEPTIONS = frozenset(
     {
@@ -141,7 +150,9 @@ CLOSED_PLATFORM_EXCEPTIONS = frozenset(
     }
 )
 
-CONNECTOR_ONLY_OWNER_FORK_RUNTIME = P2_OPENCLI_SOCIAL_FORK_RUNTIME
+CONNECTOR_ONLY_OWNER_FORK_RUNTIME = (
+    P2_OPENCLI_SOCIAL_FORK_RUNTIME | P2_XUEQIU_FORK_RUNTIME
+)
 DEFAULT_LOCAL_OWNER_FORK_RUNTIME = (
     DIRECT_OWNER_FORK_RUNTIME - CONNECTOR_ONLY_OWNER_FORK_RUNTIME
 )
@@ -182,22 +193,22 @@ def test_frozen_reuse_audit_counts_are_review_visible() -> None:
 
     assert len(operations) == 63
     assert len(DIRECT_AGENT_REACH_RUNTIME) == 0
-    assert len(DIRECT_OWNER_FORK_RUNTIME) == 29
+    assert len(DIRECT_OWNER_FORK_RUNTIME) == 33
     assert EXACT_BACKEND_THIN_WRAPPER == frozenset()
-    assert len(DIRECT_OWNER_FORK_RUNTIME | EXACT_BACKEND_THIN_WRAPPER) == 29
-    assert len(operations) - len(DIRECT_OWNER_FORK_RUNTIME) == 34
-    assert len(DEFAULT_LOCAL_OWNER_FORK_RUNTIME) == 14
-    assert len(CONNECTOR_ONLY_OWNER_FORK_RUNTIME) == 15
+    assert len(DIRECT_OWNER_FORK_RUNTIME | EXACT_BACKEND_THIN_WRAPPER) == 33
+    assert len(operations) - len(DIRECT_OWNER_FORK_RUNTIME) == 30
+    assert len(DEFAULT_LOCAL_OWNER_FORK_RUNTIME) == 15
+    assert len(CONNECTOR_ONLY_OWNER_FORK_RUNTIME) == 18
     assert IMPLEMENTED_BUT_UNBOUND == {("youtube", "read.comments")}
     assert HERMES_NATIVE_EQUIVALENT == frozenset()
     assert REACH_REIMPLEMENTATION == frozenset()
     assert (
         sum(operation.implementation_state == "implemented" for operation in operations)
-        == 30
+        == 34
     )
     assert (
         sum(operation.implementation_state == "planned" for operation in operations)
-        == 33
+        == 29
     )
 
 
@@ -553,6 +564,11 @@ def test_governance_docs_preserve_worker_and_recovery_tag_boundaries() -> None:
     assert "the exact commit pin is authoritative" in normalized_reuse_boundary
     assert "hermes-reach-integration-0.1.0a2" in normalized_plugin_boundary
     assert AGENT_REACH_FORK_COMMIT in normalized_plugin_boundary
+    assert NON_GITHUB_SEARCH_AGENT_REACH_REVIEWED_HEAD in normalized_reuse_boundary
+    assert NON_GITHUB_SEARCH_AGENT_REACH_TREE in normalized_plugin_boundary
+    assert NON_GITHUB_SEARCH_AGENT_REACH_TREE in normalized_reuse_boundary
+    assert NON_GITHUB_SEARCH_AGENT_REACH_REVIEWED_HEAD in normalized_opencli_decision
+    assert NON_GITHUB_SEARCH_AGENT_REACH_TREE in normalized_opencli_decision
     assert FINAL_AGENT_REACH_REVIEWED_HEAD in normalized_plugin_boundary
     assert FINAL_AGENT_REACH_INTEGRATION_TREE in normalized_plugin_boundary
     assert FINAL_AGENT_REACH_REVIEWED_HEAD in normalized_reuse_boundary
@@ -627,6 +643,7 @@ def test_review_decisions_are_pinned_to_catalog_and_runtime_state() -> None:
         | P2_V2EX_FORK_RUNTIME
         | P2_EXA_FORK_RUNTIME
         | P2_OPENCLI_SOCIAL_FORK_RUNTIME
+        | P2_XUEQIU_FORK_RUNTIME
     )
     assert {
         key
@@ -701,6 +718,12 @@ def test_review_decisions_are_pinned_to_catalog_and_runtime_state() -> None:
             assert availability.state == "unavailable"
             assert availability.backend_id is None
             assert registry.has_binding(*key) is False
+        elif key in P2_XUEQIU_FORK_RUNTIME:
+            assert catalog[key].implementation_state == "implemented"
+            assert review["current_backend"] == "xueqiu-api"
+            assert availability.state == "unavailable"
+            assert availability.backend_id is None
+            assert registry.has_binding(*key) is False
         else:
             assert catalog[key].implementation_state == "implemented"
             assert availability.state == "available"
@@ -715,7 +738,7 @@ def test_review_decisions_are_pinned_to_catalog_and_runtime_state() -> None:
                 assert availability.backend_version == "legacy-json-2026-07-31"
 
     default_local_bindings = DEFAULT_LOCAL_OWNER_FORK_RUNTIME
-    assert len(default_local_bindings) == 14
+    assert len(default_local_bindings) == 15
     assert all(
         registry.has_binding(*key)
         for key in default_local_bindings - P2_EXA_FORK_RUNTIME

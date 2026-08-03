@@ -159,7 +159,7 @@ class PairingDisplay:
     connector_fingerprint: str
     sas: str
     deadline: int
-    scopes: tuple[tuple[str, str, str], ...]
+    scopes: tuple[tuple[str, str, str, str | None], ...]
     grant_expires_at: int
     grant_max_uses: int
 
@@ -177,8 +177,9 @@ class PairingDisplay:
                     "data_scope": data_scope,
                     "operation": operation,
                     "source": source,
+                    "capability_id": capability_id,
                 }
-                for source, operation, data_scope in self.scopes
+                for source, operation, data_scope, capability_id in self.scopes
             ],
         }
 
@@ -847,7 +848,12 @@ def _pairing_display(pending: PendingVpsProfile) -> PairingDisplay:
         sas=pairing_sas(transcript),
         deadline=challenge.deadline,
         scopes=tuple(
-            (scope.source, scope.operation, scope.data_scope)
+            (
+                scope.source,
+                scope.operation,
+                scope.data_scope,
+                scope.capability_id,
+            )
             for scope in pending.pairing_init.requested_scopes
         ),
         grant_expires_at=pending.pairing_init.grant_expires_at,

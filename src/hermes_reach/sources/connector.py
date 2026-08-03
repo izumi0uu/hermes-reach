@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from types import MappingProxyType
 from typing import Final, Protocol, cast
 
 from ..catalog import get_operation, get_source
@@ -34,11 +35,26 @@ from ..runtime.availability import AvailabilityRecord
 from ..runtime.policy import AuthorizedCall
 from .opencli_social_contract import (
     OPENCLI_SOCIAL_BACKEND,
-    OPENCLI_SOCIAL_SCOPE_BY_OPERATION,
-    OPENCLI_SOCIAL_SOURCES,
+    OPENCLI_SOCIAL_OPERATIONS,
 )
+from .xueqiu import XUEQIU_BACKEND
 
 _CONNECTOR_BACKEND = PublicBackendIdentity("reach-bounded-executor-v1", "1")
+_XUEQIU_OPERATION: Final = ("xueqiu", "search.stocks")
+PRODUCTION_CONNECTOR_BACKEND_BY_OPERATION: Final = MappingProxyType(
+    {
+        **{
+            operation: OPENCLI_SOCIAL_BACKEND for operation in OPENCLI_SOCIAL_OPERATIONS
+        },
+        _XUEQIU_OPERATION: XUEQIU_BACKEND,
+    }
+)
+PRODUCTION_CONNECTOR_OPERATIONS: Final = tuple(
+    PRODUCTION_CONNECTOR_BACKEND_BY_OPERATION
+)
+_CLOSED_CONNECTOR_SOURCES: Final = frozenset(
+    source for source, _ in PRODUCTION_CONNECTOR_OPERATIONS
+) | {"exa", "linkedin"}
 _BACKEND_FAILURE_CLASSES: Final[dict[ConnectorErrorCode, FailureClass]] = {
     ConnectorErrorCode.BACKEND_INVALID_INPUT: "invalid_input",
     ConnectorErrorCode.BACKEND_NOT_FOUND: "not_found",
@@ -204,11 +220,17 @@ def _failure_class(error: ConnectorError) -> FailureClass:
 
 
 def _backend_for(source: str, operation: str) -> PublicBackendIdentity:
-    if (source, operation) in OPENCLI_SOCIAL_SCOPE_BY_OPERATION:
-        return OPENCLI_SOCIAL_BACKEND
-    if source in OPENCLI_SOCIAL_SOURCES:
+    key = (source, operation)
+    backend = PRODUCTION_CONNECTOR_BACKEND_BY_OPERATION.get(key)
+    if backend is not None:
+        return backend
+    if source in _CLOSED_CONNECTOR_SOURCES:
         raise ValueError("The Connector adapter selection is invalid.")
     return _CONNECTOR_BACKEND
 
 
-__all__ = ["connector_bindings"]
+__all__ = [
+    "PRODUCTION_CONNECTOR_BACKEND_BY_OPERATION",
+    "PRODUCTION_CONNECTOR_OPERATIONS",
+    "connector_bindings",
+]

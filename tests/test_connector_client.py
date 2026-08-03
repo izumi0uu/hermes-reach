@@ -485,7 +485,7 @@ def test_pairing_persists_exact_records_displays_sas_and_commits_atomically(
     assert profile.current_grant.claims.scopes == (_scope(),)
     assert len(displays) == 1
     assert displays[0].connector_fingerprint == connector.public_identity.fingerprint
-    assert displays[0].scopes == (("web", "read.url", "public"),)
+    assert displays[0].scopes == (("web", "read.url", "public", None),)
     assert displays[0].grant_expires_at == NOW + 3600
     assert displays[0].grant_max_uses == 10
     assert pairing_client.exchange_init is not None

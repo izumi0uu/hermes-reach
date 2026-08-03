@@ -5,6 +5,7 @@ import asyncio
 import json
 from collections.abc import Callable
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -19,6 +20,7 @@ from hermes_reach.cli import (
 from hermes_reach.connector.client import PairingDisplay
 from hermes_reach.connector.execution import ConnectorExecutionComposition
 from hermes_reach.connector.protocol import GrantScope
+from hermes_reach.connector.secrets import CapabilityId
 from hermes_reach.connector.transport import WssEndpoint
 from hermes_reach.runtime.release import ReleaseReport
 from hermes_reach.sources.opencli_social import OpenCliSessionAttestation
@@ -34,6 +36,7 @@ _SOCIAL_FLAG_PATHS = (
     ),
     ("--opencli-social-session-home", Path("/private/session-canary")),
 )
+_XUEQIU_MANIFEST = Path("/private/xueqiu-binding-canary.json")
 _SOCIAL_SCOPE_LABELS = (
     "reddit:search.posts:public",
     "reddit:read.post:public",
@@ -50,6 +53,8 @@ _SOCIAL_SCOPE_LABELS = (
     "instagram:read.profile:public",
     "instagram:browse.user_posts:public",
     "instagram:browse.explore:account_visible",
+    "twitter:search.posts:public",
+    "xiaohongshu:search.notes:public",
 )
 
 
@@ -59,7 +64,22 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _social_serve_arguments(mask: int = 0b1111) -> list[str]:
+def test_grant_scope_parser_preserves_an_opaque_secret_capability() -> None:
+    capability_id = CapabilityId.new(lambda size: b"\x01" * size).for_grant()
+
+    assert cli._parse_grant_scopes(
+        [f"xueqiu:search.stocks:public:{capability_id}"]
+    ) == (GrantScope("xueqiu", "search.stocks", "public", capability_id),)
+
+    with pytest.raises(cli.ConnectorError):
+        cli._parse_grant_scopes(["xueqiu:search.stocks:account_visible:invalid"])
+
+
+def _social_serve_arguments(
+    mask: int = 0b1111,
+    *,
+    xueqiu: bool = False,
+) -> list[str]:
     arguments = [
         "connector",
         "serve",
@@ -73,6 +93,8 @@ def _social_serve_arguments(mask: int = 0b1111) -> list[str]:
     for index, (flag, path) in enumerate(_SOCIAL_FLAG_PATHS):
         if mask & (1 << index):
             arguments.extend((flag, str(path)))
+    if xueqiu:
+        arguments.extend(("--xueqiu-binding-manifest", str(_XUEQIU_MANIFEST)))
     return arguments
 
 
@@ -255,11 +277,16 @@ def test_connector_cli_exposes_role_init_pair_and_foreground_serve() -> None:
     assert serve.opencli_social_root is None
     assert serve.opencli_social_cli is None
     assert serve.opencli_social_session_home is None
+    assert serve.xueqiu_binding_manifest is None
     social_serve = parser.parse_args(_social_serve_arguments())
     assert social_serve.opencli_social_node == _SOCIAL_FLAG_PATHS[0][1]
     assert social_serve.opencli_social_root == _SOCIAL_FLAG_PATHS[1][1]
     assert social_serve.opencli_social_cli == _SOCIAL_FLAG_PATHS[2][1]
     assert social_serve.opencli_social_session_home == _SOCIAL_FLAG_PATHS[3][1]
+    trusted_serve = parser.parse_args(_social_serve_arguments(mask=0, xueqiu=True))
+    assert trusted_serve.xueqiu_binding_manifest == _XUEQIU_MANIFEST
+    with pytest.raises(SystemExit):
+        parser.parse_args([*_social_serve_arguments(mask=0), "--linkedin-node", "/x"])
     assert pair.func is connector_command
     assert pair.connector_endpoint == "wss://100.64.0.9:8443"
     assert pair.scope == [
@@ -284,7 +311,7 @@ def test_connector_cli_exposes_role_init_pair_and_foreground_serve() -> None:
         )
 
 
-def test_connector_serve_without_social_inputs_keeps_the_empty_composition(
+def test_connector_serve_without_activation_inputs_has_zero_group_side_effects(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     reader = _ReaderSpy(False)
@@ -310,6 +337,11 @@ def test_connector_serve_without_social_inputs_keeps_the_empty_composition(
         cli,
         "attest_opencli_social_session",
         lambda *_: pytest.fail("unconfigured serve must not attest OpenCLI"),
+    )
+    monkeypatch.setattr(
+        cli,
+        "activate_xueqiu_binding",
+        lambda *_: pytest.fail("unconfigured serve must not read Xueqiu manifest"),
     )
 
     connector_command(
@@ -441,22 +473,125 @@ def test_connector_serve_social_activation_attests_before_exact_tty_enable(
     assert events == ["attest", "confirm", "serve"]
     assert attestation_calls == [(node, root, entrypoint, session_home)] * 2
     assert "backend: opencli/1.8.6-hermes.1" in rendered
-    assert f"Node SHA-256: {node_sha256}" in rendered
-    assert f"OpenCLI tree SHA-256: {tree_sha256}" in rendered
-    assert "scopes: 15" in rendered
+    assert f"digest: node-sha256:{node_sha256}" in rendered
+    assert f"digest: opencli-tree-sha256:{tree_sha256}" in rendered
+    assert "linkedin-service-log-threshold" not in rendered
+    assert "operator-declared" not in rendered
+    assert "scopes: 17" in rendered
     assert rendered_scope_labels == _SOCIAL_SCOPE_LABELS
     assert all(str(path) not in rendered for _, path in _SOCIAL_FLAG_PATHS)
     assert enabled.prompts == [("Type enable to continue: ", "enable")]
     assert enabled.closed
     assert len(mutation.compositions) == 1
     composition = mutation.compositions[0]
-    assert repr(composition) == "ConnectorExecutionComposition(count=15)"
+    assert repr(composition) == "ConnectorExecutionComposition(count=17)"
     assert composition is not None
     for label in _SOCIAL_SCOPE_LABELS:
         source, operation, data_scope = label.split(":")
         assert composition.required_scope(source, operation) == GrantScope(
             source, operation, data_scope
         )
+
+
+def test_connector_serve_combines_all_configured_groups_after_one_confirmation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    capability_id = CapabilityId.new(lambda size: b"\x05" * size).for_grant()
+    social_composition = ConnectorExecutionComposition()
+    xueqiu_composition = ConnectorExecutionComposition()
+    combined_composition = ConnectorExecutionComposition()
+    social_attestation = SimpleNamespace(
+        node_sha256="1" * 64,
+        opencli_tree_sha256="2" * 64,
+    )
+    xueqiu_activation = SimpleNamespace(
+        composition=xueqiu_composition,
+        scope=GrantScope("xueqiu", "search.stocks", "public", capability_id),
+        bws_sha256="b" * 64,
+    )
+
+    def social_attest(*paths: Path) -> object:
+        events.append("social-attest")
+        assert paths == tuple(path for _, path in _SOCIAL_FLAG_PATHS)
+        return social_attestation
+
+    def xueqiu_activate(path: Path) -> object:
+        events.append("xueqiu-activate")
+        assert path == _XUEQIU_MANIFEST
+        return xueqiu_activation
+
+    def combine(
+        compositions: list[ConnectorExecutionComposition],
+    ) -> ConnectorExecutionComposition:
+        events.append("combine")
+        assert compositions == [
+            social_composition,
+            xueqiu_composition,
+        ]
+        return combined_composition
+
+    class MutationSpy:
+        def serve(
+            self,
+            state_directory: Path,
+            *,
+            reader: object,
+            bind_host: str,
+            port: int,
+            execution_composition: ConnectorExecutionComposition | None = None,
+        ) -> None:
+            events.append("serve")
+            assert state_directory == Path("/private/connector")
+            assert bind_host == "127.0.0.1"
+            assert port == 8443
+            assert execution_composition is combined_composition
+
+    monkeypatch.setattr(cli, "attest_opencli_social_session", social_attest)
+    monkeypatch.setattr(
+        cli,
+        "opencli_social_execution_composition",
+        lambda value: social_composition,
+    )
+    monkeypatch.setattr(cli, "activate_xueqiu_binding", xueqiu_activate)
+    monkeypatch.setattr(cli.ConnectorExecutionComposition, "combine", combine)
+    reader = _ReaderSpy(True, events)
+    monkeypatch.setattr(cli, "TtyPassphraseReader", lambda: reader)
+
+    connector_command(
+        _parser().parse_args(_social_serve_arguments(xueqiu=True)),
+        mutation_service=MutationSpy(),  # type: ignore[arg-type]
+    )
+
+    assert events == [
+        "social-attest",
+        "xueqiu-activate",
+        "confirm",
+        "combine",
+        "serve",
+    ]
+    assert reader.prompts == [("Type enable to continue: ", "enable")]
+    rendered = "".join(reader.output)
+    assert "backend: opencli/1.8.6-hermes.1" in rendered
+    assert "backend: xueqiu-api/1.5.0+search.v1" in rendered
+    assert f"scope: xueqiu:search.stocks:public:{capability_id}" in rendered
+    assert "scopes: 18" in rendered
+    for _, path in _SOCIAL_FLAG_PATHS:
+        assert str(path) not in rendered
+    assert str(_XUEQIU_MANIFEST) not in rendered
+    assert "/private/" not in rendered
+    for locator in (
+        "project",
+        "selector",
+        "token",
+        "profile_home",
+        "query",
+        "cookie",
+        "password",
+        "server_url",
+    ):
+        assert locator not in rendered.lower()
+    assert reader.closed
 
 
 def test_connector_init_dispatches_through_tty_only_service_boundary(
@@ -663,7 +798,7 @@ def test_vps_pairing_display_uses_the_exact_persisted_grant_request(
                     connector_fingerprint="sha256:" + "abcd-" * 15 + "abcd",
                     sas="0123456789",
                     deadline=1_900_000_300,
-                    scopes=(("github", "search.repositories", "public"),),
+                    scopes=(("github", "search.repositories", "public", None),),
                     grant_expires_at=1_900_028_800,
                     grant_max_uses=199,
                 )

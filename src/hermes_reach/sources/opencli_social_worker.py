@@ -22,7 +22,13 @@ from ..agent_reach_bridge import (
 )
 from ..normalized import MAX_NORMALIZED_INTEGER, normalized_item_characters
 
-WorkerSource = Literal["reddit", "facebook", "instagram"]
+WorkerSource = Literal[
+    "reddit",
+    "facebook",
+    "instagram",
+    "twitter",
+    "xiaohongshu",
+]
 WorkerOperation = Literal[
     "search.posts",
     "read.post",
@@ -38,6 +44,7 @@ WorkerOperation = Literal[
     "search.users",
     "browse.user_posts",
     "browse.explore",
+    "search.notes",
 ]
 WorkerErrorCode = Literal[
     "unsupported_protocol_version",
@@ -149,6 +156,8 @@ _SUBREDDIT: Final = re.compile(r"[A-Za-z][A-Za-z0-9_]{2,20}")
 _SOCIAL_USERNAME: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}")
 _REDDIT_POST_ID: Final = re.compile(r"[a-z0-9]{1,32}")
 _REDDIT_POST_SLUG: Final = re.compile(r"[A-Za-z0-9_-]{1,256}")
+_TWITTER_POST_ID: Final = re.compile(r"[1-9][0-9]{0,31}")
+_XIAOHONGSHU_NOTE_ID: Final = re.compile(r"[0-9a-f]{24}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -174,6 +183,8 @@ _OPERATION_CONTRACTS: Final = MappingProxyType(
         ("instagram", "read.profile"): _OperationContract("instagram.profile.v1", 1),
         ("instagram", "browse.user_posts"): _OperationContract("instagram.post.v1", 20),
         ("instagram", "browse.explore"): _OperationContract("instagram.post.v1", 20),
+        ("twitter", "search.posts"): _OperationContract("twitter.post.v1", 20),
+        ("xiaohongshu", "search.notes"): _OperationContract("xiaohongshu.note.v1", 20),
     }
 )
 
@@ -257,6 +268,29 @@ _NATIVE_FIELDS: Final = MappingProxyType(
                 "published_at",
                 "reaction_count",
                 "text",
+            }
+        ),
+        "twitter.post.v1": frozenset(
+            {
+                "author",
+                "has_media",
+                "native_id",
+                "published_at",
+                "reaction_count",
+                "text",
+                "url",
+                "view_count",
+            }
+        ),
+        "xiaohongshu.note.v1": frozenset(
+            {
+                "author",
+                "native_id",
+                "published_at",
+                "reaction_count",
+                "text",
+                "title",
+                "url",
             }
         ),
     }
@@ -387,7 +421,7 @@ def encode_request(
     *,
     deadline: float,
 ) -> bytes:
-    """Encode one of the 15 fixed social requests for the isolated worker."""
+    """Encode one of the 17 fixed social requests for the isolated worker."""
 
     request = _validated_request(
         {
@@ -511,6 +545,8 @@ def _validated_arguments(
         ("reddit", "search.posts"),
         ("facebook", "search"),
         ("instagram", "search.users"),
+        ("twitter", "search.posts"),
+        ("xiaohongshu", "search.notes"),
     }:
         if set(arguments) != {"query", "limit"}:
             raise OpenCliSocialProtocolError("worker_request_invalid")
@@ -921,6 +957,54 @@ def _project_native_item(
                 fields["published_at"], MAX_PUBLISHED_CHARACTERS
             ),
         )
+    if schema == "twitter.post.v1":
+        native_id = _required_text(fields["native_id"], MAX_NATIVE_ID_CHARACTERS)
+        url = _required_url(fields["url"], host="x.com")
+        if _TWITTER_POST_ID.fullmatch(native_id) is None or url != (
+            f"https://x.com/i/status/{native_id}"
+        ):
+            raise OpenCliSocialProtocolError("fork_result_invalid")
+        has_media = _binary_integer(fields["has_media"])
+        return _public_projection(
+            "entry",
+            _rich_text(
+                _optional_text(fields["text"], MAX_TEXT_CHARACTERS),
+                ("reactions", _optional_integer(fields["reaction_count"])),
+                ("views", _optional_integer(fields["view_count"])),
+                ("media", "yes" if has_media else "no"),
+            ),
+            native_id=native_id,
+            url=url,
+            author=_optional_text(fields["author"], MAX_AUTHOR_CHARACTERS),
+            published_at=_optional_text(
+                fields["published_at"], MAX_PUBLISHED_CHARACTERS
+            ),
+        )
+    if schema == "xiaohongshu.note.v1":
+        native_id = _required_text(fields["native_id"], MAX_NATIVE_ID_CHARACTERS)
+        text = _required_text(fields["text"], MAX_TEXT_CHARACTERS)
+        title = _required_text(fields["title"], MAX_TITLE_CHARACTERS)
+        url = _required_url(fields["url"], host="xiaohongshu.com")
+        if (
+            _XIAOHONGSHU_NOTE_ID.fullmatch(native_id) is None
+            or text != title
+            or url != f"https://www.xiaohongshu.com/explore/{native_id}"
+        ):
+            raise OpenCliSocialProtocolError("fork_result_invalid")
+        return _public_projection(
+            "entry",
+            _rich_text(
+                text,
+                ("reactions", _optional_integer(fields["reaction_count"])),
+            ),
+            native_id=native_id,
+            title=title,
+            url=url,
+            author=_optional_text(fields["author"], MAX_AUTHOR_CHARACTERS),
+            published_at=_optional_text(
+                fields["published_at"], MAX_PUBLISHED_CHARACTERS
+            ),
+        )
     raise OpenCliSocialProtocolError("fork_result_invalid")
 
 
@@ -1163,6 +1247,10 @@ def _validate_parent_projection(
         _validate_parent_facebook_projection(operation, arguments, items)
     elif source == "instagram":
         _validate_parent_instagram_projection(operation, arguments, items)
+    elif source == "twitter":
+        _validate_parent_twitter_projection(items)
+    elif source == "xiaohongshu":
+        _validate_parent_xiaohongshu_projection(items)
     else:
         raise OpenCliSocialProtocolError("worker_response_invalid")
 
@@ -1183,6 +1271,8 @@ def _expected_projection_kind(key: tuple[str, str]) -> ResultKind:
         ("instagram", "read.profile"): "profile",
         ("instagram", "browse.user_posts"): "entry",
         ("instagram", "browse.explore"): "entry",
+        ("twitter", "search.posts"): "entry",
+        ("xiaohongshu", "search.notes"): "entry",
     }
     try:
         return kinds[key]
@@ -1317,6 +1407,34 @@ def _validate_parent_instagram_projection(
                     or item.author.casefold() != requested.casefold()
                 )
             )
+        ):
+            raise OpenCliSocialProtocolError("worker_response_invalid")
+
+
+def _validate_parent_twitter_projection(
+    items: tuple[SocialItemProjection, ...],
+) -> None:
+    for item in items:
+        native_id = item.native_id
+        if (
+            native_id is None
+            or _TWITTER_POST_ID.fullmatch(native_id) is None
+            or item.title is not None
+            or item.url != f"https://x.com/i/status/{native_id}"
+        ):
+            raise OpenCliSocialProtocolError("worker_response_invalid")
+
+
+def _validate_parent_xiaohongshu_projection(
+    items: tuple[SocialItemProjection, ...],
+) -> None:
+    for item in items:
+        native_id = item.native_id
+        if (
+            native_id is None
+            or _XIAOHONGSHU_NOTE_ID.fullmatch(native_id) is None
+            or item.title is None
+            or item.url != f"https://www.xiaohongshu.com/explore/{native_id}"
         ):
             raise OpenCliSocialProtocolError("worker_response_invalid")
 

@@ -17,12 +17,11 @@ from .connector.client import (
 from .connector.identity import VpsKeyStore
 from .connector.transport import PinnedWssClient
 from .runtime.dispatcher import RuntimeDispatcher
-from .sources.connector import connector_bindings
+from .sources.connector import PRODUCTION_CONNECTOR_OPERATIONS, connector_bindings
 from .sources.exa_artifacts import (
     ExaArtifactAttestation,
     exa_artifacts_from_environment,
 )
-from .sources.opencli_social_contract import OPENCLI_SOCIAL_OPERATIONS
 from .sources.registry import build_alpha1_registry, build_alpha1_runtime
 
 VPS_STATE_DIRECTORY_ENVIRONMENT: Final = "HERMES_REACH_VPS_STATE_DIRECTORY"
@@ -35,7 +34,7 @@ def build_vps_runtime(
     exa_artifacts: ExaArtifactAttestation | None = None,
     exa_artifacts_invalid: bool = False,
 ) -> RuntimeDispatcher:
-    """Compose Alpha-1 plus the exact social Connector adapters from local state."""
+    """Compose Alpha-1 plus the exact production Connector adapters."""
 
     registry = build_alpha1_registry(
         exa_artifacts=exa_artifacts,
@@ -67,11 +66,11 @@ def build_vps_runtime(
         for binding in connector_bindings(
             client,
             availability,
-            OPENCLI_SOCIAL_OPERATIONS,
+            PRODUCTION_CONNECTOR_OPERATIONS,
         ):
             registry.register(binding)
     except Exception:
-        for source, operation in OPENCLI_SOCIAL_OPERATIONS:
+        for source, operation in PRODUCTION_CONNECTOR_OPERATIONS:
             if registry.has_binding(source, operation):
                 continue
             registry.mark(
@@ -125,7 +124,7 @@ DEFAULT_RUNTIME = build_alpha1_runtime()
 
 __all__ = [
     "DEFAULT_RUNTIME",
-    "OPENCLI_SOCIAL_OPERATIONS",
+    "PRODUCTION_CONNECTOR_OPERATIONS",
     "VPS_STATE_DIRECTORY_ENVIRONMENT",
     "build_vps_runtime",
     "runtime_from_environment",

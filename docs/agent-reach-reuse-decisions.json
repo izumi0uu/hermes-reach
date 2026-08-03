@@ -5,7 +5,7 @@
     "official_repository": "Panniantong/Agent-Reach",
     "official_base_commit": "b4d52c46c9113cb0f653d6df4cf71ebadf4930ac",
     "fork_repository": "izumi0uu/Agent-Reach",
-    "fork_execution_commit": "281dc3352c63cdb644f02e028cc5d645c279954a",
+    "fork_execution_commit": "ee200e7160c4b093a2ba0fcee9f2a6842aefe20d",
     "execution_protocol": "v1"
   },
   "reviews": [
@@ -122,12 +122,12 @@
     {
       "source": "exa",
       "operation": "search.code",
-      "upstream_execution": "mcporter call exa.get_code_context_exa(query, tokensNum)",
-      "classification": "not_implemented",
-      "semantic_delta": "No production binding: the pinned tokensNum argument is rejected by the current deprecated provider method, mcporter is unpinned, and the provider logs queries.",
-      "approval": "owner-approved-fail-closed-2026-07-27",
-      "current_backend": null,
-      "review_milestone": "compatible Agent-Reach method schema, pinned executable closure, and approved provider-query retention contract",
+      "upstream_execution": "agent_reach.execution.v1.execute(exa:search.code, network_access.v1 + mcporter_artifacts.v1) -> mcporter 0.12.3 get_code_context_exa",
+      "classification": "direct_owner_fork_runtime",
+      "semantic_delta": "The owner fork corrects the stale tokensNum example to the reviewed query + numResults contract, owns the fixed special endpoint and method, bounded process lifecycle, independent code-result grammar, projection, and error mapping; Hermes reuses the existing attested artifact worker, normalization, receipts, and audit. Exa receives and may retain the query.",
+      "approval": "owner-approved-fork-runtime-exa-code-2026-08-02",
+      "current_backend": "exa-mcporter",
+      "review_milestone": "any official base, fork commit, execution protocol/capability, Node or mcporter closure, Exa code endpoint/method/schema/formatter, provider-query visibility, worker protocol, backend identity, or projection change",
       "decision_record": "docs/agent-reach-decisions/exa-mcporter-1.5.0.md"
     },
     {
@@ -437,6 +437,61 @@
       "current_backend": "opencli",
       "review_milestone": "any official base, fork commit, execution protocol/capability, OpenCLI package/tree, Node closure, browser lifecycle/session behavior, command/schema, worker protocol, backend identity, error mapping, or projection change",
       "decision_record": "docs/agent-reach-decisions/opencli-social-1.8.6-hermes.1.md"
+    },
+    {
+      "source": "twitter",
+      "operation": "search.posts",
+      "upstream_execution": "agent_reach.execution.v1.execute(twitter:search.posts, opencli_session.v1) -> OpenCLI 1.8.6-hermes.1 twitter search",
+      "classification": "direct_owner_fork_runtime",
+      "semantic_delta": "The owner fork owns the fixed OpenCLI command, complete native row validation, post-ID and x.com URL correlation, canonical projection, and typed error mapping; Hermes supplies trusted-device authorization, worker isolation, independent closed-result validation, normalization, receipts, and audit.",
+      "approval": "owner-approved-fork-runtime-non-github-search-batch-2026-08-02",
+      "current_backend": "opencli",
+      "review_milestone": "any official base, fork commit, execution protocol/capability, OpenCLI package/tree, Twitter command/schema, identity correlation, worker protocol, backend identity, error mapping, or projection change",
+      "decision_record": "docs/agent-reach-decisions/opencli-social-1.8.6-hermes.1.md"
+    },
+    {
+      "source": "xiaohongshu",
+      "operation": "search.notes",
+      "upstream_execution": "agent_reach.execution.v1.execute(xiaohongshu:search.notes, opencli_session.v1) -> OpenCLI 1.8.6-hermes.1 xiaohongshu search",
+      "classification": "direct_owner_fork_runtime",
+      "semantic_delta": "The owner fork owns the fixed OpenCLI command, native note validation, note-ID correlation, canonical URL rebuilding without session-bearing parameters, projection, and typed error mapping; Hermes supplies trusted-device authorization, worker isolation, independent closed-result validation, normalization, receipts, and audit.",
+      "approval": "owner-approved-fork-runtime-non-github-search-batch-2026-08-02",
+      "current_backend": "opencli",
+      "review_milestone": "any official base, fork commit, execution protocol/capability, OpenCLI package/tree, Xiaohongshu command/schema, token sanitation, worker protocol, backend identity, error mapping, or projection change",
+      "decision_record": "docs/agent-reach-decisions/opencli-social-1.8.6-hermes.1.md"
+    },
+    {
+      "source": "linkedin",
+      "operation": "search.people",
+      "upstream_execution": "agent_reach.execution.v1.execute(linkedin:search.people, mcporter_artifacts.v1 + linkedin_mcp.v1) -> linkedin-scraper-mcp 4.14.0 search_people(keywords)",
+      "classification": "not_implemented",
+      "semantic_delta": "Frozen after review: linkedin-scraper-mcp 4.14.0 logs query-bearing URLs at WARNING, error paths persist query-bearing diagnostics, Hermes cannot bind the reviewed wheel hashes, effective log threshold, and 12-second timeout to the already-listening service identity, and native section_errors can combine with retry behavior to duplicate a submission.",
+      "approval": "owner-approved-linkedin-stop-condition-2026-08-03",
+      "current_backend": null,
+      "review_milestone": "a reviewed backend or service contract proves query-free warning and error diagnostics, binds exact executable artifacts plus effective log threshold and 12-second timeout to one service identity, and makes section_errors terminal without duplicate submission",
+      "decision_record": "docs/agent-reach-decisions/linkedin-scraper-mcp-4.14.0.md"
+    },
+    {
+      "source": "linkedin",
+      "operation": "search.jobs",
+      "upstream_execution": "agent_reach.execution.v1.execute(linkedin:search.jobs, mcporter_artifacts.v1 + linkedin_mcp.v1) -> linkedin-scraper-mcp 4.14.0 search_jobs(keywords, max_pages=1)",
+      "classification": "not_implemented",
+      "semantic_delta": "Frozen after review: linkedin-scraper-mcp 4.14.0 logs query-bearing URLs at WARNING, error paths persist query-bearing diagnostics, Hermes cannot bind the reviewed wheel hashes, effective log threshold, and 12-second timeout to the already-listening service identity, and native section_errors can combine with retry behavior to duplicate a submission.",
+      "approval": "owner-approved-linkedin-stop-condition-2026-08-03",
+      "current_backend": null,
+      "review_milestone": "a reviewed backend or service contract proves query-free warning and error diagnostics, binds exact executable artifacts plus effective log threshold and 12-second timeout to one service identity, and makes section_errors terminal without duplicate submission",
+      "decision_record": "docs/agent-reach-decisions/linkedin-scraper-mcp-4.14.0.md"
+    },
+    {
+      "source": "xueqiu",
+      "operation": "search.stocks",
+      "upstream_execution": "agent_reach.execution.v1.execute(xueqiu:search.stocks, xueqiu_session.v1) -> fixed Xueqiu stock-search HTTPS contract",
+      "classification": "direct_owner_fork_runtime",
+      "semantic_delta": "The owner fork owns the fixed origin/request, Cookie header use, DNS-pinned bounded transport, response validation, stock identity, projection, and error mapping; Hermes authorizes one opaque SecretProvider capability, injects one mutable attempt-local Cookie on the trusted Connector, validates the closed result, and owns receipts and audit.",
+      "approval": "owner-approved-fork-runtime-non-github-search-batch-2026-08-02",
+      "current_backend": "xueqiu-api",
+      "review_milestone": "any official base, fork commit, Xueqiu endpoint/schema/identity, Cookie capability, SecretProvider boundary, transport policy, worker protocol, backend identity, error mapping, or projection change",
+      "decision_record": "docs/agent-reach-decisions/xueqiu-api-1.5.0-search-v1.md"
     }
   ]
 }

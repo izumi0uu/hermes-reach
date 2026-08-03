@@ -1664,6 +1664,7 @@ def test_signed_request_verification_binds_key_audience_operation_time_and_diges
         ("bitwarden-project", "1"),
         ("provider-account", "1"),
         ("secret-selector", "1"),
+        ("linkedin-scraper-mcp", "4.14.0"),
         ("fixture-backend-v1", "TOKEN_CANARY"),
         ("fixture-backend-v1/path", "1"),
         ("https://backend.invalid", "1"),
@@ -1675,6 +1676,20 @@ def test_public_backend_identity_is_an_explicit_allowlist(
 ) -> None:
     with pytest.raises(ProtocolValidationError):
         PublicBackendIdentity(backend_id, version)
+
+
+@pytest.mark.parametrize(
+    ("backend_id", "version"),
+    [("xueqiu-api", "1.5.0+search.v1")],
+)
+def test_public_backend_identity_accepts_exact_search_batch_backend(
+    backend_id: str,
+    version: str,
+) -> None:
+    assert PublicBackendIdentity(backend_id, version) == PublicBackendIdentity(
+        backend_id,
+        version,
+    )
 
 
 def test_receipt_failure_category_and_success_backend_are_consistent(
