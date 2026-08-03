@@ -715,7 +715,10 @@ def _success_value(
                 )
             )
         _validate_projection_sequence(request, tuple(projected))
-        selected, normalized_truncated = _fit_result_budget(tuple(projected))
+        selected, normalized_truncated = _fit_result_budget(
+            tuple(projected), key=key, arguments=request.arguments
+        )
+        _validate_parent_projection(key, request.arguments, selected)
     except OpenCliSocialProtocolError:
         return _failure_value(key, "backend_contract_violation")
     return {
@@ -1061,6 +1064,9 @@ def _public_projection(
 
 def _fit_result_budget(
     items: tuple[SocialItemProjection, ...],
+    *,
+    key: tuple[str, str],
+    arguments: Mapping[str, object],
 ) -> tuple[tuple[SocialItemProjection, ...], bool]:
     selected: list[SocialItemProjection] = []
     remaining = MAX_RESULT_CHARACTERS
@@ -1082,6 +1088,11 @@ def _fit_result_budget(
         if len(item.text) > allowed:
             item = replace(item, text=item.text[:allowed])
             truncated = True
+        try:
+            _validate_parent_projection(key, arguments, (*selected, item))
+        except OpenCliSocialProtocolError:
+            truncated = True
+            break
         selected.append(item)
         remaining -= _projected_item_characters(item)
     if len(selected) != len(items):

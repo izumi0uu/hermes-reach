@@ -224,6 +224,91 @@ def test_secret_frame_is_mutable_redacted_and_zeroed_after_read() -> None:
     assert not any(frame)
 
 
+def test_secret_frame_decode_avoids_secret_slices_and_immutable_copies(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    query = "stock query"
+    frame = worker.encode_request(
+        query,
+        3,
+        COOKIE_CANARY,
+        deadline=time.monotonic() + 60,
+    )
+    payload_length = int.from_bytes(frame[:4], "big")
+    cookie_start = worker._REQUEST_FIXED_BYTES + len(query.encode())
+    cookie_length = len(COOKIE_CANARY.encode())
+
+    def intersects_cookie(key: slice) -> bool:
+        return any(
+            cookie_start <= index < payload_length
+            for index in range(*key.indices(payload_length))
+        )
+
+    class RejectSecretSlice(bytearray):
+        def __getitem__(self, key: int | slice) -> int | bytearray:
+            if (
+                isinstance(key, slice)
+                and len(self) == payload_length
+                and intersects_cookie(key)
+            ):
+                raise AssertionError("a payload slice intersected the Cookie bytes")
+            return super().__getitem__(key)
+
+    real_bytes = bytes
+
+    def reject_immutable_cookie_copy(value: bytearray | memoryview) -> bytes:
+        if (
+            isinstance(value, memoryview)
+            and isinstance(value.obj, RejectSecretSlice)
+            and len(value.obj) in {payload_length, cookie_length}
+        ):
+            raise AssertionError("secret-buffer bytes were materialized as bytes")
+        return real_bytes(value)
+
+    probe_payload = RejectSecretSlice(payload_length)
+    with (
+        memoryview(frame) as frame_view,
+        frame_view[4:] as payload_source,
+        memoryview(probe_payload) as probe_view,
+    ):
+        probe_view[:] = payload_source
+    for secret_slice in (
+        slice(cookie_start, None),
+        slice(cookie_start - 1, cookie_start + 1),
+        slice(cookie_start, cookie_start + 1),
+        slice(payload_length - 1, payload_length),
+        slice(payload_length - 1, cookie_start - 1, -1),
+        slice(cookie_start, payload_length, 2),
+    ):
+        with pytest.raises(AssertionError, match="intersected the Cookie"):
+            probe_payload[secret_slice]
+    with (
+        memoryview(probe_payload) as probe_view,
+        probe_view[cookie_start:] as cookie_view,
+        probe_view[cookie_start : cookie_start + 1] as cookie_byte_view,
+    ):
+        with pytest.raises(AssertionError, match="materialized as bytes"):
+            reject_immutable_cookie_copy(cookie_view)
+        with pytest.raises(AssertionError, match="materialized as bytes"):
+            reject_immutable_cookie_copy(cookie_byte_view)
+    probe_payload[:] = b"\x00" * len(probe_payload)
+
+    monkeypatch.setattr(worker, "bytearray", RejectSecretSlice, raising=False)
+    monkeypatch.setattr(worker, "bytes", reject_immutable_cookie_copy, raising=False)
+    request: worker.WorkerRequest | None = None
+    try:
+        request = worker._read_request(io.BytesIO(frame))
+        assert request.cookie_header == COOKIE_CANARY.encode()
+    finally:
+        if request is not None:
+            request.close()
+        frame[:] = b"\x00" * len(frame)
+
+    assert request is not None
+    assert not any(request.cookie_header)
+    assert not any(frame)
+
+
 @pytest.mark.parametrize(
     "cookie",
     [

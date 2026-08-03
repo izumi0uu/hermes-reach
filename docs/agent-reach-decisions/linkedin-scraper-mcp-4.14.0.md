@@ -69,9 +69,13 @@ status remain I/O-free and report the two operations unavailable with no
 backend identity or attempt.
 
 Review may reopen only when one backend or service contract closes all four
-gaps: query-free warning and error diagnostics, exact artifact/log-level/
-timeout identity binding, and terminal `section_errors` handling that cannot
-duplicate a submission.
+gaps:
+
+1. `WARNING` logs contain no query-bearing URLs.
+2. Error paths persist no query-bearing diagnostics.
+3. One service identity binds the reviewed wheel hashes, effective log
+   threshold, and 12-second timeout.
+4. Native `section_errors` and retry handling cannot duplicate a submission.
 
 ## Rollback
 
