@@ -311,7 +311,13 @@ def _read_request(stream: _BinaryInput) -> WorkerRequest:
             "utf-8", errors="strict"
         )
         offset += query_length
-        cookie = bytearray(payload[offset:])
+        cookie = bytearray(cookie_length)
+        with (
+            memoryview(payload) as payload_view,
+            memoryview(cookie) as cookie_view,
+            payload_view[offset : offset + cookie_length] as cookie_source,
+        ):
+            cookie_view[:] = cookie_source
         return WorkerRequest(query, limit, deadline_ns / 1_000_000_000, cookie)
     except (UnicodeError, OverflowError):
         _zero(cookie)

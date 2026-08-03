@@ -19,9 +19,9 @@ search, read, browse, transcribe, and status operations through a
 > operations: RSS 2, Bilibili 4, YouTube 3, V2EX 4, Exa Web/Code 2, 17
 > social and one Xueqiu operation. The first 13 are locally
 > available by default. Exa Web and Code have
-> default-local binding surface but is composed only after the operator
+> default-local binding surfaces but are composed only after the operator
 > supplies the complete Node/mcporter/config
-> artifact attestation; otherwise it remains `setup_required`. The remote
+> artifact attestation; otherwise they remain `setup_required`. The remote
 > Connector can explicitly activate 18 fork-owned operations through two-sided
 > configuration, while default Connector composition remains empty. Web,
 > GitHub, LinkedIn, and other unaudited operations remain planned and
@@ -299,7 +299,7 @@ This version also has no automated provisioning or attestation generator, so
 the default `setup_required` state is intentional.
 With all seven values absent, partial, or malformed, `exa:search.web` and
 `exa:search.code` are
-`setup_required` and does not probe or execute a backend. Start a new Hermes
+`setup_required` and do not probe or execute a backend. Start a new Hermes
 process after configuration and inspect composition with `reach status`.
 `available` proves only that the declaration is complete and well formed; the
 isolated worker revalidates actual files, digests, versions, and the dependency
@@ -345,13 +345,6 @@ listener starts only after this unlock succeeds. Keep the foreground process
 running, then initialize the VPS and pair only the exact scopes it needs. This
 example grants one public read and one account-visible read:
 
-LinkedIn has no activation arguments. People/jobs search remains planned and
-unavailable because MCP 4.14.0 writes query-bearing URLs at `WARNING`, persists
-query diagnostics on error, cannot bind wheel/log-level/12-second-timeout
-evidence to the existing service identity, and can combine `section_errors`
-with retry behavior to duplicate a submission. See the
-[LinkedIn stop-condition decision](docs/agent-reach-decisions/linkedin-scraper-mcp-4.14.0.md).
-
 ```bash
 uv run hermes reach connector init \
   --role vps \
@@ -385,6 +378,13 @@ failure snapshot can take up to about 60 seconds after the trusted binding is
 repaired to return to retryable `degraded`. See the
 [Connector security and operations guide](docs/connector-security.md) for the
 full procedure.
+
+LinkedIn has no activation arguments. People/jobs search remains planned and
+unavailable because MCP 4.14.0 writes query-bearing URLs at `WARNING`, persists
+query diagnostics on error, cannot bind wheel/log-level/12-second-timeout
+evidence to the existing service identity, and can combine `section_errors`
+with retry behavior to duplicate a submission. See the
+[LinkedIn stop-condition decision](docs/agent-reach-decisions/linkedin-scraper-mcp-4.14.0.md).
 
 ## How the system works
 
@@ -463,7 +463,7 @@ rejected pre-freeze commit `7bc42839d3dd290e4af93b24e0b03b738cff0ffa`, tree
 `382557e0bec76819f0633f31895580a0f549b6bd`, contains the rejected LinkedIn
 descriptors and remains historical evidence only. Rolling back to
 `281dc3352c63cdb644f02e028cc5d645c279954a` disables the four accepted search
-batch without a protocol, grant, Connector, database, receipt, or audit
+operations without a protocol, grant, Connector, database, receipt, or audit
 migration. Earlier integration history remains in the
 [release guide](docs/releasing.md). Recovery tags are historical references,
 not dependency selectors; the exact commit remains authoritative.

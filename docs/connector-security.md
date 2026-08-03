@@ -95,8 +95,8 @@ Bilibili/bili-cli bindings, three direct owner-fork YouTube bindings, four
 direct owner-fork V2EX bindings, and one direct owner-fork Exa Web contract.
 Exa Code adds a second independent contract over the same attested artifacts.
 The first 13 are composed without artifact setup. Exa Web and Code are composed only
-after its complete seven-field artifact attestation is present; otherwise it
-reports `setup_required`. `youtube:read.comments` is implemented but unbound
+after their complete seven-field artifact attestation is present; otherwise they
+report `setup_required`. `youtube:read.comments` is implemented but unbound
 and also reports `setup_required`. The Connector contributes 18 additional
 direct owner-fork executors after both explicit activation gates pass; it does
 not replace or proxy the 15 local operations.
@@ -125,7 +125,7 @@ digests. Neither receives Connector identity, grant, Bitwarden secret, browser
 session, or remote execution authority. Exa receives each query directly
 and may retain it; Hermes does not persist the query in receipts or audit.
 
-## OpenCLI social and Xueqiu executor boundaries
+## Connector activation and Xueqiu secret boundaries
 
 LinkedIn people/jobs search is not part of Connector activation. Both
 operations remain planned and unavailable because the reviewed MCP 4.14.0
@@ -191,7 +191,7 @@ locked state. Enter `unlock` and supply the Connector passphrase on that same
 terminal. The WSS listener is constructed only after this unlock succeeds.
 
 Keep the foreground service running. On the VPS, initialize its owner-only
-identity state once and pair it with the exact subset of social scopes this VPS
+identity state once and pair it with the exact subset of Connector scopes this VPS
 may use. This example grants the complete batch:
 
 ```bash
@@ -242,7 +242,7 @@ and cannot add a scope absent from the signed grant. If it is absent, plugin
 registration performs no Connector file or network work. If it is invalid,
 only the 18 Connector-only operations are unavailable; all 13 artifact-independent local
 owner-fork bindings continue to load. Exa Web/Code are independently available or
-`setup_required` according to its complete artifact attestation. Web and GitHub
+`setup_required` according to their complete artifact attestation. Web and GitHub
 remain planned/unavailable independently of Connector state. Pairing, local
 state, Xueqiu binding manifest, or Exa artifact declarations require restarting Hermes because the
 runtime is composed once at plugin registration. Connector startup never

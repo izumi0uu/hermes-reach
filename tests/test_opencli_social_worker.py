@@ -3,7 +3,7 @@ from __future__ import annotations
 import io
 import time
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from types import SimpleNamespace
 from typing import cast
 
@@ -831,19 +831,126 @@ def test_projection_budget_truncates_without_changing_item_order() -> None:
         worker.SocialItemProjection(
             "entry",
             f"{index}:" + "x" * 4_000,
-            native_id=str(index),
-            title="title",
+            native_id=str(index + 1),
         )
         for index in range(10)
     )
 
-    selected, truncated = worker._fit_result_budget(items)
+    selected, truncated = worker._fit_result_budget(
+        items,
+        key=("facebook", "browse.feed"),
+        arguments={"limit": 20},
+    )
 
     assert truncated is True
     assert [item.native_id for item in selected] == [
-        str(index) for index in range(len(selected))
+        str(index + 1) for index in range(len(selected))
     ]
     assert sum(worker._projected_item_characters(item) for item in selected) <= 16_000
+
+
+@pytest.mark.parametrize(
+    ("source", "operation", "arguments", "protected_fields"),
+    [
+        (
+            "reddit",
+            "search.posts",
+            {"query": "private query", "limit": 1},
+            frozenset({"title", "url"}),
+        ),
+        (
+            "reddit",
+            "read.post",
+            {"url": POST_URL},
+            frozenset({"title", "url"}),
+        ),
+        (
+            "reddit",
+            "read.subreddit",
+            {"subreddit": "Python_3"},
+            frozenset({"title", "url"}),
+        ),
+        (
+            "facebook",
+            "search",
+            {"query": "private query", "limit": 1},
+            frozenset({"title", "url"}),
+        ),
+        (
+            "facebook",
+            "read.profile",
+            {"username": "open.ai-profile"},
+            frozenset({"title", "url"}),
+        ),
+        (
+            "instagram",
+            "search.users",
+            {"query": "private query", "limit": 1},
+            frozenset({"title", "url"}),
+        ),
+        (
+            "instagram",
+            "browse.user_posts",
+            {"username": "openai.dev", "limit": 1},
+            frozenset({"author"}),
+        ),
+        (
+            "twitter",
+            "search.posts",
+            {"query": "private query", "limit": 1},
+            frozenset({"url"}),
+        ),
+        (
+            "xiaohongshu",
+            "search.notes",
+            {"query": "private query", "limit": 1},
+            frozenset({"title", "url"}),
+        ),
+    ],
+)
+def test_projection_budget_preserves_parent_required_fields_at_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+    source: str,
+    operation: str,
+    arguments: Mapping[str, object],
+    protected_fields: frozenset[str],
+) -> None:
+    key = (source, operation)
+    value = _worker_success_value(source, operation, arguments)
+    raw_items = cast(list[dict[str, object]], value["items"])
+    item = worker._decode_projected_item(raw_items[0])
+    required_item = replace(item, text="")
+    for field in ("published_at", "author", "url", "title"):
+        if field not in protected_fields:
+            required_item = worker._without_projection_field(required_item, field)
+    exact_budget = worker._projected_item_characters(required_item)
+
+    monkeypatch.setattr(worker, "MAX_RESULT_CHARACTERS", exact_budget)
+    selected, truncated = worker._fit_result_budget(
+        (item,), key=key, arguments=arguments
+    )
+
+    assert selected == (required_item,)
+    assert truncated is True
+    for field in protected_fields:
+        assert getattr(selected[0], field) == getattr(item, field)
+    value["items"] = [worker._projected_item_value(selected[0])]
+    value["truncated"] = True
+    response = worker.decode_response(
+        _framed(value),
+        source=source,
+        operation=operation,
+        arguments=arguments,
+    )
+    assert isinstance(response, worker.OpenCliSocialProjection)
+
+    monkeypatch.setattr(worker, "MAX_RESULT_CHARACTERS", exact_budget - 1)
+    selected, truncated = worker._fit_result_budget(
+        (item,), key=key, arguments=arguments
+    )
+
+    assert selected == ()
+    assert truncated is True
 
 
 def test_request_frame_rejects_duplicate_json_keys_without_echoing_values() -> None:
