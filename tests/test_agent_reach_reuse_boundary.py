@@ -36,6 +36,10 @@ SEARCH_CAPABILITIES_AGENT_REACH_INTEGRATION_TREE = (
 )
 SEARCH_CAPABILITIES_AGENT_REACH_RECOVERY_TAG = "hermes-reach-integration-0.1.0a4"
 SEARCH_CAPABILITIES_AGENT_REACH_RECOVERY_RULESET_ID = "19975135"
+SEARCH_CAPABILITIES_AGENT_REACH_RECOVERY_MAPPING = (
+    f"`{SEARCH_CAPABILITIES_AGENT_REACH_RECOVERY_TAG}` -> "
+    f"`{SEARCH_CAPABILITIES_AGENT_REACH_INTEGRATION_COMMIT}`"
+)
 OPENCLI_SOCIAL_VERSION = "1.8.6-hermes.1"
 REVIEW_FIELDS = frozenset(
     {
@@ -608,8 +612,7 @@ def test_governance_docs_preserve_worker_and_recovery_tag_boundaries() -> None:
         normalized_xueqiu_decision,
     )
     for document in recovery_documents:
-        assert SEARCH_CAPABILITIES_AGENT_REACH_RECOVERY_TAG in document
-        assert SEARCH_CAPABILITIES_AGENT_REACH_INTEGRATION_COMMIT in document
+        assert SEARCH_CAPABILITIES_AGENT_REACH_RECOVERY_MAPPING in document
     for document in (normalized_plugin_boundary, normalized_reuse_boundary):
         assert SEARCH_CAPABILITIES_AGENT_REACH_RECOVERY_RULESET_ID in document
         assert "update and deletion" in document

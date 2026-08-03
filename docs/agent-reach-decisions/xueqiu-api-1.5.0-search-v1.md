@@ -28,6 +28,9 @@ directly to the integration commit, and final Hermes verification is complete.
 The tag preserves reachability only and never replaces the exact dependency
 commit.
 
+Current recovery mapping: `hermes-reach-integration-0.1.0a4` ->
+`75cd48c6274e7f4740530d97877ec048708d5334`.
+
 ## Secret Boundary
 
 The signed grant contains only one opaque capability ID. After exact grant

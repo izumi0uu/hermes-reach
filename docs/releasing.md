@@ -29,6 +29,9 @@ The current integration and rollback references are:
 | Rollback: RSS + Bilibili execution v1, YouTube exact wrappers | `hermes-reach-integration-0.1.0a2` | `f195253d53befdb012d7aa575e732ec627ec29ac` |
 | Earlier rollback: RSS execution v1 / Hermes Bilibili wrapper | `hermes-reach-integration-0.1.0a1` | `806205fd106f4f4453624becfd773acce8418cf1` |
 
+Current recovery mapping: `hermes-reach-integration-0.1.0a4` ->
+`75cd48c6274e7f4740530d97877ec048708d5334`.
+
 Owner-fork PR #6's final reviewed head
 `e91e3efa045e75f08d4e7fdd9749fe26d4f774c5` resolves to tree
 `e86ee839621360b991d985ad9d4cb18e36f86351`. It was rebase-merged with tree

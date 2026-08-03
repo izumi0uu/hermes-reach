@@ -132,6 +132,9 @@ integration `75cd48c6274e7f4740530d97877ec048708d5334`. Its recovery prerequisit
 is complete, while Hermes still resolves the dependency only by exact commit,
 never by tag or branch.
 
+Current recovery mapping: `hermes-reach-integration-0.1.0a4` ->
+`75cd48c6274e7f4740530d97877ec048708d5334`.
+
 ## Review Milestone
 
 Reopen this decision and the complete 63-operation audit for any official base

@@ -60,6 +60,9 @@ tag `hermes-reach-integration-0.1.0a4` points to current final integration
 `75cd48c6274e7f4740530d97877ec048708d5334`; Hermes remains pinned by exact
 commit and never resolves the dependency by tag.
 
+Current recovery mapping: `hermes-reach-integration-0.1.0a4` ->
+`75cd48c6274e7f4740530d97877ec048708d5334`.
+
 ## Ownership and security composition
 
 The owner fork owns:
