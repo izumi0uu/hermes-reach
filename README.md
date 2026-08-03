@@ -26,9 +26,11 @@ Reddit 7 条、Facebook 4 条、Instagram 4 条、Twitter 搜索 1 条、小红�
 > `e86ee839621360b991d985ad9d4cb18e36f86351`）已通过 tree 等价的 rebase 合并
 > 进入 `hermes/execution-v1`，生成最终 33-descriptor integration commit
 > `75cd48c6274e7f4740530d97877ec048708d5334`。Hermes 已精确固定该 integration
-> commit。integration branch 仍未打 tag；在 immutable recovery tag 获得
-> 防移动/删除保护且最终 Hermes 验证完成前不得发布。被拒绝的 35-descriptor
-> pre-freeze state 仅保留为 LinkedIn 拒绝证据。
+> commit；受保护的 immutable recovery reference
+> `hermes-reach-integration-0.1.0a4` 精确指向同一 commit，且最终 Hermes
+> provenance、RECORD、runtime 与 pin-sensitive 验证已经完成。该 tag 只保证恢复
+> 可达性，不是依赖选择器，也不代表已经发布新的 Hermes Reach 版本。被拒绝的
+> 35-descriptor pre-freeze state 仅保留为 LinkedIn 拒绝证据。
 
 ## 它解决什么问题
 
@@ -387,9 +389,11 @@ fork。OpenCLI 命令和雪球 HTTP 语义只存在于 fork；LinkedIn 没有可
 `75cd48c6274e7f4740530d97877ec048708d5334`（tree
 `e86ee839621360b991d985ad9d4cb18e36f86351`）；它是 PR #6 最终审查 head
 `e91e3efa045e75f08d4e7fdd9749fe26d4f774c5` 通过 tree 等价的 rebase 合并进入
-`hermes/execution-v1` 后的最终 33-descriptor commit。integration branch 仍未
-打 tag；在 immutable recovery tag 获得防移动/删除保护且最终 Hermes 验证完成前
-不得发布。被拒绝的 pre-freeze commit
+`hermes/execution-v1` 后的最终 33-descriptor commit。受保护的 immutable
+recovery reference `hermes-reach-integration-0.1.0a4` 精确指向该 commit；其
+ruleset 禁止移动和删除且没有 bypass actor，最终 Hermes provenance、RECORD、
+runtime 与 pin-sensitive 验证也已完成。该恢复门禁完成不等于发布；依赖仍由精确
+commit 选择。被拒绝的 pre-freeze commit
 `7bc42839d3dd290e4af93b24e0b03b738cff0ffa`（tree
 `382557e0bec76819f0633f31895580a0f549b6bd`）包含已拒绝的 LinkedIn descriptor，
 仅作历史证据。回滚到
@@ -436,8 +440,8 @@ Roadmap 表示开发顺序，不承诺发布日期。未完成的能力会保持
 | 已完成 | 冻结严格插件边界 | 关闭 Web/GitHub/V2EX 共 13 条 Hermes 平台例外；V2EX 只通过新的 fork descriptor 重新启用，Web/GitHub 仍不可用 |
 | 已完成 | 验证真实插件生命周期 | 在全新 Hermes 0.19 环境验证默认关闭、启用、停用和包管理器卸载 |
 | 已完成 | 完成公共平台批次交付 | rebase 集成 fork、证明最终 tree 等于被审查 tree、固定最终 SHA，并重跑所有 pin-sensitive gate |
-| 现在 | 完成最终 Hermes 验证 | PR #6 已通过 rebase 合并到 `hermes/execution-v1`，Hermes 已固定最终 33-descriptor commit；LinkedIn people/jobs 保持规划/不可用，剩余门禁是 immutable recovery-tag 保护和最终 pin-sensitive Hermes 验证 |
-| 随后 | 建立公开 Pre-release 通道 | 先为最终 fork commit 建立受保护的 immutable recovery tag，再离线安装同一 exact sdist、对同一 exact wheel 跑完整生命周期，然后摘要并验证两者的 GitHub provenance，以最小权限发布 |
+| 已完成 | 完成最终 Hermes 验证 | PR #6 已通过 rebase 合并，Hermes 已固定最终 33-descriptor commit；`hermes-reach-integration-0.1.0a4` 已受防移动/删除保护，最终 pin-sensitive gate 已通过，LinkedIn people/jobs 保持规划/不可用 |
+| 现在 | 准备下一版公开 Pre-release | 使用新的 Hermes Reach 版本（按顺序为 `0.1.0a2`），离线安装同一 exact sdist、对同一 exact wheel 跑完整生命周期，然后摘要、attest 并以最小权限发布；不得移动或复用既有 `v0.1.0a1` |
 | 后续 | 扩展剩余认证操作和生产运维 | Twitter/X 尚未接入的读取操作、现有搜索路径加固、一键授权、审计导出、告警、升级与回滚 |
 
 ## 开发

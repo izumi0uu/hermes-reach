@@ -34,6 +34,8 @@ SEARCH_CAPABILITIES_AGENT_REACH_INTEGRATION_COMMIT = AGENT_REACH_FORK_COMMIT
 SEARCH_CAPABILITIES_AGENT_REACH_INTEGRATION_TREE = (
     "e86ee839621360b991d985ad9d4cb18e36f86351"
 )
+SEARCH_CAPABILITIES_AGENT_REACH_RECOVERY_TAG = "hermes-reach-integration-0.1.0a4"
+SEARCH_CAPABILITIES_AGENT_REACH_RECOVERY_RULESET_ID = "19975135"
 OPENCLI_SOCIAL_VERSION = "1.8.6-hermes.1"
 REVIEW_FIELDS = frozenset(
     {
@@ -551,12 +553,20 @@ def test_governance_docs_preserve_worker_and_recovery_tag_boundaries() -> None:
     opencli_decision = (
         ROOT / "docs" / "agent-reach-decisions" / "opencli-social-1.8.6-hermes.1.md"
     ).read_text(encoding="utf-8")
+    exa_decision = (
+        ROOT / "docs" / "agent-reach-decisions" / "exa-mcporter-1.5.0.md"
+    ).read_text(encoding="utf-8")
+    xueqiu_decision = (
+        ROOT / "docs" / "agent-reach-decisions" / "xueqiu-api-1.5.0-search-v1.md"
+    ).read_text(encoding="utf-8")
     normalized_plugin_boundary = " ".join(plugin_boundary.split())
     normalized_reuse_boundary = " ".join(reuse_boundary.split())
     normalized_rss_decision = " ".join(rss_decision.split())
     normalized_bilibili_decision = " ".join(bilibili_decision.split())
     normalized_youtube_decision = " ".join(youtube_decision.split())
     normalized_opencli_decision = " ".join(opencli_decision.split())
+    normalized_exa_decision = " ".join(exa_decision.split())
+    normalized_xueqiu_decision = " ".join(xueqiu_decision.split())
 
     assert "not a kernel-level syscall sandbox" in normalized_plugin_boundary
     assert "both parent package initializers" in normalized_plugin_boundary
@@ -565,7 +575,7 @@ def test_governance_docs_preserve_worker_and_recovery_tag_boundaries() -> None:
     assert "could attempt filesystem or network syscalls" in normalized_rss_decision
     assert "never a branch or tag" in normalized_plugin_boundary
     assert "not a dependency selector" in normalized_plugin_boundary
-    assert "Hermes never depends on either tag" in normalized_reuse_boundary
+    assert "Hermes never depends on a recovery tag" in normalized_reuse_boundary
     assert "the exact commit pin is authoritative" in normalized_reuse_boundary
     assert "hermes-reach-integration-0.1.0a2" in normalized_plugin_boundary
     assert SEARCH_CAPABILITIES_AGENT_REACH_REVIEWED_HEAD in normalized_plugin_boundary
@@ -588,6 +598,22 @@ def test_governance_docs_preserve_worker_and_recovery_tag_boundaries() -> None:
     assert (
         SEARCH_CAPABILITIES_AGENT_REACH_INTEGRATION_TREE in normalized_opencli_decision
     )
+    recovery_documents = (
+        normalized_plugin_boundary,
+        normalized_reuse_boundary,
+        normalized_rss_decision,
+        normalized_bilibili_decision,
+        normalized_opencli_decision,
+        normalized_exa_decision,
+        normalized_xueqiu_decision,
+    )
+    for document in recovery_documents:
+        assert SEARCH_CAPABILITIES_AGENT_REACH_RECOVERY_TAG in document
+        assert SEARCH_CAPABILITIES_AGENT_REACH_INTEGRATION_COMMIT in document
+    for document in (normalized_plugin_boundary, normalized_reuse_boundary):
+        assert SEARCH_CAPABILITIES_AGENT_REACH_RECOVERY_RULESET_ID in document
+        assert "update and deletion" in document
+        assert "no bypass actor" in document
     assert FINAL_AGENT_REACH_REVIEWED_HEAD in normalized_plugin_boundary
     assert FINAL_AGENT_REACH_INTEGRATION_TREE in normalized_plugin_boundary
     assert FINAL_AGENT_REACH_REVIEWED_HEAD in normalized_reuse_boundary

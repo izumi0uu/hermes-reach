@@ -1,6 +1,7 @@
 # V2EX Agent-Reach 1.5.0 Owner-Fork Execution Decision
 
-- Status: approved and rebase-integrated; recovery tag pending
+- Historical milestone status: approved and rebase-integrated; superseded
+  without a dedicated recovery tag
 - Date: 2026-07-31
 - Operations: `v2ex:browse.hot`, `v2ex:browse.node_topics`,
   `v2ex:read.topic`, `v2ex:read.user`
@@ -117,11 +118,16 @@ movement reopens the complete 63-operation audit.
 
 ## Rollout And Rollback
 
-Final integration `9b69146588b1d162515b81db26b51643c15de8eb` is consumed by exact SHA.
-Its tree `e19835071ae6560431b66d5a21e51b598d3d9c81` exactly matches reviewed PR
-head `fd93d2ec86511a4a1514b7ebd13cd996be709692`. All pin-sensitive gates must
-pass before Hermes merge; a protected immutable recovery tag is still required
-before release.
+At this milestone, final integration
+`9b69146588b1d162515b81db26b51643c15de8eb` was consumed by exact SHA. Its tree
+`e19835071ae6560431b66d5a21e51b598d3d9c81` exactly matched reviewed PR head
+`fd93d2ec86511a4a1514b7ebd13cd996be709692`. All pin-sensitive gates had to
+pass before Hermes merge and a protected immutable recovery tag was still
+required before release. This integration was later
+superseded without receiving one. Current final integration
+`75cd48c6274e7f4740530d97877ec048708d5334` is protected by
+`hermes-reach-integration-0.1.0a4`; that tag does not retag or change the
+historical recovery state of `9b69146588b1d162515b81db26b51643c15de8eb`.
 
 Rollback restores exact pin `2a5829cf3b50bc435c647bfae4c050b1837d0235`,
 recoverable through immutable tag `hermes-reach-integration-0.1.0a3`, and

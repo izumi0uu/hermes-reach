@@ -31,10 +31,12 @@ search, read, browse, transcribe, and status operations through a
 > `e86ee839621360b991d985ad9d4cb18e36f86351`) was rebase-merged with tree
 > equivalence into `hermes/execution-v1` as final 33-descriptor integration
 > commit `75cd48c6274e7f4740530d97877ec048708d5334`, which Hermes pins exactly.
-> The integration branch remains untagged and non-publishable until immutable
-> recovery-tag protection and final Hermes verification are complete. The
-> rejected 35-descriptor pre-freeze state is retained only as LinkedIn rejection
-> evidence.
+> Protected immutable recovery reference `hermes-reach-integration-0.1.0a4`
+> points to that exact commit, and final Hermes provenance, RECORD, runtime, and
+> pin-sensitive verification are complete. The tag preserves recovery
+> reachability; it is not a dependency selector and does not publish a new
+> Hermes Reach version. The rejected 35-descriptor pre-freeze state is retained
+> only as LinkedIn rejection evidence.
 
 ## The problem Hermes Reach solves
 
@@ -456,10 +458,13 @@ owner-fork integration pin is
 `75cd48c6274e7f4740530d97877ec048708d5334`, tree
 `e86ee839621360b991d985ad9d4cb18e36f86351`. It is the tree-equivalent rebase
 integration of PR #6's final reviewed head
-`e91e3efa045e75f08d4e7fdd9749fe26d4f774c5` into `hermes/execution-v1`. The
-integration branch remains untagged and non-publishable until immutable
-recovery-tag protection and final Hermes verification are complete. The
-rejected pre-freeze commit `7bc42839d3dd290e4af93b24e0b03b738cff0ffa`, tree
+`e91e3efa045e75f08d4e7fdd9749fe26d4f774c5` into `hermes/execution-v1`.
+Protected immutable recovery reference `hermes-reach-integration-0.1.0a4`
+points to that commit; its ruleset blocks update and deletion with no bypass
+actor, and final Hermes provenance, RECORD, runtime, and pin-sensitive
+verification are complete. Completing this recovery gate is not publication;
+the exact commit remains the dependency selector. The rejected pre-freeze
+commit `7bc42839d3dd290e4af93b24e0b03b738cff0ffa`, tree
 `382557e0bec76819f0633f31895580a0f549b6bd`, contains the rejected LinkedIn
 descriptors and remains historical evidence only. Rolling back to
 `281dc3352c63cdb644f02e028cc5d645c279954a` disables the four accepted search
@@ -508,8 +513,8 @@ The roadmap describes development order, not release dates. Incomplete capabilit
 | Complete | Freeze strict plugin boundary | Close all 13 Hermes Web/GitHub/V2EX platform exceptions; reactivate V2EX only through new fork descriptors while Web/GitHub remain unavailable |
 | Complete | Verify the real plugin lifecycle | Prove default-disabled install, enable, disable, and package-manager uninstall in a clean Hermes 0.19 environment |
 | Complete | Complete public-platform batch delivery | Rebase-integrate the fork, prove the final tree equals the reviewed tree, pin the final SHA, and rerun every pin-sensitive gate |
-| Now | Complete final Hermes verification | PR #6 has been rebase-merged into `hermes/execution-v1`, and Hermes pins the final 33-descriptor commit; LinkedIn people/jobs remain planned/unavailable, with immutable recovery-tag protection and final pin-sensitive Hermes verification remaining |
-| Then | Establish a public pre-release channel | First protect an immutable recovery tag for the final fork commit, then install one exact sdist offline, lifecycle-test the exact wheel, and checksum and attest both before least-privilege publication |
+| Complete | Complete final Hermes verification | PR #6 has been rebase-merged and Hermes pins the final 33-descriptor commit; `hermes-reach-integration-0.1.0a4` is protected from update/deletion, the final pin-sensitive gate passed, and LinkedIn people/jobs remain planned/unavailable |
+| Now | Prepare the next public pre-release | Use a new Hermes Reach version (sequentially `0.1.0a2`), install one exact sdist offline, lifecycle-test the exact wheel, then checksum, attest, and publish with least privilege; never move or reuse existing `v0.1.0a1` |
 | Later | Expand remaining authenticated operations and production controls | Unintegrated Twitter/X read operations, hardening for current search paths, one-step grants, audit export, alerts, upgrades, and rollback |
 
 ## Development
