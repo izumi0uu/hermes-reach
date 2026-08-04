@@ -2,14 +2,13 @@
 
 [中文](README.md) | English
 
-Hermes Reach is a read-only retrieval plugin for
-[Hermes Agent](https://github.com/NousResearch/hermes-agent). The plugin
-registers five read-only tools. An exact, pinned
-[Agent-Reach fork](https://github.com/izumi0uu/Agent-Reach) owns platform
-invocation, native result projection, and backend selection.
+Hermes Reach is a plugin that adds five read-only retrieval tools to
+[Hermes Agent](https://github.com/NousResearch/hermes-agent). It uses a pinned
+commit of the [Agent-Reach fork](https://github.com/izumi0uu/Agent-Reach) to
+choose each backend, call the platform, and project the platform response.
 
-The source tree is version `0.1.0a2` and remains Pre-Alpha. Start with a local
-evaluation.
+This source tree is version `0.1.0a2` and is still Pre-Alpha. Test it locally
+before deploying it.
 
 ## Quick start
 
@@ -23,8 +22,8 @@ uv sync --locked --all-groups
 uv run hermes plugins enable reach --no-allow-tool-override
 ```
 
-The enable setting takes effect in the next Hermes process. Start a new process
-and inspect the actual capabilities:
+The setting takes effect when Hermes next starts. In the new process, check
+which capabilities are available:
 
 ```bash
 uv run hermes reach status --json
@@ -32,7 +31,7 @@ uv run hermes reach sources --json
 uv run hermes reach doctor --json
 ```
 
-Start a session with only the Reach toolset and routing skill:
+Start Hermes with only the Reach toolset and routing skill:
 
 ```bash
 uv run hermes \
@@ -40,7 +39,7 @@ uv run hermes \
   --toolsets reach
 ```
 
-Then describe the retrieval task:
+Ask for the data you need:
 
 ```text
 Find the five most relevant Bilibili videos about Rust async runtimes.
@@ -51,13 +50,14 @@ Read the Chinese subtitles from this YouTube video:
 https://www.youtube.com/watch?v=VIDEO_ID
 ```
 
-The default `doctor` is local-only. `uv run hermes reach doctor --upstream`
-also runs the restricted, redacted Agent-Reach checks.
+By default, `doctor` checks local state only. Run
+`uv run hermes reach doctor --upstream` to add the restricted Agent-Reach
+checks with redacted output.
 
 ## Available capabilities
 
-The catalog contains 63 read-only operations. Thirty-four are implemented,
-33 have an Agent-Reach fork executor, and YouTube comments have a request
+The catalog lists 63 read-only operations. Thirty-four are implemented. The
+Agent-Reach fork supplies 33 executors. YouTube comments have a request
 contract but no backend.
 
 | Enablement | Source | Operations |
@@ -66,7 +66,7 @@ contract but no backend.
 | Available locally | Bilibili | `search.videos`, `read.video`, `browse.hot`, `browse.rank` |
 | Available locally | YouTube | `search.videos`, `read.video`, `read.subtitles` |
 | Available locally | V2EX | `browse.hot`, `browse.node_topics`, `read.topic`, `read.user` |
-| Complete Exa artifacts supplied | Exa | `search.web`, `search.code` |
+| All required Exa paths and hashes set | Exa | `search.web`, `search.code` |
 | Paired and authorized Connector | Reddit | Seven search, read, and browse operations |
 | Paired and authorized Connector | Facebook | Four search, read, and browse operations |
 | Paired and authorized Connector | Instagram | Four search, read, and browse operations |
@@ -76,12 +76,12 @@ contract but no backend.
 | Currently unavailable (unbound) | YouTube | `read.comments` |
 | Currently unavailable | Web, GitHub, LinkedIn, Xiaoyuzhou, and remaining catalog operations | No reviewed executor |
 
-`reach status` is authoritative for each installation. Installing a command,
-Cookie, or API key does not make a source `available`.
+Use `reach status` to check an installation. A command, Cookie, or API key on
+its own does not make a source `available`.
 
 ## Tools
 
-| Tool | Purpose |
+| Tool | What it does |
 | --- | --- |
 | `reach_status` | Inspect sources, operations, and runtime availability |
 | `reach_search` | Search one to five explicit sources |
@@ -89,19 +89,19 @@ Cookie, or API key does not make a source `available`.
 | `reach_browse` | Browse a source-native collection |
 | `reach_transcribe` | Transcribe supported media; no transcription operation is available by default |
 
-The catalog is read-only. It has no publish, comment, like, follow, or
-account-mutation operation.
+All catalog operations are read-only. There are no operations for publishing,
+commenting, liking, following, or changing an account.
 
 ## Install the published pre-release
 
 [GitHub Releases](https://github.com/izumi0uu/hermes-reach/releases) is the
-current public channel. `v0.1.0a1` does not contain the final 33-operation
-integration. Use the source checkout above if the Releases page does not yet
-contain `v0.1.0a2`.
+public download channel. `v0.1.0a1` does not include the 33-operation
+integration. If `v0.1.0a2` is not on the Releases page, use the source checkout
+from Quick start.
 
-The workflow uploads a wheel, an sdist, and `SHA256SUMS`. GitHub-generated
-`Source code (zip)` and `Source code (tar.gz)` links are not part of that
-accepted artifact set.
+Each release includes a wheel, an sdist, and `SHA256SUMS`. Do not use GitHub's
+generated `Source code (zip)` or `Source code (tar.gz)` archives as release
+artifacts.
 
 ```bash
 RELEASE_TAG="$(gh release list \
@@ -133,8 +133,8 @@ shasum -a 256 --check SHA256SUMS
 cd ..
 ```
 
-Use `sha256sum --check SHA256SUMS` on GNU/Linux. `SHA256SUMS` itself is not an
-attestation subject; it only detects changed download bytes.
+On GNU/Linux, use `sha256sum --check SHA256SUMS`. `SHA256SUMS` itself is not an
+attestation subject; it only detects changes to the downloaded files.
 
 Install the wheel into the Python environment that runs Hermes:
 
@@ -152,9 +152,9 @@ uv pip check --python "$HERMES_PYTHON"
 
 ## Configure Exa
 
-Exa uses no API key. Hermes does not discover Node or mcporter from PATH, npm,
-or editor configuration. Declare the complete reviewed artifact set in the
-environment that starts Hermes:
+Exa does not need an API key. Hermes does not load Node or mcporter from PATH,
+npm, or editor configuration. Set every value below in the environment that
+starts Hermes:
 
 ```bash
 export HERMES_REACH_EXA_NODE_EXECUTABLE=/absolute/path/to/node
@@ -166,21 +166,21 @@ export HERMES_REACH_EXA_CONFIG_PATH=/absolute/path/to/sterile-config.json
 export HERMES_REACH_EXA_CONFIG_SHA256="<64-lowercase-hex>"
 ```
 
-Missing, partial, or mismatched declarations leave both Exa operations
-`setup_required`. Web and Code use different fixed methods and cannot fall
-back to each other. See the
+If any value is missing, incomplete, or does not match, both Exa operations
+remain `setup_required`. Web and Code use separate fixed methods; neither can
+substitute for the other. Read the
 [Exa backend decision](docs/agent-reach-decisions/exa-mcporter-1.5.0.md).
 
 ## Run the Connector on a trusted device
 
-Reddit, Facebook, Instagram, Twitter, Xiaohongshu, and Xueqiu do not execute on
-the VPS by default. The Connector keeps browser sessions, Cookies, and
-Bitwarden access on a computer or another trusted device. The VPS does not
-store platform credentials, but it does store its device key, pairing record,
+By default, Reddit, Facebook, Instagram, Twitter, Xiaohongshu, and Xueqiu run
+through the Connector instead of on the VPS. Browser sessions, Cookies, and
+Bitwarden access stay on a computer or another trusted device. The VPS does
+not store platform credentials. It does store its device key, pairing record,
 capability snapshots, grants, and receipt ledger.
 
-Complete the Quick start installation and enablement on both the trusted device
-and the VPS. Set `HERMES_REACH_CONNECTOR_HOST` on both machines to the trusted
+Install and enable Reach on both the trusted device and the VPS as shown in
+Quick start. On both machines, set `HERMES_REACH_CONNECTOR_HOST` to the trusted
 device's reachable private IP address.
 
 Initialize the trusted device and start the foreground service:
@@ -202,8 +202,8 @@ uv run hermes reach connector serve \
   --opencli-social-session-home /absolute/trusted-session-home
 ```
 
-All four `--opencli-social-*` arguments must be supplied together or omitted
-together. To enable only Xueqiu, run:
+Pass all four `--opencli-social-*` arguments together, or omit all four. To run
+only Xueqiu, use:
 
 ```bash
 uv run hermes reach connector serve \
@@ -213,12 +213,13 @@ uv run hermes reach connector serve \
   --xueqiu-binding-manifest /absolute/owner-only-xueqiu-binding.json
 ```
 
-To enable both groups, add `--xueqiu-binding-manifest` to the first `serve`
-command. The manifest contains locators, not a Cookie, BWS token, or secret
-value. The original terminal displays the exact scopes and requires `enable`,
-followed by `unlock` at the `Connector>` prompt.
+To run both groups, add `--xueqiu-binding-manifest` to the first `serve`
+command. The manifest contains locators. It must not contain a Cookie, BWS
+token, or secret value. The terminal that started the Connector displays the
+exact scopes and asks for `enable`. When the `Connector>` prompt appears, enter
+`unlock`.
 
-Initialize the VPS and pair only the required scopes:
+Initialize the VPS and request only the scopes it needs:
 
 ```bash
 export HERMES_REACH_CONNECTOR_HOST="<trusted-device-private-ip>"
@@ -235,8 +236,9 @@ uv run hermes reach connector pair \
   --scope instagram:browse.explore:account_visible
 ```
 
-Run `pending` on the trusted device, compare both displays, then run
-`approve <pairing-id>`. Point the VPS Hermes process at the paired state:
+On the trusted device, run `pending` and compare the details shown on both
+machines. If they match, run `approve <pairing-id>`. Start Hermes on the VPS
+with the paired state:
 
 ```bash
 HERMES_REACH_VPS_STATE_DIRECTORY=/absolute/vps-state uv run hermes \
@@ -244,34 +246,36 @@ HERMES_REACH_VPS_STATE_DIRECTORY=/absolute/vps-state uv run hermes \
   --toolsets reach
 ```
 
-See [Connector security and operations](docs/connector-security.md) for
-network setup, grants, revocation, Bitwarden, audit, and recovery.
+The [Connector security and operations](docs/connector-security.md) guide
+covers network setup, grants, revocation, Bitwarden, audit, and recovery.
 
 ## Security boundary
 
-- Every operation is read-only and names an explicit source and operation.
-- Requests have time, item, byte, and pagination bounds.
-- An unreviewed backend fails closed; Reach does not search for a looser fallback.
+- Every operation is read-only and identifies its source and operation.
+- Each request has time, item, byte, and pagination limits.
+- Reach fails closed for unreviewed backends. It does not try a less
+  restrictive backend.
 - Platform account sessions and credentials stay on the trusted device. The VPS
   still sees the queries it sends and the results it receives.
-- A compromised VPS exposes its device identity and local Connector state. An
-  attacker may also consume the remaining uses of a live grant. Revocation
-  denies later requests.
+- If the VPS is compromised, its device identity and local Connector state are
+  exposed. An attacker can also use any remaining requests on an active grant.
+  Revocation blocks later requests.
 
-Web `read.url`, GitHub, and LinkedIn are intentionally frozen. The evidence and
-review conditions are in the
+Web `read.url`, GitHub, and LinkedIn remain frozen until they meet the evidence
+and review conditions in the
 [Agent-Reach reuse boundary](docs/agent-reach-reuse-boundary.md) and
 [backend decision records](docs/agent-reach-decisions/).
 
 ## Agent-Reach boundary
 
-Hermes Reach does not copy platform runtimes. All 33 current executors come
-from the exact Agent-Reach fork. Hermes Reach owns validation, authorization,
-isolated invocation, result bounds, redaction, receipts, and audit.
+Hermes Reach does not copy platform execution code. All 33 executors come from
+the pinned Agent-Reach fork. Hermes Reach validates and authorizes each request.
+It runs the executors in isolation, limits results, redacts sensitive data, and
+records receipts and audit events.
 
-See the [plugin boundary](docs/agent-reach-plugin-boundary.md) for ownership
-details and the [release guide](docs/releasing.md) for artifact acceptance and
-rollback.
+The [plugin boundary](docs/agent-reach-plugin-boundary.md) defines which
+project owns each part. The [release guide](docs/releasing.md) describes
+artifact acceptance and rollback.
 
 ## Disable and uninstall
 
@@ -290,9 +294,9 @@ uv pip uninstall --python "$HERMES_PYTHON" hermes-reach
 uv pip check --python "$HERMES_PYTHON"
 ```
 
-Disable Reach, start a fresh Hermes process without it, then uninstall the
-wheel. Hermes `plugins remove`, `plugins rm`, and `plugins uninstall` manage
-directory plugins and do not replace the Python package manager.
+Disable Reach and start a new Hermes process without it before uninstalling the
+wheel. Hermes `plugins remove`, `plugins rm`, and `plugins uninstall` apply to
+directory plugins. Use the Python package manager to uninstall this package.
 
 ## Development
 
