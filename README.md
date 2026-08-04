@@ -94,15 +94,14 @@ uv run hermes \
 `Source code (zip)` 和 `Source code (tar.gz)`。
 
 ```bash
-RELEASE_TAG="$(gh release list \
-  --repo izumi0uu/hermes-reach \
-  --exclude-drafts \
-  --limit 1 \
-  --json tagName \
-  --jq '.[0].tagName')"
-test -n "$RELEASE_TAG"
+RELEASE_TAG="v0.1.0a2"
 RELEASE_VERSION="${RELEASE_TAG#v}"
 RELEASE_DIR="hermes-reach-${RELEASE_TAG}"
+
+test "$(gh release view "$RELEASE_TAG" \
+  --repo izumi0uu/hermes-reach \
+  --json tagName \
+  --jq '.tagName')" = "$RELEASE_TAG"
 
 gh release download "$RELEASE_TAG" \
   --repo izumi0uu/hermes-reach \
