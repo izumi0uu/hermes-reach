@@ -1,5 +1,5 @@
 name: reach
-version: 0.1.0a1
+version: 0.1.0a2
 description: Reliable, normalized, read-only access to platform-specific sources
 provides_tools:
   - reach_search

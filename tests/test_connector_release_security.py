@@ -697,7 +697,7 @@ def test_built_distributions_install_and_wheel_follows_real_hermes_lifecycle(
     ) == {
         "frozen_operations": 11,
         "hermes_agent_version": "0.19.0",
-        "hermes_reach_version": "0.1.0a1",
+        "hermes_reach_version": "0.1.0a2",
         "plugin_source": "entrypoint",
         "registration_side_effects": [],
         "rss_backend": "feedparser@6.0.12",

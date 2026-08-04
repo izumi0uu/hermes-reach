@@ -18,7 +18,7 @@ def test_installed_hermes_resolves_the_namespaced_plugin_skill() -> None:
     path = Path(plugin.__file__).resolve().parent / "skill" / "SKILL.md"
     manager = PluginManager()
     context = PluginContext(
-        PluginManifest(name="reach", version="0.1.0a1", source="entry_point"),
+        PluginManifest(name="reach", version="0.1.0a2", source="entry_point"),
         manager,
     )
 

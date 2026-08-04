@@ -39,7 +39,7 @@ def test_release_check_reports_current_pins_from_injected_metadata() -> None:
             "yt-dlp": "2026.7.4",
             "yt-dlp-ejs": "0.8.0",
             "deno": "2.8.3",
-        }.get(package, "0.1.0a1")
+        }.get(package, "0.1.0a2")
     )
 
     assert report.status == "current"
@@ -80,7 +80,7 @@ def test_release_check_reports_an_incompatible_agent_reach_version() -> None:
         lambda package: {
             "hermes-agent": "0.19.0",
             "agent-reach": "1.5.1",
-        }.get(package, "0.1.0a1")
+        }.get(package, "0.1.0a2")
     )
 
     assert report.status == "degraded"
@@ -94,7 +94,7 @@ def test_release_check_reports_an_incompatible_rss_backend_version() -> None:
             "hermes-agent": "0.19.0",
             "agent-reach": "1.5.0",
             "feedparser": "6.0.11",
-        }.get(package, "0.1.0a1")
+        }.get(package, "0.1.0a2")
     )
 
     assert report.status == "degraded"
@@ -109,7 +109,7 @@ def test_release_check_reports_a_missing_rss_backend() -> None:
         return {
             "hermes-agent": "0.19.0",
             "agent-reach": "1.5.0",
-        }.get(package, "0.1.0a1")
+        }.get(package, "0.1.0a2")
 
     report = _release(versions)
 
@@ -125,7 +125,7 @@ def test_release_check_reports_an_incompatible_bilibili_backend_version() -> Non
             "agent-reach": "1.5.0",
             "feedparser": "6.0.12",
             "bilibili-cli": "0.6.1",
-        }.get(package, "0.1.0a1")
+        }.get(package, "0.1.0a2")
     )
 
     assert report.status == "degraded"
@@ -141,7 +141,7 @@ def test_release_check_reports_a_missing_bilibili_backend() -> None:
             "hermes-agent": "0.19.0",
             "agent-reach": "1.5.0",
             "feedparser": "6.0.12",
-        }.get(package, "0.1.0a1")
+        }.get(package, "0.1.0a2")
 
     report = _release(versions)
 
@@ -152,7 +152,7 @@ def test_release_check_reports_a_missing_bilibili_backend() -> None:
 
 def test_release_check_reports_youtube_dependency_drift_and_absence() -> None:
     current = {
-        "hermes-reach": "0.1.0a1",
+        "hermes-reach": "0.1.0a2",
         "hermes-agent": "0.19.0",
         "agent-reach": "1.5.0",
         "feedparser": "6.0.12",
@@ -186,7 +186,7 @@ def test_release_check_reports_youtube_dependency_drift_and_absence() -> None:
 
 def test_release_check_reports_owner_fork_provenance_drift() -> None:
     current = {
-        "hermes-reach": "0.1.0a1",
+        "hermes-reach": "0.1.0a2",
         "hermes-agent": "0.19.0",
         "agent-reach": "1.5.0",
         "feedparser": "6.0.12",
@@ -212,7 +212,7 @@ def test_release_check_reports_owner_fork_provenance_drift() -> None:
 
 def test_release_check_requires_the_verified_execution_api_before_current() -> None:
     current = {
-        "hermes-reach": "0.1.0a1",
+        "hermes-reach": "0.1.0a2",
         "hermes-agent": "0.19.0",
         "agent-reach": "1.5.0",
         "feedparser": "6.0.12",
