@@ -1348,6 +1348,17 @@ def test_release_docs_distinguish_uploaded_assets_from_generated_sources() -> No
     assert "gh release download v0.1.0a1" not in release_guide
 
 
+def test_readme_install_commands_pin_and_validate_the_documented_release() -> None:
+    for path in (ROOT / "README.md", ROOT / "README_EN.md"):
+        text = path.read_text(encoding="utf-8")
+
+        assert 'RELEASE_TAG="v0.1.0a2"' in text
+        assert "gh release list" not in text
+        assert text.index('gh release view "$RELEASE_TAG"') < text.index(
+            'gh release download "$RELEASE_TAG"'
+        )
+
+
 def test_release_guide_public_smoke_is_fresh_complete_and_cwd_safe() -> None:
     release_guide = (ROOT / "docs" / "releasing.md").read_text(encoding="utf-8")
     public_smoke_start = release_guide.index("## Public wheel smoke")
