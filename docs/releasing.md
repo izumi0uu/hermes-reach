@@ -1,20 +1,20 @@
 # Releasing Hermes Reach
 
-Hermes Reach publishes pre-release wheel and source distributions through
-GitHub Releases. PyPI is intentionally deferred because the package requires
-the reviewed `izumi0uu/Agent-Reach` owner fork from one exact Git commit, and
-Warehouse does not accept that direct VCS `Requires-Dist`. The fork records its
-official `Panniantong/Agent-Reach` base, but the install dependency is the exact
-reviewed fork commit. Do not vendor, loosen, retarget, or remove that
-dependency to make an index upload succeed.
+Hermes Reach publishes pre-release wheels and source distributions through
+GitHub Releases. PyPI publication is deferred because the package pins the
+reviewed `izumi0uu/Agent-Reach` owner fork to one Git commit. Warehouse does not
+accept this direct VCS `Requires-Dist`. The fork records its official
+`Panniantong/Agent-Reach` base, but installations use the reviewed fork commit.
+Do not vendor, loosen, retarget, or remove this dependency to make an index
+upload succeed.
 
-Installing the public wheel therefore requires Git, PyPI access for normal
-dependencies, and GitHub HTTPS access for that exact owner-fork commit. A wheel
-installer does not read this repository's `uv.lock`. Before release, the exact
-fork commit must have an immutable integration tag protected from movement and
-deletion so old installs and rollback remain reachable. The tag is only a
-recovery reference and never the dependency selector; the commit in wheel
-metadata remains authoritative.
+Installing the public wheel requires Git, PyPI access for normal dependencies,
+and GitHub HTTPS access for the exact owner-fork commit. Wheel installers do not
+read this repository's `uv.lock`. Before release, protect an immutable
+integration tag for that commit from movement and deletion. This keeps old
+install and rollback targets reachable. The tag is only a recovery reference
+and never the dependency selector; the commit in wheel metadata remains
+authoritative.
 
 The current integration and rollback references are:
 
@@ -33,16 +33,16 @@ Current recovery mapping: `hermes-reach-integration-0.1.0a4` ->
 `75cd48c6274e7f4740530d97877ec048708d5334`.
 
 Owner-fork PR #6's final reviewed head
-`e91e3efa045e75f08d4e7fdd9749fe26d4f774c5` resolves to tree
-`e86ee839621360b991d985ad9d4cb18e36f86351`. It was rebase-merged with tree
-equivalence into `hermes/execution-v1` as final 33-descriptor integration
-`75cd48c6274e7f4740530d97877ec048708d5334`, which Hermes pins exactly.
-Protected lightweight tag `hermes-reach-integration-0.1.0a4` points directly to
-that commit. Active repository ruleset `Protect Hermes Reach integration tags`
-(`19975135`) matches `refs/tags/hermes-reach-integration-*`, blocks update and
-deletion, and has no bypass actor. Final Hermes provenance, RECORD, runtime,
-pin-sensitive, and exact-artifact verification are complete. The tag remains a
-recovery reference; installation metadata still selects the commit.
+`e91e3efa045e75f08d4e7fdd9749fe26d4f774c5` has tree
+`e86ee839621360b991d985ad9d4cb18e36f86351`. Its tree-equivalent rebase merge
+into `hermes/execution-v1` produced the final 33-descriptor integration
+`75cd48c6274e7f4740530d97877ec048708d5334`, which Hermes pins exactly. Protected
+lightweight tag `hermes-reach-integration-0.1.0a4` points to that commit. Active
+repository ruleset `Protect Hermes Reach integration tags` (`19975135`) matches
+`refs/tags/hermes-reach-integration-*`, blocks update and deletion, and has no
+bypass actor. The Hermes provenance, RECORD, runtime, pin-sensitive, and
+exact-artifact checks are complete. The tag is a recovery reference;
+installation metadata selects the commit.
 
 The rejected pre-freeze commit `7bc42839d3dd290e4af93b24e0b03b738cff0ffa`
 resolves to tree `382557e0bec76819f0633f31895580a0f549b6bd`. It contains the two
@@ -50,13 +50,13 @@ rejected LinkedIn descriptors and is retained only as pre-freeze evidence, not
 as routing, dependency, merge, tag, or release authority. Rollback restores the
 prior final integration
 `281dc3352c63cdb644f02e028cc5d645c279954a`, which resolves to tree
-`385b9c95cb3a6372ed1b68b606abc3faed71f307`. That integration was rebase-merged
-from reviewed hardlink-fix PR head `c57ae5b8d78fed6ad52a1f52731db589d875f8a9`, whose tree is
-byte-equivalent. The final integration's recovery-tag prerequisite is now
-satisfied. Package publication remains a separate operation: public
-`v0.1.0a1` is immutable and must not be moved or reused, so the next candidate
-is `0.1.0a2`. Its package metadata has advanced; publication still requires
-every release gate to pass against the exact new artifact bytes.
+`385b9c95cb3a6372ed1b68b606abc3faed71f307`. That integration is the
+tree-equivalent rebase merge of reviewed hardlink-fix PR head
+`c57ae5b8d78fed6ad52a1f52731db589d875f8a9`. The final integration now meets the
+recovery-tag prerequisite. Package publication is separate. Public `v0.1.0a1`
+is immutable and must not be moved or reused, so the next candidate is
+`0.1.0a2`. Its package metadata has advanced, but every release gate must still
+pass against the exact new artifact bytes.
 The prior 29-operation integration `ec4a5e36434c9df9ee236dc12734843163fc17ac`,
 tree `302db7526ed84b1565fa24baf5c06ced69385d80`, remains provenance for the
 social batch but is not a release-compatible rollback under uv hardlink
@@ -65,9 +65,9 @@ installation. The earlier integration
 `e19835071ae6560431b66d5a21e51b598d3d9c81`, remains the exact social-batch
 rollback pin; it is historical evidence, not an active dependency selector.
 The previous integration `2a5829cf3b50bc435c647bfae4c050b1837d0235`
-remains protected by `hermes-reach-integration-0.1.0a3`. Do not confuse fork
-recovery tags with the Hermes package release tag `v0.1.0a1`. Installation
-metadata always selects the exact commit, never an integration tag.
+remains protected by `hermes-reach-integration-0.1.0a3`. Fork recovery tags are
+separate from the Hermes package release tag `v0.1.0a1`. Installation metadata
+always selects the exact commit, never an integration tag.
 
 The release invariant is:
 
@@ -109,7 +109,7 @@ pre-freeze state remains evidence only.
 
 ## Local dry run
 
-Run the complete normal gate first:
+Run the normal gate first:
 
 ```bash
 uv sync --locked --all-groups
@@ -120,10 +120,10 @@ uv run mypy
 uv run pytest
 ```
 
-With `pyproject.toml`, `plugin.yaml`, and the lock metadata set to `0.1.0a2`,
-build the candidate bytes once without a generated file in `dist/`. Then prove
+Set `pyproject.toml`, `plugin.yaml`, and the lock metadata to `0.1.0a2`. Start
+with no generated files in `dist/`, then build the candidate once. Verify that
 the exact sdist installs offline, run the full Hermes lifecycle against the
-exact wheel, and perform the release metadata checks:
+exact wheel, and check the release metadata:
 
 ```bash
 uv run python scripts/prepare_release.py version --tag v0.1.0a2
@@ -135,9 +135,9 @@ uv run python scripts/prepare_release.py artifacts \
   --dist-dir "$PWD/dist"
 ```
 
-The final command requires exactly one expected wheel and one expected sdist,
-checks both embedded metadata records, and creates `dist/SHA256SUMS`. A second
-run intentionally fails until `uv build --clear` recreates a clean directory.
+The final command requires exactly one expected wheel and one expected sdist.
+It checks both embedded metadata records and creates `dist/SHA256SUMS`. Running
+it again fails until `uv build --clear` recreates a clean directory.
 
 ## Tag and publish
 
@@ -178,10 +178,10 @@ The workflow then:
 7. rechecks the remote tag and current remote `main` ancestry, then publishes a
    non-latest pre-release.
 
-`gh release create` normally stages asset uploads through a private draft and
-publishes only after they succeed. A client, network, or API failure can be
-ambiguous, however: the tag may have no release, a private draft, or a public
-pre-release even when the command reports failure. Inspect the tag in the
+`gh release create` stages asset uploads through a private draft and publishes
+after the uploads succeed. A client, network, or API failure can be
+ambiguous: the tag may have no release, a private draft, or a public pre-release
+even when the command reports failure. Inspect the tag in the
 Releases UI and with
 `gh release view <tag> --json isDraft,isPrerelease,url` before taking any
 recovery action. A run that fails before release creation leaves only the
@@ -227,22 +227,22 @@ shasum -a 256 --check SHA256SUMS
 cd ..
 ```
 
-The two attestation commands name only the wheel and sdist as subjects and
-restrict the signer to the reviewed release workflow. `SHA256SUMS` itself is
-not an attestation subject; it is only the manifest used for checksum
-verification. Checksums establish byte equality, not publisher identity.
-GitHub provenance does not prove that the reviewed source is defect-free or
-that repository administrators are uncompromised.
+The two attestation commands name only the wheel and sdist as subjects. They
+also restrict the signer to the reviewed release workflow. `SHA256SUMS` itself
+is not an attestation subject; it is the manifest for checksum verification.
+Checksums establish byte equality, not publisher identity. GitHub provenance
+does not prove that the reviewed source is defect-free or that repository
+administrators are uncompromised.
 
 ## Public wheel smoke
 
-The pre-publication gate already resolves the unpublished exact wheel on all
-three supported Python versions. After provenance and checksums pass, recheck
-the published bytes with real, uncached dependency resolution in a fresh
-environment. Run this outside the repository checkout. Keep the process `HOME`
-unchanged; isolate Hermes and XDG state with their supported overrides instead.
-The commands show Python 3.11; repeat the complete smoke in separate roots for
-Python 3.12 and 3.13 before announcing the release:
+The pre-publication gate resolves the exact unpublished wheel on all three
+supported Python versions. After publication, provenance, and checksum
+verification, test the published bytes again with uncached dependency
+resolution in a fresh environment outside the repository checkout. Keep the
+process `HOME` unchanged and isolate Hermes and XDG state with their supported
+overrides. The commands show Python 3.11; repeat the complete smoke in separate
+roots for Python 3.12 and 3.13 before announcing the release:
 
 ```bash
 WHEEL="$(pwd)/release-audit/hermes_reach-0.1.0a2-py3-none-any.whl"
@@ -367,8 +367,8 @@ print("exact Agent-Reach PEP 610 and seven-module runtime handshake verified")
 PY
 ```
 
-Then, in a separate process, prove that the installed entry point remains
-disabled by default without importing the plugin:
+In a separate process, verify that the installed entry point remains disabled
+by default without importing the plugin:
 
 ```bash
 "$SMOKE_PYTHON" -I - <<'PY'
@@ -388,9 +388,9 @@ print("installed and disabled by default")
 PY
 ```
 
-Enable without tool-override authority. Each following command is a new
-process, which proves that persisted activation is sufficient. The default
-doctor is intentionally no-network; do not add `--upstream` to this smoke:
+Enable without tool-override authority. Run each following command in a new
+process to verify persisted activation. The default doctor makes no network
+requests; do not add `--upstream` to this smoke test:
 
 ```bash
 "$SMOKE_HERMES" plugins enable reach --no-allow-tool-override
@@ -399,7 +399,7 @@ doctor is intentionally no-network; do not add `--upstream` to this smoke:
 ```
 
 Run one credential-free live RSS operation through normal Hermes plugin
-discovery and assert the normalized backend provenance:
+discovery and verify its normalized backend provenance:
 
 ```bash
 "$SMOKE_PYTHON" -I - <<'PY'
@@ -433,12 +433,12 @@ print(json.dumps(result, sort_keys=True))
 PY
 ```
 
-This one live probe depends on DNS, GitHub egress, and service availability. It
-can also encounter rate limits. Those are distinct from the fixture-backed
-release acceptance test; production RSS fetching remains bounded by a 3-second
-DNS limit and 5-second connect/read limits.
+This live probe depends on DNS, GitHub egress, and service availability, and it
+may encounter rate limits. It is separate from the fixture-backed release
+acceptance test. Production RSS fetching remains bounded by a 3-second DNS
+limit and 5-second connect/read limits.
 
-Finally disable the plugin, prove the `reach` command is absent in another
+Disable the plugin, verify that the `reach` command is absent in another
 process, uninstall through the same environment's package manager, and recheck
 the remaining dependency graph:
 
@@ -475,11 +475,11 @@ Retain `$SMOKE_ROOT` with the release evidence until the audit is complete.
   assets, move the old tag, or reuse the withdrawn version.
 - User rollback remains: disable Reach, start a new Hermes session, uninstall
   from the same Hermes Python environment, then run `uv pip check`.
-- A code rollback that reverses the four accepted search operations restores exact fork pin
-  `281dc3352c63cdb644f02e028cc5d645c279954a`. Twitter/X search,
-  Xiaohongshu search, Xueqiu stock search, and Exa
-  Code become unavailable again. No protocol, grant, Connector, database,
-  receipt, audit, or secret migration is needed.
+- A code rollback that reverses the four accepted search operations restores
+  exact fork pin `281dc3352c63cdb644f02e028cc5d645c279954a`. Twitter/X search,
+  Xiaohongshu search, Xueqiu stock search, and Exa Code become unavailable
+  again. No protocol, grant, Connector, database, receipt, audit, or secret
+  migration is needed.
 - A code rollback that reverses the OpenCLI social batch restores the prior
   Hermes release and exact fork pin
   `9b69146588b1d162515b81db26b51643c15de8eb`. The 15 Connector-only social
