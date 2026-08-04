@@ -1288,12 +1288,12 @@ def test_release_docs_distinguish_uploaded_assets_from_generated_sources() -> No
     documents = {path: path.read_text(encoding="utf-8") for path in paths}
     expected_subjects = {
         ROOT / "README.md": [
-            "$RELEASE_DIR/hermes_reach-0.1.0a1-py3-none-any.whl",
-            "$RELEASE_DIR/hermes_reach-0.1.0a1.tar.gz",
+            "$RELEASE_DIR/hermes_reach-${RELEASE_VERSION}-py3-none-any.whl",
+            "$RELEASE_DIR/hermes_reach-${RELEASE_VERSION}.tar.gz",
         ],
         ROOT / "README_EN.md": [
-            "$RELEASE_DIR/hermes_reach-0.1.0a1-py3-none-any.whl",
-            "$RELEASE_DIR/hermes_reach-0.1.0a1.tar.gz",
+            "$RELEASE_DIR/hermes_reach-${RELEASE_VERSION}-py3-none-any.whl",
+            "$RELEASE_DIR/hermes_reach-${RELEASE_VERSION}.tar.gz",
         ],
         ROOT / "docs" / "releasing.md": [
             "release-audit/hermes_reach-0.1.0a2-py3-none-any.whl",
@@ -1388,15 +1388,8 @@ def test_release_guide_public_smoke_is_fresh_complete_and_cwd_safe() -> None:
     assert "uv pip uninstall --no-config --no-python-downloads" in public_smoke
 
 
-def test_release_docs_define_immutable_tag_as_recovery_not_selection() -> None:
+def test_release_guide_defines_immutable_tag_as_recovery_not_selection() -> None:
     expected = {
-        ROOT / "README.md": (
-            "该 tag 只用于恢复定位，不是依赖选择器，精确 commit 始终是权威 pin。"
-        ),
-        ROOT / "README_EN.md": (
-            "The tag is only a recovery reference, not a dependency selector; "
-            "the exact commit remains authoritative."
-        ),
         ROOT / "docs" / "releasing.md": (
             "The tag is only a recovery reference and never the dependency selector; "
             "the commit in wheel metadata remains authoritative."

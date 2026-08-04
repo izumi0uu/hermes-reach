@@ -55,8 +55,8 @@ from reviewed hardlink-fix PR head `c57ae5b8d78fed6ad52a1f52731db589d875f8a9`, w
 byte-equivalent. The final integration's recovery-tag prerequisite is now
 satisfied. Package publication remains a separate operation: public
 `v0.1.0a1` is immutable and must not be moved or reused, so the next candidate
-must first advance Hermes Reach to a new version (sequentially `0.1.0a2`) and
-pass every release gate against those exact new artifact bytes.
+is `0.1.0a2`. Its package metadata has advanced; publication still requires
+every release gate to pass against the exact new artifact bytes.
 The prior 29-operation integration `ec4a5e36434c9df9ee236dc12734843163fc17ac`,
 tree `302db7526ed84b1565fa24baf5c06ced69385d80`, remains provenance for the
 social batch but is not a release-compatible rollback under uv hardlink
@@ -103,9 +103,9 @@ integration of owner-fork PR #6's final reviewed head
 Protected immutable recovery reference `hermes-reach-integration-0.1.0a4`
 points directly to the integration commit. Ruleset `19975135` prevents update
 and deletion with no bypass actor, and final Hermes verification is complete.
-This clears the Agent-Reach recovery prerequisite only; publishing the next
-Hermes Reach pre-release still requires a new version and the complete workflow
-below. The rejected pre-freeze state remains evidence only.
+This clears the Agent-Reach recovery prerequisite only. Publishing the
+`0.1.0a2` candidate still requires the complete workflow below. The rejected
+pre-freeze state remains evidence only.
 
 ## Local dry run
 
@@ -120,11 +120,10 @@ uv run mypy
 uv run pytest
 ```
 
-After the reviewed release change advances `pyproject.toml`, `plugin.yaml`, and
-the lock metadata to `0.1.0a2`, build the candidate bytes once without a
-generated file in `dist/`. Then prove the exact sdist installs offline, run the
-full Hermes lifecycle against the exact wheel, and perform the release metadata
-checks:
+With `pyproject.toml`, `plugin.yaml`, and the lock metadata set to `0.1.0a2`,
+build the candidate bytes once without a generated file in `dist/`. Then prove
+the exact sdist installs offline, run the full Hermes lifecycle against the
+exact wheel, and perform the release metadata checks:
 
 ```bash
 uv run python scripts/prepare_release.py version --tag v0.1.0a2
